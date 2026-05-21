@@ -1,0 +1,265 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+model Province {
+  id        Int      @id @default(autoincrement())
+  name      String   @unique @db.VarChar(100)
+  code      String?  @unique @db.VarChar(20)
+  createdAt DateTime @default(now()) @map("created_at")
+
+  districts District[]
+
+  @@map("provinces")
+}
+
+model District {
+  id         Int      @id @default(autoincrement())
+  provinceId Int      @map("province_id")
+  name       String   @unique @db.VarChar(100)
+  code       String?  @unique @db.VarChar(20)
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  province Province @relation(fields: [provinceId], references: [id])
+  depots   Depot[]
+
+  @@map("districts")
+}
+
+model Depot {
+  id         Int         @id @default(autoincrement())
+  districtId Int         @map("district_id")
+  name       String      @db.VarChar(100)
+  code       String?     @unique @db.VarChar(50)
+  address    String?     @db.Text
+  phone      String?     @db.VarChar(20)
+  status     DepotStatus @default(active)
+  createdAt  DateTime    @default(now()) @map("created_at")
+
+  district    District     @relation(fields: [districtId], references: [id])
+  products    Product[]
+  employees   Employee[]
+  assignments Assignment[]
+  depotBrands DepotBrand[]
+
+  @@map("depots")
+}
+
+model Brand {
+  id          Int         @id @default(autoincrement())
+  name        String      @unique @db.VarChar(100)
+  code        String?     @unique @db.VarChar(50)
+  description String?     @db.Text
+  status      BrandStatus @default(active)
+  createdAt   DateTime    @default(now()) @map("created_at")
+
+  products    Product[]
+  depotBrands DepotBrand[]
+
+  @@map("brands")
+}
+
+model Product {
+  id        Int           @id @default(autoincrement())
+  brandId   Int           @map("brand_id")
+  depotId   Int           @map("depot_id")
+  name      String        @db.VarChar(200)
+  sku       String?       @unique @db.VarChar(100)
+  price     Decimal?      @db.Decimal(10, 2)
+  quantity  Int           @default(0)
+  minStock  Int           @default(0) @map("min_stock")
+  status    ProductStatus @default(available)
+  createdAt DateTime      @default(now()) @map("created_at")
+
+  brand Brand @relation(fields: [brandId], references: [id])
+  depot Depot @relation(fields: [depotId], references: [id])
+
+  @@map("products")
+}
+
+model Employee {
+  id Int @id @default(autoincrement())
+
+  // Current working depot
+  depotId Int? @map("depot_id")
+
+  khmerName String @db.VarChar(100)
+
+  englishName String? @map("english_name") @db.VarChar(100)
+
+  employeeCode String? @unique @map("employee_code") @db.VarChar(50)
+  images       String? @map("images") @db.VarChar(200)
+
+  dateOfBirth DateTime? @map("date_of_birth") @db.Date
+
+  gender String?
+
+  address String? @db.Text
+
+  department String? @db.VarChar(100)
+
+  position String? @db.VarChar(100)
+
+  phone String? @db.VarChar(20)
+
+  email String? @unique @db.VarChar(100)
+
+  hireDate DateTime? @map("hire_date") @db.Date
+
+  status EmployeeStatus @default(active)
+
+  createdAt DateTime @default(now()) @map("created_at")
+
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  // Current depot
+  depot Depot? @relation(fields: [depotId], references: [id])
+
+  // Depots managed by this employee
+  user User?
+
+  assignments Assignment[]
+
+  @@index([depotId])
+  @@map("employees")
+}
+
+model User {
+  id           Int        @id @default(autoincrement())
+  employeeId   Int?       @unique @map("employee_id")
+  username     String     @unique @db.VarChar(50)
+  passwordHash String     @map("password_hash") @db.VarChar(255)
+  role         UserRole   @default(staff)
+  lastLogin    DateTime?  @map("last_login")
+  status       UserStatus @default(active)
+  createdAt    DateTime   @default(now()) @map("created_at")
+
+  employee      Employee?      @relation(fields: [employeeId], references: [id])
+  reports       Report[]
+  refreshTokens RefreshToken[]
+
+  @@map("users")
+}
+
+model Assignment {
+  id             Int              @id @default(autoincrement())
+  employeeId     Int              @map("employee_id")
+  depotId        Int              @map("depot_id")
+  assignmentType AssignmentType   @default(permanent) @map("assignment_type")
+  startDate      DateTime         @map("start_date") @db.Date
+  endDate        DateTime?        @map("end_date") @db.Date
+  status         AssignmentStatus @default(active)
+  notes          String?          @db.Text
+  createdAt      DateTime         @default(now()) @map("created_at")
+
+  employee Employee @relation(fields: [employeeId], references: [id])
+  depot    Depot    @relation(fields: [depotId], references: [id])
+
+  @@map("assignments")
+}
+
+model Report {
+  id          Int        @id @default(autoincrement())
+  generatedBy Int        @map("generated_by")
+  reportType  ReportType @map("report_type")
+  title       String     @db.VarChar(200)
+  parameters  Json?
+  filePath    String?    @map("file_path") @db.VarChar(500)
+  generatedAt DateTime   @default(now()) @map("generated_at")
+
+  user User @relation(fields: [generatedBy], references: [id])
+
+  @@map("reports")
+}
+
+model DepotBrand {
+  id           Int              @id @default(autoincrement())
+  depotId      Int              @map("depot_id")
+  brandId      Int              @map("brand_id")
+  assignedDate DateTime         @map("assigned_date") @db.Date
+  status       DepotBrandStatus @default(active)
+  createdAt    DateTime         @default(now()) @map("created_at")
+
+  depot Depot @relation(fields: [depotId], references: [id])
+  brand Brand @relation(fields: [brandId], references: [id])
+
+  @@unique([depotId, brandId])
+  @@map("depot_brands")
+}
+
+model RefreshToken {
+  id        String   @id @default(cuid())
+  token     String   @unique
+  userId    Int
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  isRevoked Boolean  @default(false)
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+
+  @@index([userId])
+  @@index([token])
+  @@index([isRevoked])
+}
+
+enum DepotStatus {
+  active
+  inactive
+}
+
+enum BrandStatus {
+  active
+  inactive
+}
+
+enum ProductStatus {
+  available
+  out_of_stock
+  discontinued
+}
+
+enum EmployeeStatus {
+  active
+  inactive
+}
+
+enum UserRole {
+  admin
+  manager
+  staff
+  viewer
+}
+
+enum UserStatus {
+  active
+  locked
+}
+
+enum AssignmentType {
+  transfer
+  supervision
+  temporary
+  permanent
+}
+
+enum AssignmentStatus {
+  active
+  completed
+  cancelled
+}
+
+enum ReportType {
+  inventory
+  sales
+  assignment
+  employee
+  depot
+}
+
+enum DepotBrandStatus {
+  active
+  inactive
+}
