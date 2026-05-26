@@ -18,4 +18,11 @@ router.post(
     depotController.createDepot
 );
 
+// Get all depots with flexible filtering (Admin/Manager only)
+router.get(
+    '/',
+    authMiddleware.authenticate,
+    depotController.getAllDepots
+);
+
 export default router;
