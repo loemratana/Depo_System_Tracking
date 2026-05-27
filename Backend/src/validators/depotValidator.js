@@ -22,10 +22,10 @@ export const validate = (req, res, next) => {
 export const createDepotValidator = [
 
 
-    body('name')
-        .notEmpty().withMessage('Depot name is required')
-        .isString().withMessage('Name must be a string')
-        .isLength({ max: 100 }).withMessage('Name max 100 characters'),
+    // body('name')
+    //     .notEmpty().withMessage('Depot name is required')
+    //     .isString().withMessage('Name must be a string')
+    //     .isLength({ max: 100 }).withMessage('Name max 100 characters'),
     body('code')
         .optional()
         .isString().withMessage('Code must be a string')

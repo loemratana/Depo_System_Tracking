@@ -59,7 +59,7 @@ class AuthService {
             // Prepare user object for token generation
             const userForToken = {
                 id: result.id,
-                email: result.employee.email,
+                email: result.email,
                 role: result.role,
                 name: result.employee.name
             };

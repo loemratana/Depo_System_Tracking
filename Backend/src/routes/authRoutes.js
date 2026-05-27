@@ -19,6 +19,7 @@ const router = express.Router();
 router.post('/register', registerValidator, authController.register);
 router.post('/login', loginValidator, authController.login);
 router.post('/refresh', refreshTokenValidator, authController.refreshToken);
+
 // router.post('/forgot-password', forgotPasswordValidator, authController.forgotPassword);
 // router.post('/reset-password', resetPasswordValidator, authController.resetPassword);
 // router.get('/verify-email', authController.verifyEmail);

@@ -1,5 +1,6 @@
 import { prisma } from '../config/db.js';
 import logger from '../config/logger.js';
+import Excel from 'exceljs';
 
 class ProvinceService {
     cache = new Map();
@@ -43,16 +44,37 @@ class ProvinceService {
                     take: parseInt(limit),
                     orderBy: { [sortBy]: sortOrder },
                     include: {
-                        _count: {
-                            select: { districts: true }
+                        districts: {
+                            include: {
+                                _count: {
+                                    select: {
+                                        depots: true
+                                    }
+                                }
+                            }
                         }
                     }
                 }),
                 prisma.province.count({ where })
             ]);
+            const formattedProvinces = provinces.map(province => {
+                const depotCount = province.districts.reduce(
+                    (total, district) => total + district._count.depots,
+                    0
+                );
+
+                return {
+                    id: province.id,
+                    code: province.code,
+                    name: province.name,
+                    createdAt: province.createdAt,
+                    updatedAt: province.updatedAt,
+                    depotCount
+                };
+            });
 
             const result = {
-                provinces,
+                provinces: formattedProvinces,
                 pagination: {
                     page: parseInt(page),
                     limit: parseInt(limit),
@@ -209,6 +231,103 @@ class ProvinceService {
             logger.error('ProvinceService delete error:', error);
             throw error;
         }
+    }
+
+    //bulk Operation 
+    // ---------- Generate Template ----------
+    async generateProvinceTemplate() {
+        const workbook = new Excel.Workbook();
+        const worksheet = workbook.addWorksheet('Provinces');
+
+        worksheet.columns = [
+            { header: 'provinceName *', key: 'name', width: 25 },
+            { header: 'code', key: 'code', width: 20 },
+        ];
+        worksheet.getRow(1).font = { bold: true };
+        worksheet.addRow({ name: 'Phnom Penh', code: 'PP' });
+        worksheet.addRow({ name: 'Siem Reap', code: 'SR' });
+
+        return await workbook.xlsx.writeBuffer();
+    }
+
+    // ---------- Verify Import ----------
+    async verifyProvinceImport(fileBuffer) {
+        const workbook = new Excel.Workbook();
+        await workbook.xlsx.load(fileBuffer);
+        const worksheet = workbook.getWorksheet(1);
+        if (!worksheet) throw new Error('Worksheet not found');
+
+        // Pre‑fetch existing provinces (to check uniqueness of name and code)
+        const existingProvinces = await prisma.province.findMany({
+            select: { name: true, code: true }
+        });
+        const existingNames = new Set(existingProvinces.map(p => p.name.toLowerCase().trim()));
+        const existingCodes = new Set(existingProvinces.map(p => p.code?.toLowerCase().trim()).filter(Boolean));
+
+        const validRows = [];
+        const invalidRows = [];
+
+        worksheet.eachRow((row, rowNumber) => {
+            if (rowNumber === 1) return;
+
+            const name = row.getCell(1).value?.toString().trim();
+            const code = row.getCell(2).value?.toString().trim() || null;
+
+            // Skip completely empty rows
+            if (!name && !code) return;
+
+            const errors = [];
+
+            if (!name) {
+                errors.push('Province name is required');
+            } else {
+                const nameLower = name.toLowerCase();
+                if (existingNames.has(nameLower)) {
+                    errors.push(`Province name "${name}" already exists`);
+                }
+            }
+
+            if (code) {
+                const codeLower = code.toLowerCase();
+                if (existingCodes.has(codeLower)) {
+                    errors.push(`Province code "${code}" already exists`);
+                }
+            }
+
+            const rowData = { name, code };
+            if (errors.length) {
+                invalidRows.push({ rowNumber, errors });
+            } else {
+                validRows.push({ rowNumber, data: rowData });
+            }
+        });
+
+        return {
+            summary: {
+                totalRows: validRows.length + invalidRows.length,
+                validCount: validRows.length,
+                invalidCount: invalidRows.length
+            },
+            validRows,
+            invalidRows
+        };
+    }
+
+    // ---------- Bulk Import ----------
+    async bulkImportProvinces(fileBuffer) {
+        const verification = await this.verifyProvinceImport(fileBuffer);
+        if (verification.invalidRows.length) {
+            throw new Error(`Cannot import: ${verification.invalidRows.length} rows have errors.`);
+        }
+
+        const provincesToCreate = verification.validRows.map(v => v.data);
+        const result = await prisma.province.createMany({
+            data: provincesToCreate,
+            skipDuplicates: false
+        });
+        
+        this.cache.clear();
+        return { importedCount: result.count, message: `Imported ${result.count} provinces` };
     }
 }
 

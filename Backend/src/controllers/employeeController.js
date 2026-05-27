@@ -16,7 +16,7 @@ class EmployeeController {
 
     async getById(req, res) {
         try {
-            const employee = await employeeService.getById(req.params.id);
+            const employee = await employeeService.findById(req.params.id);
             if (!employee) {
                 return res.status(404).json({ success: false, message: 'Employee not found' });
             }
@@ -68,32 +68,90 @@ class EmployeeController {
         }
     }
 
-    async bulkImport(req, res) {
+    async getEmployeeDepotDetails(req, res) {
         try {
-            const { employees } = req.body;
-
-            // Ensure body contains a valid array of items
-            if (!employees || !Array.isArray(employees)) {
-                return res.status(400).json({
-                    success: false,
-                    message: 'Invalid payload structure. Expected an "employees" array in the request body.'
-                });
-            }
-
-            if (employees.length === 0) {
-                return res.status(400).json({
-                    success: false,
-                    message: 'The import array is empty.'
-                });
-            }
-
-            const importResult = await employeeService.bulkImport(employees);
-            res.json(importResult);
+            const { employeeId } = req.params;
+            const employee = await employeeService.getEmployeeDepotDetails(employeeId);
+            res.json({ success: true, data: employee });
         } catch (error) {
-            logger.error('EmployeeController bulkImport error:', error);
             res.status(500).json({ success: false, message: error.message });
         }
     }
+
+    // Download template
+    async downloadTemplate(req, res) {
+        try {
+            const buffer = await employeeService.generateTemplate();
+            res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+            res.setHeader('Content-Disposition', 'attachment; filename=employee_template.xlsx');
+            res.send(buffer);
+        } catch (error) {
+            console.error(error);
+            res.status(500).json({ success: false, message: error.message });
+        }
+    }
+
+    // Verify uploaded file
+    async verifyFile(req, res) {
+        try {
+            if (!req.file) {
+                return res.status(400).json({ success: false, message: 'No file uploaded' });
+            }
+            const result = await employeeService.verifyImport(req.file.buffer);
+            res.json({ success: true, ...result });
+        } catch (error) {
+            console.error(error);
+            res.status(500).json({ success: false, message: error.message });
+        }
+    }
+
+    // Bulk import (after verification or directly)
+    async importEmployees(req, res) {
+        try {
+            let result;
+            if (req.file) {
+                result = await employeeService.bulkImport(req.file.buffer);
+            } else if (req.body && req.body.employees) {
+                result = await employeeService.bulkImportJson(req.body.employees);
+            } else {
+                return res.status(400).json({ success: false, message: 'No file uploaded or data provided' });
+            }
+            res.json({
+                success: result.success !== false,
+                ...result,
+            });
+        } catch (error) {
+            console.error(error);
+            res.status(400).json({ success: false, message: error.message });
+        }
+    }
+
+    //     async bulkImport(req, res) {
+    //     try {
+    //         const { employees } = req.body;
+
+    //         // Ensure body contains a valid array of items
+    //         if (!employees || !Array.isArray(employees)) {
+    //             return res.status(400).json({
+    //                 success: false,
+    //                 message: 'Invalid payload structure. Expected an "employees" array in the request body.'
+    //             });
+    //         }
+
+    //         if (employees.length === 0) {
+    //             return res.status(400).json({
+    //                 success: false,
+    //                 message: 'The import array is empty.'
+    //             });
+    //         }
+
+    //         const importResult = await employeeService.bulkImport(employees);
+    //         res.json(importResult);
+    //     } catch (error) {
+    //         logger.error('EmployeeController bulkImport error:', error);
+    //         res.status(500).json({ success: false, message: error.message });
+    //     }
+    // }
 
 }
 

@@ -13,6 +13,7 @@ model Province {
   createdAt DateTime @default(now()) @map("created_at")
 
   districts District[]
+  depots  Depot[]
 
   @@map("provinces")
 }
@@ -39,6 +40,9 @@ model Depot {
   phone      String?     @db.VarChar(20)
   status     DepotStatus @default(active)
   createdAt  DateTime    @default(now()) @map("created_at")
+
+  provinceId Int @map("province_id")
+  province   Province @relation(fields: [provinceId], references: [id])
 
   district    District     @relation(fields: [districtId], references: [id])
   products    Product[]

@@ -65,6 +65,37 @@ class ProvinceController {
             this.handleError(res, error, 'Failed to delete province');
         }
     };
+
+    downloadProvinceTemplate = async (req, res) => {
+        try {
+            const buffer = await provinceService.generateProvinceTemplate();
+            res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+            res.setHeader('Content-Disposition', 'attachment; filename=province_template.xlsx');
+            res.send(buffer);
+        } catch (error) {
+            res.status(500).json({ success: false, message: error.message });
+        }
+    }
+
+    verifyProvinceFile = async (req, res) => {
+        try {
+            if (!req.file) return res.status(400).json({ success: false, message: 'No file uploaded' });
+            const result = await provinceService.verifyProvinceImport(req.file.buffer);
+            res.json({ success: true, ...result });
+        } catch (error) {
+            res.status(500).json({ success: false, message: error.message });
+        }
+    }
+
+    importProvinces = async (req, res) => {
+        try {
+            if (!req.file) return res.status(400).json({ success: false, message: 'No file uploaded' });
+            const result = await provinceService.bulkImportProvinces(req.file.buffer);
+            res.json({ success: true, ...result });
+        } catch (error) {
+            res.status(400).json({ success: false, message: error.message });
+        }
+    }
 }
 
 export default new ProvinceController();
