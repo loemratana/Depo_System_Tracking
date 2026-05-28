@@ -173,11 +173,9 @@ class EmployeeService {
     async update(id, data) {
         try {
             const parsedId = parseInt(id);
-            if (isNaN(parsedId)) {
-                throw new Error('Invalid employee ID format');
-            }
-
-            // Whitelist only fields that exist in the Prisma schema for Employee
+            if (isNaN(parsedId)) throw new Error('Invalid employee ID format');
+    
+            // Prisma Employee model fields (match your schema)
             const allowedFields = [
                 'khmerName',
                 'englishName',
@@ -189,69 +187,58 @@ class EmployeeService {
                 'position',
                 'phone',
                 'email',
-                'status'
+                'status',
+                'depotId',
+                'dateOfBirth',
+                'hireDate'
             ];
-
+    
+            // Build updateData only with fields that are actually provided (not undefined)
             const updateData = {};
             for (const key of allowedFields) {
                 if (data[key] !== undefined) {
-                    updateData[key] = data[key];
+                    // Convert special fields
+                    if (key === 'depotId' && data[key] !== null) {
+                        updateData[key] = parseInt(data[key]);
+                    } else if (key === 'dateOfBirth' || key === 'hireDate') {
+                        updateData[key] = data[key] ? new Date(data[key]) : null;
+                    } else {
+                        updateData[key] = data[key];
+                    }
                 }
             }
-
-            if (data.depotId !== undefined) {
-                updateData.depotId = data.depotId ? parseInt(data.depotId) : null;
-            }
-
-            if (data.dateOfBirth !== undefined) {
-                updateData.dateOfBirth = data.dateOfBirth ? new Date(data.dateOfBirth) : null;
-            }
-
-            if (data.hireDate !== undefined) {
-                updateData.hireDate = data.hireDate ? new Date(data.hireDate) : null;
-            }
-
-            // Check duplicate employee code excluding this employee
+    
+            // Check unique constraints only if field is being updated
             if (updateData.employeeCode) {
-                const existingEmployee = await prisma.employee.findFirst({
+                const existing = await prisma.employee.findFirst({
                     where: {
                         employeeCode: updateData.employeeCode,
                         id: { not: parsedId }
                     }
                 });
-
-                if (existingEmployee) {
-                    throw new Error('Employee code already exists');
-                }
+                if (existing) throw new Error('Employee code already exists');
             }
-
-            // Check duplicate email excluding this employee
+    
             if (updateData.email) {
-                const existingEmployee = await prisma.employee.findFirst({
+                const existing = await prisma.employee.findFirst({
                     where: {
                         email: updateData.email,
                         id: { not: parsedId }
                     }
                 });
-
-                if (existingEmployee) {
-                    throw new Error('Email already exists');
-                }
+                if (existing) throw new Error('Email already exists');
             }
-
+    
             const employee = await prisma.employee.update({
                 where: { id: parsedId },
                 data: updateData,
-                include: {
-                    depot: true
-                }
+                // include: { depot: true }
             });
-
+    
             logger.info(`Employee updated: ${employee.id}`);
             return employee;
-
-        }
-        catch (error) {
+    
+        } catch (error) {
             logger.error("EmployeeService update error:", error);
             throw error;
         }

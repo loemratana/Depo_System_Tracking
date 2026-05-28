@@ -15,6 +15,7 @@ import db from './config/db.js';
 import path from 'path';
 import logger, { stream } from './config/logger.js';
 import environment from './config/env.js';
+import reportRoutes from './routes/reportRoutes.js';
 
 const app = express();
 
@@ -83,6 +84,7 @@ app.use('/api/v1/districts', districtRoutes);
 app.use('/api/v1/employees', employeeRoutes);
 app.use('/api/v1/upload', uploadRoutes);
 app.use('/api/v1/depots', depotRoutes);
+app.use('/api/v1/report', reportRoutes);
 
 
 /* ========================

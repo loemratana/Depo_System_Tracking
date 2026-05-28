@@ -1,6 +1,5 @@
-import { prisma } from '../config/db.js';
-import logger from '../config/logger.js';
-
+import { prisma } from "../config/db.js";
+import logger from "../config/logger.js";
 
 class DepotService {
   async createDepot(data) {
@@ -66,8 +65,13 @@ class DepotService {
           address: data.address,
           phone: data.phone,
           status: data.status || "active",
-          provinceId: province.id,        // FIX: was `province: province.id` (raw int on relation field)
+          provinceId: province.id, // FIX: was `province: province.id` (raw int on relation field)
           districtId: district.id,
+          houseNumber: data.homeNumber || data.houseNumber,
+          street: data.street,
+          village: data.village,
+          commune: data.commune,
+          expiryDate: data.expiryDate,
           ...(employeeId && {
             employees: { connect: { id: employeeId } },
           }),
@@ -79,9 +83,10 @@ class DepotService {
       });
 
       if (employeeId) {
-        await prisma.assignment.create({  // FIX: was `prisma.assign` (wrong model name)
+        await prisma.assignment.create({
+          // FIX: was `prisma.assign` (wrong model name)
           data: {
-            employeeId: employeeId,       // FIX: was `data.employeeId` (undefined when created from name)
+            employeeId: employeeId, // FIX: was `data.employeeId` (undefined when created from name)
             depotId: depot.id,
             startDate: new Date(),
           },
@@ -280,14 +285,14 @@ class DepotService {
       // Build owner from first employee relation on depot
       const owner = depot.employees[0]
         ? {
-          id: depot.employees[0].id,
-          khmerName: depot.employees[0].khmerName,
-          englishName: depot.employees[0].englishName,
-          employeeCode: depot.employees[0].employeeCode,
-          phone: depot.employees[0].phone,
-          email: depot.employees[0].email,
-          position: depot.employees[0].position,
-        }
+            id: depot.employees[0].id,
+            khmerName: depot.employees[0].khmerName,
+            englishName: depot.employees[0].englishName,
+            employeeCode: depot.employees[0].employeeCode,
+            phone: depot.employees[0].phone,
+            email: depot.employees[0].email,
+            position: depot.employees[0].position,
+          }
         : null;
 
       return {
@@ -495,25 +500,6 @@ class DepotService {
           images: true,
         },
       },
-      assignments: {
-        where: { status: 'active' },
-        orderBy: { createdAt: 'desc' },
-        take: 1,
-        select: {
-          employee: {
-            select: {
-              id: true,
-              khmerName: true,
-              englishName: true,
-              employeeCode: true,
-              phone: true,
-              email: true,
-              position: true,
-              images: true,
-            },
-          },
-        },
-      },
     };
 
     // Include address fields only if requested (for detail view)
@@ -540,8 +526,7 @@ class DepotService {
 
     // Format the response (flatten district and owner info)
     const formattedData = depots.map((depot) => {
-      const owner =
-        depot.employees?.[0] || depot.assignments?.[0]?.employee || null;
+      const owner = depot.employees?.[0] || null;
       const result = {
         id: depot.id,
         code: depot.code,
@@ -552,17 +537,15 @@ class DepotService {
         createdAt: depot.createdAt,
         district: depot.district?.name,
         city: depot.district?.province?.name,
-        ownerId: owner?.id ?? null,
         owner: owner
           ? {
-            id: owner.id,
-            name: owner.khmerName || owner.englishName,
-            code: owner.employeeCode,
-            phone: owner.phone,
-            email: owner.email,
-            position: owner.position,
-            image: owner.images,
-          }
+              name: owner.khmerName || owner.englishName,
+              code: owner.employeeCode,
+              phone: owner.phone,
+              email: owner.email,
+              position: owner.position,
+              image: owner.images,
+            }
           : null,
       };
       if (includeAddress) {
@@ -592,22 +575,22 @@ class DepotService {
   }
 
   /**
-  * Parse and validate a single CSV row into a depot payload
-  */
+   * Parse and validate a single CSV row into a depot payload
+   */
   _validateRow(data, rowIndex) {
     const errors = [];
 
-    if (!data.name?.trim()) errors.push('name is required');
-    if (!data.provinceName?.trim()) errors.push('provinceName is required');
-    if (!data.districtName?.trim()) errors.push('districtName is required');
+    if (!data.name?.trim()) errors.push("name is required");
+    if (!data.provinceName?.trim()) errors.push("provinceName is required");
+    if (!data.districtName?.trim()) errors.push("districtName is required");
 
-    const validStatuses = ['active', 'inactive'];
+    const validStatuses = ["active", "inactive"];
     if (data.status && !validStatuses.includes(data.status.toLowerCase())) {
-      errors.push(`status must be one of: ${validStatuses.join(', ')}`);
+      errors.push(`status must be one of: ${validStatuses.join(", ")}`);
     }
 
     if (errors.length > 0) {
-      throw new Error(`Row ${rowIndex}: ${errors.join('; ')}`);
+      throw new Error(`Row ${rowIndex}: ${errors.join("; ")}`);
     }
   }
 
@@ -619,7 +602,7 @@ class DepotService {
     if (cache.provinces.has(key)) return cache.provinces.get(key);
 
     let province = await prisma.province.findFirst({
-      where: { name: { equals: name.trim(), mode: 'insensitive' } },
+      where: { name: { equals: name.trim(), mode: "insensitive" } },
     });
 
     if (!province) {
@@ -639,7 +622,7 @@ class DepotService {
 
     let district = await prisma.district.findFirst({
       where: {
-        name: { equals: districtName.trim(), mode: 'insensitive' },
+        name: { equals: districtName.trim(), mode: "insensitive" },
         provinceId,
       },
     });
@@ -658,35 +641,31 @@ class DepotService {
    * Upsert employee using cache
    */
   async _getOrCreateEmployee(data, cache) {
-    const identity = this._getRecordEmployeeIdentity(data);
-    if (!identity) return null;
+    if (!data.employeeName?.trim()) return null;
 
-    const cached = this._findEmployeeInCache(cache, data);
-    if (cached) return cached;
+    const key = `${data.employeeName.trim().toLowerCase()}|${(data.employeeEmail || "").trim().toLowerCase()}`;
+    if (cache.employees.has(key)) return cache.employees.get(key);
 
     let employee = await prisma.employee.findFirst({
       where: {
-        OR: [
-          { englishName: { equals: identity.englishName, mode: 'insensitive' } },
-          { khmerName: { equals: identity.khmerName, mode: 'insensitive' } },
-          ...(identity.email ? [{ email: identity.email }] : []),
-        ],
+        englishName: { equals: data.employeeName.trim(), mode: "insensitive" },
+        ...(data.employeeEmail?.trim() && { email: data.employeeEmail.trim() }),
       },
     });
 
     if (!employee) {
       employee = await prisma.employee.create({
         data: {
-          englishName: identity.englishName,
-          khmerName: identity.khmerName,
-          email: identity.email,
-          phone: identity.phone,
-          position: 'Owner',
+          englishName: data.employeeName.trim(),
+          khmerName: data.employeeKhmerName?.trim() || data.employeeName.trim(),
+          email: data.employeeEmail?.trim() || null,
+          phone: data.employeePhone?.trim() || null,
+          position: "Owner",
         },
       });
     }
 
-    this._registerEmployeeInCache(cache, employee);
+    cache.employees.set(key, employee);
     return employee;
   }
 
@@ -701,11 +680,16 @@ class DepotService {
       const existing = await prisma.depot.findUnique({
         where: { code: data.code.trim() },
       });
-      if (existing) throw new Error(`Depot code "${data.code.trim()}" already exists`);
+      if (existing)
+        throw new Error(`Depot code "${data.code.trim()}" already exists`);
     }
 
     const province = await this._getOrCreateProvince(data.provinceName, cache);
-    const district = await this._getOrCreateDistrict(data.districtName, province.id, cache);
+    const district = await this._getOrCreateDistrict(
+      data.districtName,
+      province.id,
+      cache,
+    );
     const employee = await this._getOrCreateEmployee(data, cache);
 
     const depot = await prisma.depot.create({
@@ -714,7 +698,7 @@ class DepotService {
         code: data.code?.trim() || null,
         address: data.address?.trim() || null,
         phone: data.phone?.trim() || null,
-        status: (data.status?.trim().toLowerCase()) || 'active',
+        status: data.status?.trim().toLowerCase() || "active",
         provinceId: province.id,
         districtId: district.id,
         ...(employee && {
@@ -741,52 +725,9 @@ class DepotService {
     return depot;
   }
 
-  /**
-   * Resolve owner fields from CSV row (supports employeeName and/or employeeKhmerName).
-   */
-  _getRecordEmployeeIdentity(record) {
-    const englishName = record.employeeName?.trim() || '';
-    const khmerName = record.employeeKhmerName?.trim() || '';
-    const email = record.employeeEmail?.trim() || '';
-    const phone = record.employeePhone?.trim() || '';
-
-    if (!englishName && !khmerName && !email) {
-      return null;
-    }
-
-    return {
-      englishName: englishName || khmerName,
-      khmerName: khmerName || englishName,
-      email: email || null,
-      phone: phone || null,
-    };
-  }
-
-  _registerEmployeeInCache(cache, emp) {
-    const en = (emp.englishName || '').trim().toLowerCase();
-    const km = (emp.khmerName || '').trim().toLowerCase();
-    const em = (emp.email || '').trim().toLowerCase();
-    if (en) cache.employees.set(`en:${en}`, emp);
-    if (km) cache.employees.set(`km:${km}`, emp);
-    if (em) cache.employees.set(`em:${em}`, emp);
-  }
-
-  _findEmployeeInCache(cache, record) {
-    const identity = this._getRecordEmployeeIdentity(record);
-    if (!identity) return null;
-
-    const en = identity.englishName.toLowerCase();
-    const km = identity.khmerName.toLowerCase();
-    const em = (identity.email || '').toLowerCase();
-
-    return (
-      cache.employees.get(`en:${en}`) ||
-      cache.employees.get(`km:${km}`) ||
-      cache.employees.get(`km:${en}`) ||
-      cache.employees.get(`en:${km}`) ||
-      (em ? cache.employees.get(`em:${em}`) : null) ||
-      null
-    );
+  _employeeCacheKey(data) {
+    if (!data.employeeName?.trim()) return null;
+    return `${data.employeeName.trim().toLowerCase()}|${(data.employeeEmail || "").trim().toLowerCase()}`;
   }
 
   /**
@@ -876,24 +817,21 @@ class DepotService {
       }
     }
 
-    const ownerNames = new Set();
-    const ownerEmails = new Set();
-    for (const record of records) {
-      const identity = this._getRecordEmployeeIdentity(record);
-      if (!identity) continue;
-      ownerNames.add(identity.englishName);
-      ownerNames.add(identity.khmerName);
-      if (identity.email) ownerEmails.add(identity.email);
-    }
+    const employeeNames = [
+      ...new Set(records.map((r) => r.employeeName?.trim()).filter(Boolean)),
+    ];
+    const employeeEmails = [
+      ...new Set(records.map((r) => r.employeeEmail?.trim()).filter(Boolean)),
+    ];
 
     const employeeOr = [];
-    if (ownerNames.size > 0) {
-      const names = [...ownerNames];
-      employeeOr.push({ englishName: { in: names, mode: 'insensitive' } });
-      employeeOr.push({ khmerName: { in: names, mode: 'insensitive' } });
+    if (employeeNames.length > 0) {
+      employeeOr.push({
+        englishName: { in: employeeNames, mode: "insensitive" },
+      });
     }
-    if (ownerEmails.size > 0) {
-      employeeOr.push({ email: { in: [...ownerEmails] } });
+    if (employeeEmails.length > 0) {
+      employeeOr.push({ email: { in: employeeEmails } });
     }
 
     if (employeeOr.length > 0) {
@@ -901,30 +839,28 @@ class DepotService {
         where: { OR: employeeOr },
       });
       for (const emp of existingEmployees) {
-        this._registerEmployeeInCache(cache, emp);
+        const nameKey = (emp.englishName || "").trim().toLowerCase();
+        const emailKey = (emp.email || "").trim().toLowerCase();
+        cache.employees.set(`${nameKey}|${emailKey}`, emp);
+        cache.employees.set(`${nameKey}|`, emp);
       }
     }
 
     const employeesToCreate = [];
-    const pendingOwnerKeys = new Set();
+    const pendingEmployeeKeys = new Set();
     for (const record of records) {
-      const identity = this._getRecordEmployeeIdentity(record);
-      if (!identity) continue;
-
-      const pendingKey = `${identity.englishName.toLowerCase()}|${identity.khmerName.toLowerCase()}|${(identity.email || '').toLowerCase()}`;
-      if (
-        this._findEmployeeInCache(cache, record) ||
-        pendingOwnerKeys.has(pendingKey)
-      ) {
+      const key = this._employeeCacheKey(record);
+      if (!key || cache.employees.has(key) || pendingEmployeeKeys.has(key)) {
         continue;
       }
-      pendingOwnerKeys.add(pendingKey);
+      pendingEmployeeKeys.add(key);
       employeesToCreate.push({
-        englishName: identity.englishName,
-        khmerName: identity.khmerName,
-        email: identity.email,
-        phone: identity.phone,
-        position: 'Owner',
+        englishName: record.employeeName.trim(),
+        khmerName:
+          record.employeeKhmerName?.trim() || record.employeeName.trim(),
+        email: record.employeeEmail?.trim() || null,
+        phone: record.employeePhone?.trim() || null,
+        position: "Owner",
       });
     }
 
@@ -933,7 +869,8 @@ class DepotService {
         data: employeesToCreate,
       });
       for (const emp of createdEmployees) {
-        this._registerEmployeeInCache(cache, emp);
+        const key = `${(emp.englishName || "").trim().toLowerCase()}|${(emp.email || "").trim().toLowerCase()}`;
+        cache.employees.set(key, emp);
       }
     }
 
@@ -978,7 +915,8 @@ class DepotService {
       );
     }
 
-    const employee = this._findEmployeeInCache(cache, record);
+    const empKey = this._employeeCacheKey(record);
+    const employee = empKey ? cache.employees.get(empKey) : null;
 
     return {
       depotData: {
@@ -986,7 +924,7 @@ class DepotService {
         code,
         address: record.address?.trim() || null,
         phone: record.phone?.trim() || null,
-        status: record.status?.trim().toLowerCase() || 'active',
+        status: record.status?.trim().toLowerCase() || "active",
         provinceId: province.id,
         districtId: district.id,
       },

@@ -7,32 +7,6 @@ import { prisma } from '../config/db.js';
 
 
 const upload = multer({ dest: "uploads/" });
-/** Normalize CSV header aliases so owner columns map correctly */
-function normalizeDepotImportRecord(record) {
-  const r = { ...record };
-  const pick = (...keys) => {
-    for (const k of keys) {
-      if (r[k]?.trim()) return r[k].trim();
-    }
-    return '';
-  };
-
-  if (!r.employeeName?.trim()) {
-    r.employeeName = pick('employeeName', 'employee_name', 'owner', 'ownerName', 'Owner');
-  }
-  if (!r.employeeKhmerName?.trim()) {
-    r.employeeKhmerName = pick('employeeKhmerName', 'employee_khmer_name', 'khmerName', 'khmer_name');
-  }
-  if (!r.employeeEmail?.trim()) {
-    r.employeeEmail = pick('employeeEmail', 'employee_email', 'email', 'ownerEmail');
-  }
-  if (!r.employeePhone?.trim()) {
-    r.employeePhone = pick('employeePhone', 'employee_phone', 'ownerPhone');
-  }
-
-  return r;
-}
-
 function parseCSV(buffer) {
   return new Promise((resolve, reject) => {
     const records = [];
@@ -48,7 +22,7 @@ function parseCSV(buffer) {
     parser.on('readable', () => {
       let record;
       while ((record = parser.read()) !== null) {
-        records.push(normalizeDepotImportRecord(record));
+        records.push(record);
       }
     });
 
@@ -241,13 +215,7 @@ class DepotController {
 
       // ── 3. Collect unique values to query DB ──────────────────────────────
       const codes = [...new Set(csvCodes)];
-      const employeeNames = [
-        ...new Set(
-          rows.flatMap((r) =>
-            [r.employeeName, r.employeeKhmerName].map((n) => n?.trim()).filter(Boolean),
-          ),
-        ),
-      ];
+      const employeeNames = [...new Set(rows.map(r => r.employeeName?.trim()).filter(Boolean))];
       const emails = [...new Set(rows.map(r => r.employeeEmail?.trim()).filter(Boolean))];
       const provinceNames = [...new Set(rows.map(r => r.provinceName?.trim()).filter(Boolean))];
 
@@ -267,16 +235,11 @@ class DepotController {
           ? prisma.employee.findMany({
             where: {
               OR: [
-                ...(employeeNames.length > 0
-                  ? [
-                      { englishName: { in: employeeNames, mode: 'insensitive' } },
-                      { khmerName: { in: employeeNames, mode: 'insensitive' } },
-                    ]
-                  : []),
+                ...(employeeNames.length > 0 ? [{ englishName: { in: employeeNames, mode: 'insensitive' } }] : []),
                 ...(emails.length > 0 ? [{ email: { in: emails } }] : []),
               ],
             },
-            select: { englishName: true, khmerName: true, email: true },
+            select: { englishName: true, email: true },
           })
           : [],
 
@@ -295,9 +258,8 @@ class DepotController {
 
       const existingEmployeeMap = existingEmployees.map(e => ({
         englishName: e.englishName,
-        khmerName: e.khmerName,
         email: e.email,
-        note: 'Employee already exists — will be linked as depot owner',
+        note: 'Employee already exists — will be linked, not re-created',
       }));
 
       const existingProvinceNames = existingProvinces.map(p => p.name);
