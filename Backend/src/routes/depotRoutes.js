@@ -50,6 +50,8 @@ router.post('/bulk-import', (req, res, next) => {
 
 
 
+// ✅ Report route – must be BEFORE /:id
+router.get("/report", authMiddleware.authenticate, depotController.getDepotReport);
 
 // Protected routes (require authentication)
 router.post(
@@ -61,7 +63,16 @@ router.post(
 
 router.get("/", authMiddleware.authenticate, depotController.getAllDepots);
 
-// ⚠️ Parameterized route should be LAST
+// Parameterized route should be LAST
+router.get(
+  "/unassigned",
+  authMiddleware.authenticate,
+  depotController.findDepotNotAssigned,
+);
 router.get("/:id", authMiddleware.authenticate, depotController.getDepotById);
+router.delete("/:id", authMiddleware.authenticate, depotController.deleteDepot);
+router.patch("/:id", authMiddleware.authenticate, depotController.updateDepot);
+
+//report route
 
 export default router;

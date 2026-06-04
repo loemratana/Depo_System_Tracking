@@ -4,196 +4,272 @@ import logger from "../config/logger.js";
 class DepotService {
   async createDepot(data) {
     try {
-      // Use a single, mandatory field: 'name'
-      if (!data.name) {
-        throw new Error("Depot name is required (field 'name')");
-      }
+      // Validate required fields
+      if (!data.name?.trim()) throw new Error("Depot name is required");
+      if (!data.provinceName?.trim())
+        throw new Error("Province name is required");
+      if (!data.districtName?.trim())
+        throw new Error("District name is required");
 
-      // 1. Check depot code uniqueness
-      if (data.code) {
-        const existing = await prisma.depot.findUnique({
-          where: { code: data.code },
+      const result = await prisma.$transaction(async (tx) => {
+        // ---------- Handle Province ----------
+        let province = await tx.province.findFirst({
+          where: { name: data.provinceName.trim() },
         });
-        if (existing) throw new Error("Depot code already exists");
-      }
+        if (!province) {
+          province = await tx.province.create({
+            data: { name: data.provinceName.trim() },
+          });
+        }
 
-      // 2. Handle employee (existing ID or create from name)
-      let employeeId = data.employeeId;
-      if (!employeeId && data.employeeName) {
-        const newEmployee = await prisma.employee.create({
-          data: {
-            englishName: data.employeeName,
-            khmerName: data.employeeKhmerName || data.employeeName,
-            email: data.employeeEmail || null,
-            phone: data.employeePhone || null,
-            position: "Owner",
+        // ---------- Handle District ----------
+        let district = await tx.district.findFirst({
+          where: {
+            name: data.districtName.trim(),
+            provinceId: province.id,
           },
         });
-        employeeId = newEmployee.id;
-        logger.info(
-          `Created new employee: ${newEmployee.englishName} (ID: ${newEmployee.id})`,
-        );
-      } else if (employeeId) {
-        const exists = await prisma.employee.findUnique({
-          where: { id: employeeId },
-        });
-        if (!exists) throw new Error(`Employee ${employeeId} not found`);
-      }
+        if (!district) {
+          district = await tx.district.create({
+            data: {
+              name: data.districtName.trim(),
+              provinceId: province.id,
+            },
+          });
+        }
 
-      // 3. Province & district
-      let province = await prisma.province.findFirst({
-        where: { name: data.provinceName },
-      });
-      if (!province)
-        province = await prisma.province.create({
-          data: { name: data.provinceName },
-        });
+        // ---------- Handle Employee (NO AUTO-CREATION) ----------
+        let employeeId = null;
+        const rawEmployeeId =
+          data.employeeId !== undefined &&
+          data.employeeId !== null &&
+          data.employeeId !== ""
+            ? Number(data.employeeId)
+            : null;
 
-      let district = await prisma.district.findFirst({
-        where: { name: data.districtName, provinceId: province.id },
-      });
-      if (!district)
-        district = await prisma.district.create({
-          data: { name: data.districtName, provinceId: province.id },
-        });
+        if (rawEmployeeId && !isNaN(rawEmployeeId) && rawEmployeeId > 0) {
+          const existingEmployee = await tx.employee.findUnique({
+            where: { id: rawEmployeeId },
+            select: { id: true },
+          });
+          if (!existingEmployee) {
+            throw new Error(`Employee with ID ${rawEmployeeId} not found`);
+          }
+          employeeId = rawEmployeeId;
+        }
 
-      // 4. Create depot
-      const depot = await prisma.depot.create({
-        data: {
-          name: data.name,
-          code: data.code,
-          address: data.address,
-          phone: data.phone,
-          status: data.status || "active",
-          provinceId: province.id, // FIX: was `province: province.id` (raw int on relation field)
-          districtId: district.id,
-          houseNumber: data.homeNumber || data.houseNumber,
-          street: data.street,
-          village: data.village,
-          commune: data.commune,
-          expiryDate: data.expiryDate,
-          ...(employeeId && {
-            employees: { connect: { id: employeeId } },
-          }),
-        },
-        include: {
-          district: { include: { province: true } },
-          employees: true,
-        },
-      });
+        // ---------- Ensure code uniqueness ----------
+        if (data.code) {
+          const existing = await tx.depot.findUnique({
+            where: { code: data.code },
+          });
+          if (existing) throw new Error("Depot code already exists");
+        }
 
-      if (employeeId) {
-        await prisma.assignment.create({
-          // FIX: was `prisma.assign` (wrong model name)
+        if (data.brandId !== undefined && data.brandId !== null && data.brandId !== "") {
+          const brandId = Number(data.brandId);
+
+          if (isNaN(brandId)) {
+            throw new Error("Invalid brandId");
+          }
+
+          const existingBrand = await tx.brand.findUnique({
+            where: { id: brandId },
+          });
+
+          if (!existingBrand) {
+            throw new Error(`Brand with ID ${brandId} not found`);
+          }
+        }
+
+        // ---------- Create Depot ----------
+        const depot = await tx.depot.create({
           data: {
-            employeeId: employeeId, // FIX: was `data.employeeId` (undefined when created from name)
-            depotId: depot.id,
-            startDate: new Date(),
+            name: data.name.trim(),
+            code: data.code || null,
+            address: data.address || null,
+            phone: data.phone || null,
+            houseNumber: data.houseNumber || data.homeNumber || null,
+            street: data.street || null,
+            village: data.village || null,
+            commune: data.commune || null,
+            expiryDate: data.expiryDate ? new Date(data.expiryDate) : null,
+            status: data.status || "active",
+            provinceId: province.id,
+            districtId: district.id,
+            employeeId: employeeId,
+            assignedAt: employeeId ? new Date() : null,
+            brandId: data.brandId || null,
+          },
+          include: {
+            district: { include: { province: true } },
+            employee: true,
           },
         });
-      }
 
-      logger.info(
-        `Depot created: ${depot.code} - ${depot.name}${depot.employees.length ? `, assigned to ${depot.employees[0].englishName}` : ""}`,
-      );
-      return depot;
+        // // ---------- Handle DepotBrands (fixed condition) ----------
+        // if (
+        //   data.brandIds &&
+        //   Array.isArray(data.brandIds) &&
+        //   data.brandIds.length > 0
+        // ) {
+        //   await tx.depotBrand.createMany({
+        //     data: data.brandIds.map((brandId) => ({
+        //       depotId: depot.id,
+        //       brandId: Number(brandId),
+        //       assignedDate: new Date(),
+        //       status: "active",
+        //       provinceId: province.id,
+        //     })),
+        //     skipDuplicates: true,
+        //   });
+        // }
+
+        // ---------- Return depot with brands (optional) ----------
+        // Fetch the complete depot with its brand relations
+        const depotWithBrands = await tx.depot.findUnique({
+          where: { id: depot.id },
+          include: {
+            district: { include: { province: true } },
+            employee: true,
+            // depotBrands: { include: { brand: true } },
+          },
+        });
+
+        return depotWithBrands || depot;
+      });
+
+      return result;
     } catch (error) {
-      // Re-throw or handle as needed
+      console.error("Error creating depot:", error);
       throw error;
     }
   }
-
-  async upateDepot(id, data) {
+  //find depots not yet assign
+  async findDepotNotAssigned() {
+    return await prisma.depot.count({
+      where: { employeeId: null },
+    });
+  }
+  async updateDepot(id, data) {
     try {
-      //1.check if depot exist
+      const numericId = Number(id);
 
+      // 1. Check depot exists
       const existingDepot = await prisma.depot.findUnique({
-        where: { id },
-        include: {
-          employees: true,
-        },
+        where: { id: numericId },
+        include: { employee: true },
       });
       if (!existingDepot) {
-        throw new Error(`Depot not found`);
+        throw new Error("Depot not found");
       }
 
-      // 2. Check code uniqueness (if code is being changed)
-
+      // 2. Check code uniqueness
       if (data.code && data.code !== existingDepot.code) {
         const codeExists = await prisma.depot.findUnique({
           where: { code: data.code },
         });
-        if (codeExists) {
-          throw new Error("Depot code already exists");
-        }
+        if (codeExists) throw new Error("Depot code already exists");
       }
 
-      // 3. Resolve employee assignment (similar to create)
+      // 3. Employee handling – NO CREATION
+      let employeeId = existingDepot.employeeId; // keep current by default
 
-      let employeeId = data.employeeId;
-
-      let disconnectOld = false;
-
-      if (data.employeeId === null) {
-        // Explicitly remove all employee assignments
-        disconnectOld = true;
-      } else if (!employeeId && data.employeeName) {
-        //
-        const newEmployee = await prisma.employee.create({
-          data: {
-            englishName: data.employeeName,
-            khmerName: data.employeeKhmerName || data.employeeName,
-            email: data.employeeEmail || null,
-            phone: data.employeePhone || null,
-            position: "Owner",
+      // Priority: employeeId (even if employeeName also sent)
+      if (data.employeeId !== undefined) {
+        if (data.employeeId === null || data.employeeId === "") {
+          employeeId = null; // unassign
+        } else {
+          const empId = Number(data.employeeId);
+          if (isNaN(empId) || empId <= 0) {
+            throw new Error("Invalid employee ID. Must be a positive number.");
+          }
+          const employee = await prisma.employee.findUnique({
+            where: { id: empId },
+          });
+          if (!employee) {
+            throw new Error(`Employee with ID ${empId} not found.`);
+          }
+          employeeId = empId;
+        }
+      }
+      // If only employeeName is provided, try to find an existing employee (no creation)
+      else if (data.employeeName && data.employeeName.trim()) {
+        const foundEmployee = await prisma.employee.findFirst({
+          where: {
+            OR: [
+              {
+                englishName: {
+                  contains: data.employeeName.trim(),
+                  mode: "insensitive",
+                },
+              },
+              {
+                khmerName: {
+                  contains: data.employeeName.trim(),
+                  mode: "insensitive",
+                },
+              },
+            ],
           },
         });
-        employeeId = newEmployee.id;
-        logger.info(
-          `Created new employee: ${newEmployee.englishName} (ID: ${newEmployee.id})`,
-        );
-      } else if (employeeId) {
-        // Verify existing employee exists
-        const employee = await prisma.employee.findUnique({
-          where: { id: employeeId },
-        });
-        if (!employee) {
-          throw new Error(`Employee with id ${employeeId} not found`);
+        if (foundEmployee) {
+          employeeId = foundEmployee.id;
+          logger.warn(
+            `Depot ${id}: assigned employee by name "${data.employeeName}" -> ID ${foundEmployee.id}`,
+          );
+        } else {
+          logger.warn(
+            `Depot ${id}: employee name "${data.employeeName}" not found, keeping current assignment`,
+          );
         }
       }
-      // 4. Prepare update data
-      const updateData = {
-        name: data.name,
-        code: data.code,
-        address: data.address,
-        phone: data.phone,
-        status: data.status,
-        districtId: data.districtId,
-      };
-      // Remove undefined fields
-      Object.keys(updateData).forEach(
-        (key) => updateData[key] === undefined && delete updateData[key],
-      );
 
-      // 5. Handle employee relation
-      if (disconnectOld) {
-        updateData.employees = { set: [] }; // disconnect all
-      } else if (employeeId) {
-        // Replace current employee(s) with this one (assuming depot has at most one employee)
-        updateData.employees = {
-          set: [{ id: employeeId }],
-        };
+      // 4. Build update data (only fields that are provided)
+      const updateData = {};
+      if (data.name !== undefined) updateData.name = data.name;
+      if (data.code !== undefined) updateData.code = data.code;
+      if (data.address !== undefined) updateData.address = data.address;
+      if (data.phone !== undefined) updateData.phone = data.phone;
+      if (data.status !== undefined) updateData.status = data.status;
+      if (data.districtId !== undefined)
+        updateData.districtId = Number(data.districtId);
+      if (data.houseNumber !== undefined)
+        updateData.houseNumber = data.houseNumber;
+      if (data.street !== undefined) updateData.street = data.street;
+      if (data.village !== undefined) updateData.village = data.village;
+      if (data.commune !== undefined) updateData.commune = data.commune;
+      if (data.expiryDate !== undefined && data.expiryDate !== "") {
+        updateData.expiryDate = new Date(data.expiryDate);
       }
 
-      // If no employeeId and no employeeName and not disconnect, leave employees unchanged
+      updateData.employeeId = employeeId;
+      if (data.assignedAt !== undefined && data.assignedAt !== "") {
+        updateData.assignedAt = data.assignedAt
+          ? new Date(data.assignedAt)
+          : new Date();
+      }
+      if (employeeId !== existingDepot.employeeId) {
+        updateData.assignedAt = new Date();
+      }
+      if (data.brandId != null && data.brandId !== "") {
+        const brandId = Number(data.brandId);
+        if (!isNaN(brandId)) {
+          updateData.brandId = brandId;
+        }
+      }
 
-      // 6. Update depot
+
+      console.log("brand updated", updateData);
+
+
+      // 5. Update depot
       const updatedDepot = await prisma.depot.update({
-        where: { id },
+        where: { id: numericId },
         data: updateData,
         include: {
-          district: true,
-          employees: true,
+          district: { include: { province: true } },
+          employee: true,
         },
       });
 
@@ -204,96 +280,112 @@ class DepotService {
       throw error;
     }
   }
+  async delete(id) {
+    try {
+      // Convert string to integer
+      const numericId = parseInt(id, 10);
+      if (isNaN(numericId)) {
+        throw new Error("Invalid depot ID: must be a number");
+      }
+
+      const existingDepot = await prisma.depot.findUnique({
+        where: { id: numericId },
+      });
+      if (!existingDepot) {
+        throw new Error(`Depot with id ${numericId} not found`);
+      }
+      // await prisma.de.deleteMany({
+      //   where: { depotId: numericId },
+      // });
+
+      // hard delete
+      const deleteDepot = await prisma.depot.delete({
+        where: { id: numericId },
+      });
+
+      logger.info(`Depot deleted: ${deleteDepot.code} - ${deleteDepot.name}`);
+      return deleteDepot;
+    } catch (error) {
+      logger.error(`Failed to delete depot: ${id} - ${error.message}`);
+      throw error;
+    }
+  }
 
   async getById(id) {
     try {
-      // Run depot fetch + assignment queries in parallel for performance
-      const [depot, assignmentRows] = await Promise.all([
-        prisma.depot.findUnique({
-          where: { id },
-          select: {
-            id: true,
-            name: true,
-            code: true,
-            status: true,
-            phone: true,
-            address: true,
-            createdAt: true,
-            district: {
-              select: {
-                name: true,
-                province: { select: { name: true } },
-              },
-            },
-            employees: {
-              take: 1,
-              select: {
-                id: true,
-                khmerName: true,
-                englishName: true,
-                employeeCode: true,
-                phone: true,
-                email: true,
-                position: true,
-              },
-            },
-            depotBrands: {
-              select: {
-                brand: { select: { id: true, name: true } },
-              },
+      const numericId = Number(id);
+      if (isNaN(numericId)) throw new Error("Invalid depot ID");
+
+      // Fetch depot with its direct employee and brands
+      const depot = await prisma.depot.findUnique({
+        where: { id: numericId },
+        select: {
+          id: true,
+          name: true,
+          code: true,
+          status: true,
+          phone: true,
+          address: true,
+          createdAt: true,
+          employee: {
+            //direct relation (singular)
+            select: {
+              id: true,
+              khmerName: true,
+              englishName: true,
+              employeeCode: true,
+              phone: true,
+              email: true,
+              position: true,
+              images: true,
             },
           },
-        }),
-        // Fetch assignments once and reuse for both employees list and timeline
-        prisma.assignment.findMany({
-          where: { depotId: id },
-          select: {
-            assignmentType: true,
-            createdAt: true,
-            employee: {
-              select: {
-                id: true,
-                khmerName: true,
-                englishName: true,
-                position: true,
-              },
+          district: {
+            select: {
+              name: true,
+              province: { select: { name: true } },
             },
           },
-          orderBy: { createdAt: "desc" },
-          take: 20,
-        }),
-      ]);
+        },
+      });
 
       if (!depot) {
         throw new Error(`Depot not found`);
       }
 
-      // Build employees list from assignment rows
-      const employeesFormatted = assignmentRows.map((a) => ({
-        id: a.employee.id,
-        name: a.employee.englishName || a.employee.khmerName,
-        position: a.employee.position,
-        assignmentType: a.assignmentType,
-      }));
-
-      // Build timeline from the same assignment rows (top 10)
-      const timeline = assignmentRows.slice(0, 10).map((a) => ({
-        action: `Employee ${a.employee.englishName || a.employee.khmerName} assigned (${a.assignmentType})`,
-        createdAt: a.createdAt.toISOString().split("T")[0],
-      }));
-
-      // Build owner from first employee relation on depot
-      const owner = depot.employees[0]
+      // Owner is the directly linked employee (could be null)
+      const owner = depot.employee
         ? {
-            id: depot.employees[0].id,
-            khmerName: depot.employees[0].khmerName,
-            englishName: depot.employees[0].englishName,
-            employeeCode: depot.employees[0].employeeCode,
-            phone: depot.employees[0].phone,
-            email: depot.employees[0].email,
-            position: depot.employees[0].position,
+            id: depot.employee.id,
+            khmerName: depot.employee.khmerName,
+            englishName: depot.employee.englishName,
+            employeeCode: depot.employee.employeeCode,
+            phone: depot.employee.phone,
+            email: depot.employee.email,
+            position: depot.employee.position,
+            images: depot.employee.images,
           }
         : null;
+
+      // Since there's no assignment history, employees list only contains the current owner
+      const employeesFormatted = owner
+        ? [
+            {
+              id: owner.id,
+              name: owner.englishName || owner.khmerName,
+              position: owner.position,
+              assignmentType: "permanent", // default, no history
+            },
+          ]
+        : [];
+
+      // Timeline – just the depot creation event (no assignment history)
+      const timeline = [
+        {
+          action: `Depot created`,
+          createdAt: depot.createdAt.toISOString().split("T")[0],
+        },
+      ];
 
       return {
         id: depot.id,
@@ -307,14 +399,14 @@ class DepotService {
           phone: depot.phone,
           createdAt: depot.createdAt.toISOString().split("T")[0],
           address: depot.address,
-          district: depot.district.name,
-          province: depot.district.province.name,
+          district: depot.district?.name,
+          province: depot.district?.province?.name,
         },
         owner,
-        brands: depot.depotBrands.map((b) => ({
-          id: b.brand.id,
-          name: b.brand.name,
-        })),
+        // brands: depot.depotBrands.map((b) => ({
+        //   id: b.brand.id,
+        //   name: b.brand.name,
+        // })),
         employees: employeesFormatted,
         timeline,
       };
@@ -345,16 +437,25 @@ class DepotService {
           { code: { contains: filters.search, mode: "insensitive" } },
           { name: { contains: filters.search, mode: "insensitive" } },
           {
-            employees: {
+            assignments: {
               some: {
-                khmerName: { contains: filters.search, mode: "insensitive" },
+                status: "active",
+                employee: {
+                  khmerName: { contains: filters.search, mode: "insensitive" },
+                },
               },
             },
           },
           {
-            employees: {
+            assignments: {
               some: {
-                englishName: { contains: filters.search, mode: "insensitive" },
+                status: "active",
+                employee: {
+                  englishName: {
+                    contains: filters.search,
+                    mode: "insensitive",
+                  },
+                },
               },
             },
           },
@@ -384,6 +485,93 @@ class DepotService {
     } catch (error) {
       logger.error("Error in getDepotsGroupByProvince:", error);
       throw error;
+    }
+  }
+  /**
+   * Get depots for reporting with optional date range and grouping by province
+   * @param {Object} filters - { fromDate, toDate, groupBy }
+   * @returns {Promise<Object>}
+   */
+
+  async getDepotReport(filters = {}) {
+    const { fromDate, toDate, groupBy } = filters;
+    const where = {};
+
+    if (fromDate) {
+      where.createdAt = { gte: new Date(fromDate) };
+    }
+    if (toDate) {
+      where.createdAt = { ...where.createdAt, lte: new Date(toDate) };
+    }
+
+    const depots = await prisma.depot.findMany({
+      where,
+      include: {
+        employee: {
+          select: {
+            id: true,
+            englishName: true,
+            khmerName: true,
+            phone: true,
+            images: true,
+          },
+        },
+        district: { include: { province: true } },
+        // depotBrands: { include: { brand: true } }, //critical include
+      },
+      orderBy: { createdAt: "desc" },
+    });
+
+    const transformDepot = (d) => ({
+      id: d.id,
+      code: d.code,
+      name: d.name,
+      status: d.status,
+      phone: d.phone,
+      address: d.address,
+      fullAddress: `${d.houseNumber || ""} ${d.street || ""} ${d.village || ""} ${d.commune || ""}, ${d.district?.name || ""}, ${d.district?.province?.name || ""}`,
+      district: d.district?.name,
+      city: d.district?.province?.name,
+      createdAt: d.createdAt,
+      expiryDate: d.expiryDate,
+      owner: d.employee
+        ? {
+            id: d.employee.id,
+            name: d.employee.englishName || d.employee.khmerName,
+            phone: d.employee.phone,
+            image: d.employee.images,
+          }
+        : null,
+      brands: (d.depotBrands || []).map((db) => db.brand?.name).filter(Boolean), // ✅ safe fallback
+    });
+
+    const transformed = depots.map(transformDepot);
+
+    if (groupBy === "province") {
+      const grouped = transformed.reduce((acc, depot) => {
+        const province = depot.city || "Unknown";
+        if (!acc[province]) acc[province] = [];
+        acc[province].push(depot);
+        return acc;
+      }, {});
+      const summary = Object.keys(grouped).map((province) => ({
+        province,
+        total: grouped[province].length,
+        active: grouped[province].filter((d) => d.status === "active").length,
+        expired: grouped[province].filter(
+          (d) => d.expiryDate && new Date(d.expiryDate) < new Date(),
+        ).length,
+      }));
+      return { grouped, summary };
+    } else {
+      const summary = {
+        total: transformed.length,
+        active: transformed.filter((d) => d.status === "active").length,
+        expired: transformed.filter(
+          (d) => d.expiryDate && new Date(d.expiryDate) < new Date(),
+        ).length,
+      };
+      return { data: transformed, summary };
     }
   }
 
@@ -418,13 +606,11 @@ class DepotService {
     const skip = (page - 1) * pageSize;
     const orderBy = { [sortBy]: sortOrder };
 
-    // Build where clause
     const where = {};
 
     if (filters.status && filters.status !== "all") {
       where.status = filters.status;
     }
-    //
 
     if (groupBy === "province") {
       const grouped = await this.getDepotsGroupByProvince(filters);
@@ -440,38 +626,38 @@ class DepotService {
       if (filters.fromDate) where.createdAt.gte = new Date(filters.fromDate);
       if (filters.toDate) where.createdAt.lte = new Date(filters.toDate);
     }
+
     if (filters.province) {
       where.district = {
         province: { name: { equals: filters.province, mode: "insensitive" } },
       };
     }
+
     if (filters.district) {
       where.district = {
         name: { equals: filters.district, mode: "insensitive" },
       };
     }
+
     if (filters.search) {
       where.OR = [
         { code: { contains: filters.search, mode: "insensitive" } },
         { name: { contains: filters.search, mode: "insensitive" } },
+        // Search by employee name (direct relation, not through assignments)
         {
-          employees: {
-            some: {
-              khmerName: { contains: filters.search, mode: "insensitive" },
-            },
-          },
-        },
-        {
-          employees: {
-            some: {
-              englishName: { contains: filters.search, mode: "insensitive" },
-            },
+          employee: {
+            OR: [
+              { khmerName: { contains: filters.search, mode: "insensitive" } },
+              {
+                englishName: { contains: filters.search, mode: "insensitive" },
+              },
+            ],
           },
         },
       ];
     }
 
-    // Determine which fields to select (exclude address by default)
+    // Determine which fields to select
     const selectFields = {
       id: true,
       code: true,
@@ -479,7 +665,11 @@ class DepotService {
       phone: true,
       status: true,
       createdAt: true,
-      // updatedAt: true,
+      expiryDate: true,
+      houseNumber: includeAddress, // conditionally include address fields
+      street: includeAddress,
+      village: includeAddress,
+      commune: includeAddress,
       district: {
         select: {
           id: true,
@@ -487,8 +677,8 @@ class DepotService {
           province: { select: { id: true, name: true } },
         },
       },
-      employees: {
-        take: 1,
+      employee: {
+        // direct relation, not assignments
         select: {
           id: true,
           khmerName: true,
@@ -502,17 +692,7 @@ class DepotService {
       },
     };
 
-    // Include address fields only if requested (for detail view)
-    // if (includeAddress) {
-    //     selectFields.houseNumber = true;
-    //     selectFields.street = true;
-    //     selectFields.village = true;
-    //     selectFields.commune = true;
-    // }
-
-    //fetch parallel query
-
-    // Execute queries for data and total count using Prisma transaction to reduce network roundtrips
+    // Use transaction for parallel queries
     const [depots, totalCount] = await prisma.$transaction([
       prisma.depot.findMany({
         where,
@@ -524,21 +704,22 @@ class DepotService {
       prisma.depot.count({ where }),
     ]);
 
-    // Format the response (flatten district and owner info)
+    // Format the response
     const formattedData = depots.map((depot) => {
-      const owner = depot.employees?.[0] || null;
+      const owner = depot.employee; // direct employee reference
       const result = {
         id: depot.id,
         code: depot.code,
         name: depot.name,
         phone: depot.phone,
         status: depot.status,
-        // expiredDate: depot.expiredDate,
+        expiredDate: depot.expiryDate,
         createdAt: depot.createdAt,
         district: depot.district?.name,
         city: depot.district?.province?.name,
         owner: owner
           ? {
+              id: owner.id,
               name: owner.khmerName || owner.englishName,
               code: owner.employeeCode,
               phone: owner.phone,
@@ -559,7 +740,6 @@ class DepotService {
       return result;
     });
 
-    // Return paginated results
     return {
       data: formattedData,
       pagination: {
@@ -577,9 +757,11 @@ class DepotService {
   /**
    * Parse and validate a single CSV row into a depot payload
    */
+  /**
+   * Parse and validate a single CSV row into a depot payload
+   */
   _validateRow(data, rowIndex) {
     const errors = [];
-
     if (!data.name?.trim()) errors.push("name is required");
     if (!data.provinceName?.trim()) errors.push("provinceName is required");
     if (!data.districtName?.trim()) errors.push("districtName is required");
@@ -638,7 +820,7 @@ class DepotService {
   }
 
   /**
-   * Upsert employee using cache
+   * Upsert employee using cache (returns employee object)
    */
   async _getOrCreateEmployee(data, cache) {
     if (!data.employeeName?.trim()) return null;
@@ -675,7 +857,6 @@ class DepotService {
   async createDepotBulk(data, cache, rowIndex) {
     this._validateRow(data, rowIndex);
 
-    // Check code uniqueness
     if (data.code?.trim()) {
       const existing = await prisma.depot.findUnique({
         where: { code: data.code.trim() },
@@ -692,6 +873,7 @@ class DepotService {
     );
     const employee = await this._getOrCreateEmployee(data, cache);
 
+    // ✅ Directly set employeeId (no assignment table)
     const depot = await prisma.depot.create({
       data: {
         name: data.name.trim(),
@@ -701,26 +883,13 @@ class DepotService {
         status: data.status?.trim().toLowerCase() || "active",
         provinceId: province.id,
         districtId: district.id,
-        ...(employee && {
-          employees: { connect: { id: employee.id } },
-        }),
+        employeeId: employee?.id || null, // ← direct foreign key
       },
       include: {
         province: true,
         district: true,
-        employees: true,
       },
     });
-
-    if (employee) {
-      await prisma.assignment.create({
-        data: {
-          employeeId: employee.id,
-          depotId: depot.id,
-          startDate: new Date(),
-        },
-      });
-    }
 
     return depot;
   }
@@ -927,20 +1096,19 @@ class DepotService {
         status: record.status?.trim().toLowerCase() || "active",
         provinceId: province.id,
         districtId: district.id,
+        employeeId: employee?.id ?? null, // ✅ direct assignment
       },
-      employeeId: employee?.id ?? null,
     };
   }
 
   /**
-   * Bulk import depots — batched DB writes (much faster than per-row inserts).
+   * Bulk import depots — batched DB writes.
    * Returns { results, errors }
    */
   async bulkCreateDepots(records) {
     const results = [];
     const errors = [];
     const DEPOT_CHUNK = 100;
-    const EMPLOYEE_LINK_BATCH = 25;
 
     const candidates = [];
     for (const [index, record] of records.entries()) {
@@ -987,6 +1155,7 @@ class DepotService {
               provinceId: true,
               districtId: true,
               status: true,
+              employeeId: true,
             },
           });
 
@@ -994,34 +1163,8 @@ class DepotService {
             results.push({
               row: chunk[j].rowNumber,
               depot: created[j],
-              employeeId: chunk[j].employeeId,
             });
           }
-        }
-
-        const assignmentRows = results
-          .filter((r) => r.employeeId)
-          .map((r) => ({
-            employeeId: r.employeeId,
-            depotId: r.depot.id,
-            startDate: new Date(),
-          }));
-
-        if (assignmentRows.length > 0) {
-          await tx.assignment.createMany({ data: assignmentRows });
-        }
-
-        const withEmployee = results.filter((r) => r.employeeId);
-        for (let i = 0; i < withEmployee.length; i += EMPLOYEE_LINK_BATCH) {
-          const batch = withEmployee.slice(i, i + EMPLOYEE_LINK_BATCH);
-          await Promise.all(
-            batch.map((r) =>
-              tx.employee.update({
-                where: { id: r.employeeId },
-                data: { depotId: r.depot.id },
-              }),
-            ),
-          );
         }
       },
       { timeout: 120000, maxWait: 15000 },

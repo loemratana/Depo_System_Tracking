@@ -2,17 +2,18 @@ import express from 'express';
 import authController from '../controllers/authController.js';
 // import authMiddleware from '../middleware/auth.js';
 import {
-    registerValidator,
-    loginValidator,
-    refreshTokenValidator,
-    changePasswordValidator,
-    forgotPasswordValidator,
-    resetPasswordValidator,
-    updateProfileValidator,
-    userIdValidator,
-    paginationValidator
-} from '../validators/authValidator.js';
-
+  registerValidator,
+  loginValidator,
+  refreshTokenValidator,
+  changePasswordValidator,
+  forgotPasswordValidator,
+  resetPasswordValidator,
+  updateProfileValidator,
+  userIdValidator,
+  paginationValidator,
+} from "../validators/authValidator.js";
+import aj from "../lib/arcjet.js";
+import { validateEmail, detectBot, slidingWindow } from "@arcjet/node";
 const router = express.Router();
 
 // Public routes

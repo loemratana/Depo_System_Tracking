@@ -29,6 +29,7 @@ router.get('/template', districtController.downloadDistrictTemplate);
 router.post('/verify', excelUpload.single('file'), districtController.verifyDistrictFile);
 router.post('/import', excelUpload.single('file'), districtController.importDistricts);
 router.delete('/:id', districtController.deleteDistrict)
+router.put('/:id',districtController.update)
 
 
 export default router;

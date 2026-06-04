@@ -30,7 +30,7 @@ class Server {
             // 3. Listen server
             this.server.listen(this.port, this.host, () => {
                 logger.info(
-                    `🚀 Server running on http://${this.host}:${this.port}`
+                    `Server running on http://${this.host}:${this.port}`
                 );
 
                 logger.info(`Environment: ${environment.nodeEnv}`);

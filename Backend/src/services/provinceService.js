@@ -159,8 +159,8 @@ class ProvinceService {
         try {
 
             //check if province exiting
-            const existingProvince = await prisma.findUnique({
-                where: { id }
+            const existingProvince = await prisma.province.findUnique({
+                where: { id:Number(id) }
             })
             if (!existingProvince) {
                 throw new Error('Province not found');
@@ -176,7 +176,7 @@ class ProvinceService {
             }
 
             const province = await prisma.province.update({
-                where: { id },
+                where: { id: Number(id), },
                 data: {
                     name: data.name,
                     code: data.code

@@ -4,9 +4,8 @@ import multer from "multer";
 import fs from "fs";
 import { parse } from "csv-parse";
 import { prisma } from '../config/db.js';
-
-
 const upload = multer({ dest: "uploads/" });
+
 function parseCSV(buffer) {
   return new Promise((resolve, reject) => {
     const records = [];
@@ -51,6 +50,77 @@ class DepotController {
     }
   }
 
+  deleteDepot = async (req, res) => {
+    try {
+      const { id } = req.params;
+      const depot = await depotService.delete(id);
+      res.status(200).json({
+        success: true,
+        message: "Depot deleted successfully",
+        data: depot,
+      });
+    } catch (error) {
+      logger.error(`Error deleting depot: ${error.message}`);
+      res.status(400).json({
+        success: false,
+        message: error.message || "Error deleting depot",
+      });
+    }
+  };
+
+  //find count depots not assignment
+  findDepotNotAssigned = async (req, res) => {
+    try {
+      {
+        const count = await depotService.findDepotNotAssigned();
+
+        res.status(200).json({
+          success: true,
+          message: "Depot not assigned",
+          data: count,
+        });
+      }
+    } catch (error) {
+      logger.error(`Error findDepotNotAssigned: ${error.message}`);
+    }
+  };
+
+  updateDepot = async (req, res) => {
+    try {
+      const { id } = req.params;
+      const depot = await depotService.updateDepot(id, req.body);
+      res.status(200).json({
+        success: true,
+        message: "Depot updated successfully",
+        data: depot,
+      });
+    } catch (error) {
+      logger.error(`Error updating depot: ${error.message}`);
+      res.status(400).json({
+        success: false,
+        message: error.message || "Error updating depot",
+      });
+    }
+  };
+
+  //generate report
+
+  getDepotReport = async (req, res) => {
+    try {
+      const { fromDate, toDate, groupBy } = req.query;
+      const result = await depotService.getDepotReport({
+        fromDate,
+        toDate,
+        groupBy,
+      });
+      res.json({ success: true, ...result });
+    } catch (error) {
+      logger.error("Depot report error:", error);
+      res
+        .status(500)
+        .json({ success: false, message: "Failed to generate report" });
+    }
+  };
   // Get all depots with flexible filtering
   getAllDepots = async (req, res) => {
     try {
@@ -112,16 +182,20 @@ class DepotController {
       if (records.length === 0) {
         return res.status(400).json({
           success: false,
-          message: 'CSV file is empty or has no data rows.',
+          message: "CSV file is empty or has no data rows.",
         });
       }
 
-      console.log(`[BulkImport] Parsed ${records.length} rows from "${req.file.originalname}"`);
+      console.log(
+        `[BulkImport] Parsed ${records.length} rows from "${req.file.originalname}"`,
+      );
 
       // ── 2. Process rows via service ───────────────────────────────────────
       const { results, errors } = await depotService.bulkCreateDepots(records);
 
-      console.log(`[BulkImport] Done — ${results.length} created, ${errors.length} failed`);
+      console.log(
+        `[BulkImport] Done — ${results.length} created, ${errors.length} failed`,
+      );
 
       // ── 3. Respond ────────────────────────────────────────────────────────
       return res.status(207).json({
@@ -135,12 +209,11 @@ class DepotController {
         data: results,
         errors,
       });
-
     } catch (err) {
-      console.error('[BulkImport] Unexpected error:', err);
+      console.error("[BulkImport] Unexpected error:", err);
       return res.status(500).json({
         success: false,
-        message: 'Internal server error during bulk import.',
+        message: "Internal server error during bulk import.",
       });
     }
   };
@@ -180,7 +253,12 @@ class DepotController {
       const rows = req.body; // array of CSV row objects
 
       if (!Array.isArray(rows) || rows.length === 0) {
-        return res.status(400).json({ success: false, message: 'Send an array of CSV rows to validate.' });
+        return res
+          .status(400)
+          .json({
+            success: false,
+            message: "Send an array of CSV rows to validate.",
+          });
       }
 
       // ── 1. Per-row structural validation (no DB needed) ───────────────────
@@ -190,17 +268,27 @@ class DepotController {
         const rowNumber = i + 1;
         const issues = [];
 
-        if (!row.name?.trim()) issues.push('name is required');
-        if (!row.provinceName?.trim()) issues.push('provinceName is required');
-        if (!row.districtName?.trim()) issues.push('districtName is required');
+        if (!row.name?.trim()) issues.push("name is required");
+        if (!row.provinceName?.trim()) issues.push("provinceName is required");
+        if (!row.districtName?.trim()) issues.push("districtName is required");
 
-        const validStatuses = ['active', 'inactive'];
-        if (row.status && !validStatuses.includes(row.status.trim().toLowerCase())) {
-          issues.push(`status must be "active" or "inactive", got "${row.status}"`);
+        const validStatuses = ["active", "inactive"];
+        if (
+          row.status &&
+          !validStatuses.includes(row.status.trim().toLowerCase())
+        ) {
+          issues.push(
+            `status must be "active" or "inactive", got "${row.status}"`,
+          );
         }
 
-        if (row.employeeEmail && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(row.employeeEmail.trim())) {
-          issues.push(`employeeEmail "${row.employeeEmail}" is not a valid email`);
+        if (
+          row.employeeEmail &&
+          !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(row.employeeEmail.trim())
+        ) {
+          issues.push(
+            `employeeEmail "${row.employeeEmail}" is not a valid email`,
+          );
         }
 
         if (issues.length > 0) {
@@ -209,71 +297,100 @@ class DepotController {
       }
 
       // ── 2. Duplicate codes within the CSV itself ──────────────────────────
-      const csvCodes = rows.map(r => r.code?.trim()).filter(Boolean);
-      const csvDuplicateCodes = csvCodes.filter((code, i) => csvCodes.indexOf(code) !== i);
+      const csvCodes = rows.map((r) => r.code?.trim()).filter(Boolean);
+      const csvDuplicateCodes = csvCodes.filter(
+        (code, i) => csvCodes.indexOf(code) !== i,
+      );
       const uniqueCsvDuplicates = [...new Set(csvDuplicateCodes)];
 
       // ── 3. Collect unique values to query DB ──────────────────────────────
       const codes = [...new Set(csvCodes)];
-      const employeeNames = [...new Set(rows.map(r => r.employeeName?.trim()).filter(Boolean))];
-      const emails = [...new Set(rows.map(r => r.employeeEmail?.trim()).filter(Boolean))];
-      const provinceNames = [...new Set(rows.map(r => r.provinceName?.trim()).filter(Boolean))];
+      const employeeNames = [
+        ...new Set(rows.map((r) => r.employeeName?.trim()).filter(Boolean)),
+      ];
+      const emails = [
+        ...new Set(rows.map((r) => r.employeeEmail?.trim()).filter(Boolean)),
+      ];
+      const provinceNames = [
+        ...new Set(rows.map((r) => r.provinceName?.trim()).filter(Boolean)),
+      ];
 
       // ── 4. DB checks (all in parallel) ───────────────────────────────────
-      const [
-        existingDepotCodes,
-        existingEmployees,
-        existingProvinces,
-      ] = await Promise.all([
-        // Depot codes already in DB
-        codes.length > 0
-          ? prisma.depot.findMany({ where: { code: { in: codes } }, select: { code: true } })
-          : [],
+      const [existingDepotCodes, existingEmployees, existingProvinces] =
+        await Promise.all([
+          // Depot codes already in DB
+          codes.length > 0
+            ? prisma.depot.findMany({
+                where: { code: { in: codes } },
+                select: { code: true },
+              })
+            : [],
 
-        // Employees already in DB (by name or email)
-        employeeNames.length > 0 || emails.length > 0
-          ? prisma.employee.findMany({
-            where: {
-              OR: [
-                ...(employeeNames.length > 0 ? [{ englishName: { in: employeeNames, mode: 'insensitive' } }] : []),
-                ...(emails.length > 0 ? [{ email: { in: emails } }] : []),
-              ],
-            },
-            select: { englishName: true, email: true },
-          })
-          : [],
+          // Employees already in DB (by name or email)
+          employeeNames.length > 0 || emails.length > 0
+            ? prisma.employee.findMany({
+                where: {
+                  OR: [
+                    ...(employeeNames.length > 0
+                      ? [
+                          {
+                            englishName: {
+                              in: employeeNames,
+                              mode: "insensitive",
+                            },
+                          },
+                        ]
+                      : []),
+                    ...(emails.length > 0 ? [{ email: { in: emails } }] : []),
+                  ],
+                },
+                select: { englishName: true, email: true },
+              })
+            : [],
 
-        // Provinces already in DB (to know which will be auto-created)
-        provinceNames.length > 0
-          ? prisma.province.findMany({
-            where: { name: { in: provinceNames, mode: 'insensitive' } },
-            select: { name: true },
-          })
-          : [],
-      ]);
+          // Provinces already in DB (to know which will be auto-created)
+          provinceNames.length > 0
+            ? prisma.province.findMany({
+                where: { name: { in: provinceNames, mode: "insensitive" } },
+                select: { name: true },
+              })
+            : [],
+        ]);
 
       // ── 5. Build readable summaries ───────────────────────────────────────
-      const dbDuplicateCodes = existingDepotCodes.map(d => d.code);
-      const allDuplicateCodes = [...new Set([...uniqueCsvDuplicates, ...dbDuplicateCodes])];
+      const dbDuplicateCodes = existingDepotCodes.map((d) => d.code);
+      const allDuplicateCodes = [
+        ...new Set([...uniqueCsvDuplicates, ...dbDuplicateCodes]),
+      ];
 
-      const existingEmployeeMap = existingEmployees.map(e => ({
+      const existingEmployeeMap = existingEmployees.map((e) => ({
         englishName: e.englishName,
         email: e.email,
-        note: 'Employee already exists — will be linked, not re-created',
+        note: "Employee already exists — will be linked, not re-created",
       }));
 
-      const existingProvinceNames = existingProvinces.map(p => p.name);
+      const existingProvinceNames = existingProvinces.map((p) => p.name);
       const newProvinces = provinceNames.filter(
-        n => !existingProvinceNames.some(ep => ep.toLowerCase() === n.toLowerCase())
+        (n) =>
+          !existingProvinceNames.some(
+            (ep) => ep.toLowerCase() === n.toLowerCase(),
+          ),
       );
 
       // Rows that will be blocked (duplicate code in DB)
       const blockedRows = rows
-        .map((r, i) => ({ row: i + 1, code: r.code?.trim(), name: r.name?.trim() }))
-        .filter(r => r.code && dbDuplicateCodes.includes(r.code));
+        .map((r, i) => ({
+          row: i + 1,
+          code: r.code?.trim(),
+          name: r.name?.trim(),
+        }))
+        .filter((r) => r.code && dbDuplicateCodes.includes(r.code));
 
       // ── 6. Overall readiness ──────────────────────────────────────────────
-      const canImport = rowErrors.length === 0 && blockedRows.length === 0 && uniqueCsvDuplicates.length === 0;
+      const canImport =
+        rowErrors.length === 0 &&
+        blockedRows.length === 0 &&
+        uniqueCsvDuplicates.length === 0;
 
       return res.json({
         success: true,
@@ -289,34 +406,42 @@ class DepotController {
           rowErrors,
 
           // Codes duplicated inside the CSV
-          csvDuplicateCodes: uniqueCsvDuplicates.length > 0
-            ? { found: true, codes: uniqueCsvDuplicates }
-            : { found: false },
+          csvDuplicateCodes:
+            uniqueCsvDuplicates.length > 0
+              ? { found: true, codes: uniqueCsvDuplicates }
+              : { found: false },
 
           // Codes already in the database
-          dbDuplicateCodes: dbDuplicateCodes.length > 0
-            ? { found: true, codes: dbDuplicateCodes, blockedRows }
-            : { found: false },
+          dbDuplicateCodes:
+            dbDuplicateCodes.length > 0
+              ? { found: true, codes: dbDuplicateCodes, blockedRows }
+              : { found: false },
 
           // Employees — info only, won't block import
-          existingEmployees: existingEmployeeMap.length > 0
-            ? { found: true, employees: existingEmployeeMap }
-            : { found: false },
+          existingEmployees:
+            existingEmployeeMap.length > 0
+              ? { found: true, employees: existingEmployeeMap }
+              : { found: false },
 
           // Provinces that will be auto-created
-          newProvincesToCreate: newProvinces.length > 0
-            ? { found: true, provinces: newProvinces }
-            : { found: false },
+          newProvincesToCreate:
+            newProvinces.length > 0
+              ? { found: true, provinces: newProvinces }
+              : { found: false },
         },
       });
-
     } catch (error) {
       logger.error(`Validate import error: ${error.message}`);
-      return res.status(500).json({ success: false, message: 'Internal server error during validation.' });
+      return res
+        .status(500)
+        .json({
+          success: false,
+          message: "Internal server error during validation.",
+        });
     }
   };
 
-  bulkCreateDepots = async (req, res) => { };
+  bulkCreateDepots = async (req, res) => {};
 
   // Download CSV template for bulk import
   downloadTemplate = (req, res) => {

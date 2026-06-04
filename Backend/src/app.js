@@ -12,10 +12,12 @@ import districtRoutes from './routes/districtRoutes.js';
 import employeeRoutes from './routes/employeeRoutes.js';
 import uploadRoutes from './routes/uploadRoutes.js';
 import db from './config/db.js';
+import brandRoutes from "./routes/brandRoutes.js";
 import path from 'path';
 import logger, { stream } from './config/logger.js';
 import environment from './config/env.js';
-import reportRoutes from './routes/reportRoutes.js';
+import reportRoutes from "./routes/reportRoutes.js";
+import { arcjetMiddleware } from "./middleware/arcjet.js";
 
 const app = express();
 
@@ -28,14 +30,17 @@ const corsOptions = {
 };
 
 app.use(cors(corsOptions));
-
+app.use(arcjetMiddleware);
+app.set("trust proxy", 0);
 /* ========================
    SECURITY MIDDLEWARE
 ======================== */
-app.use(helmet({
-  contentSecurityPolicy: environment.isProduction,
-  crossOriginEmbedderPolicy: environment.isProduction,
-}));
+app.use(
+  helmet({
+    crossOriginEmbedderPolicy: false,
+    crossOriginResourcePolicy: false,
+  }),
+);
 
 /* ========================
    BODY PARSER
@@ -46,7 +51,12 @@ app.use(cookieParser());
 
 // Serve static uploads
 app.use('/uploads', express.static(path.join(process.cwd(), 'uploads')));
-
+// Add CORS and cross-origin headers for the /uploads route
+app.use('/uploads',(req,res,next)=>{
+  res.setHeader('Access-Control-Allow-Origin', '*');
+  res.setHeader("Cross-Origin-Resource-Policy", "cross-origin");
+  next()
+})
 /* ========================
    COMPRESSION
 ======================== */
@@ -67,7 +77,7 @@ app.use(
 ======================== */
 const limiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 100,
+  max: 200,
   message: 'Too many requests from this IP, please try again later.',
   standardHeaders: true,
   legacyHeaders: false,
@@ -85,6 +95,7 @@ app.use('/api/v1/employees', employeeRoutes);
 app.use('/api/v1/upload', uploadRoutes);
 app.use('/api/v1/depots', depotRoutes);
 app.use('/api/v1/report', reportRoutes);
+app.use('/api/v1/brands', brandRoutes);
 
 
 /* ========================

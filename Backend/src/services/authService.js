@@ -6,76 +6,51 @@ import jwtConfig from '../config/jwt.js';
 class AuthService {
     async register(userData) {
         try {
-            const { email, password, name, position, phone, role } = userData;
+            const { email, password, name, role } = userData;
 
-            // Check if user/employee exists by email
-            const existingEmployee = await prisma.employee.findFirst({
-                where: { email }
+            // 1. Check if user already exists
+            const existingUser = await prisma.user.findUnique({
+                where: { username: email },
             });
 
-            if (existingEmployee) {
-                const existingUser = await prisma.user.findUnique({
-                    where: { employeeId: existingEmployee.id }
-                });
-                if (existingUser) {
-                    throw new Error('User already exists');
-                }
+            if (existingUser) {
+                throw new Error("User already exists");
             }
 
-            // Start transaction to create both employee and user
-            const result = await prisma.$transaction(async (tx) => {
-                // // 1. Create or get employee
-                // let employee = existingEmployee;
-                // if (!employee) {
-                //     employee = await tx.employee.create({
-                //         data: {
-                //             name,
-                //             email,
-                //             position,
-                //             phone,
-                //             status: 'active'
-                //         }
-                //     });
-                // }
+            // 2. Hash password
+            const hashedPassword = await bcrypt.hash(password, 10);
 
-                // 2. Create user account
-                const hashedPassword = await bcrypt.hash(password, 10);
-                const user = await tx.user.create({
-                    data: {
-                        // employeeId: employee.id,
-                        username: email, // Using email as username
-                        passwordHash: hashedPassword,
-                        role: (role?.toLowerCase() || 'staff'),
-                        status: 'active'
-                    },
-                    include: {
-                        employee: true
-                    }
-                });
-
-                return user;
+            // 3. Create user ONLY
+            const user = await prisma.user.create({
+                data: {
+                    username: email,
+                    passwordHash: hashedPassword,
+                    role: role?.toLowerCase() || "staff",
+                    status: "active",
+                },
             });
 
-            // Prepare user object for token generation
+            // 4. Prepare token payload
             const userForToken = {
-                id: result.id,
-                email: result.email,
-                role: result.role,
-                name: result.employee.name
+                id: user.id,
+                email: user.username,
+                role: user.role,
+                name: user.name,
             };
 
-            // Generate tokens
+            // 5. Generate tokens
             const tokens = await jwtConfig.generateTokenPair(userForToken);
 
-            // Remove password from response
-            const { passwordHash: _, ...userWithoutPassword } = result;
+            // 6. Remove sensitive data
+            const { passwordHash, ...userWithoutPassword } = user;
 
             return {
                 user: userWithoutPassword,
-                tokens
+                tokens,
             };
+
         } catch (error) {
-            logger.error('Register service error:', error);
+            logger.error("Register service error:", error);
             throw error;
         }
     }

@@ -1,6 +1,5 @@
 import { prisma } from "../../config/db.js";
 import logger from "../../config/logger.js";
-import { EmployeeStatus } from "@prisma/client";
 
 class DashboardKpi {
   async getDashboardKpis() {
@@ -10,91 +9,133 @@ class DashboardKpi {
     const [
       totalDepots,
       activeEmployees,
-      expiredDepots,
-      user
+      totalEmployees,
+      totalDepotsWithExpiry,
     ] = await Promise.all([
       prisma.depot.count(),
-
-      prisma.employee.count({
+      prisma.employee.count({ where: { status: "active" } }),
+      prisma.employee.count(),
+      prisma.depot.count({
         where: {
-          status: "active",
+          expiryDate: { lt: today },
         },
       }),
-
-
-
-      // prisma.depot.count({
-      //   where: {
-      //     expiryDate: { lt: today }, // FIXED CASE
-      //   },
-      // }),
-
-      prisma.employee.count(),
-      prisma.user.count(),
     ]);
 
-    logger.info(`total kpi ${totalDepots} ,${activeEmployees}`);
+    logger.info(
+      `Dashboard KPIs: depots=${totalDepots}, activeEmployees=${activeEmployees}`,
+    );
 
     return {
       brandDepots: totalDepots,
       handlers: activeEmployees,
-      expiredDepots: expiredDepots,
-      user: user
+      totalEmployees: totalEmployees,
+      expiredDepots: totalDepotsWithExpiry,
+      // user count removed – no User model
     };
   }
 
   /**
- * Get monthly assignment count for the last 6 months (including current month)
- * Uses Assignment.startDate to determine when the assignment was created/started.
- * @returns {Promise<Array>} [{ month, count }]
- */
-
+   * Since no assignments table exists, we provide an alternative trend:
+   * Monthly employee hire trend (last 6 months) as a placeholder.
+   * If you need depot creation trend, replace with depot.createdAt.
+   */
   async getMonthlyAssignmentTrend() {
-    // Calculate date 6 months ago (first day of that month)
     const sixMonthsAgo = new Date();
-    sixMonthsAgo.setMonth(sixMonthsAgo.getMonth() - 5); // to include current month as last
+    sixMonthsAgo.setMonth(sixMonthsAgo.getMonth() - 5);
     sixMonthsAgo.setDate(1);
     sixMonthsAgo.setHours(0, 0, 0, 0);
 
-    // PostgreSQL grouping by month using start_date (mapped to startDate in Prisma)
     const results = await prisma.$queryRaw`
-    SELECT 
-      DATE_TRUNC('month', "start_date") AS month,
-      COUNT(*) AS count
-    FROM "assignments"
-    WHERE "start_date" >= ${sixMonthsAgo}
-    GROUP BY DATE_TRUNC('month', "start_date")
-    ORDER BY month ASC
-  `;
+      SELECT
+        DATE_TRUNC('month', hire_date) AS month,
+      COUNT(*)::int AS count
+      FROM employees
+      WHERE hire_date >= ${sixMonthsAgo}
+      GROUP BY DATE_TRUNC('month', hire_date)
+      ORDER BY month ASC
+    `;
 
-    // Month names for formatting
-    const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+    const months = [];
+    const now = new Date();
 
-    // Generate the last 6 months (including current) and fill missing months with 0
+    for (let i = 5; i >= 0; i--) {
+      const date = new Date(now.getFullYear(), now.getMonth() - i, 1);
+
+      const found = results.find((r) => {
+        const m = new Date(r.month);
+        return (
+          m.getMonth() === date.getMonth() &&
+          m.getFullYear() === date.getFullYear()
+        );
+      });
+
+      months.push({
+        month: date.toLocaleString("en-US", { month: "short" }),
+        count: found?.count ?? 0,
+      });
+    }
+
+    return months;
+  }
+
+  // Optional: Depot creation trend (if needed for another chart)
+  async getMonthlyDepotTrend() {
+    const sixMonthsAgo = new Date();
+    sixMonthsAgo.setMonth(sixMonthsAgo.getMonth() - 5);
+    sixMonthsAgo.setDate(1);
+    sixMonthsAgo.setHours(0, 0, 0, 0);
+
+    const results = await prisma.$queryRaw`
+      SELECT 
+        DATE_TRUNC('month', "created_at") AS month,
+        COUNT(*) AS count
+      FROM "depots"
+      WHERE "created_at" >= ${sixMonthsAgo}
+      GROUP BY DATE_TRUNC('month', "created_at")
+      ORDER BY month ASC
+    `;
+
+    const monthNames = [
+      "Jan",
+      "Feb",
+      "Mar",
+      "Apr",
+      "May",
+      "Jun",
+      "Jul",
+      "Aug",
+      "Sep",
+      "Oct",
+      "Nov",
+      "Dec",
+    ];
     const filled = [];
     const today = new Date();
+
     for (let i = 5; i >= 0; i--) {
       const target = new Date();
       target.setMonth(today.getMonth() - i);
       target.setDate(1);
-      const targetStart = new Date(target.getFullYear(), target.getMonth(), 1);
-      const targetEnd = new Date(target.getFullYear(), target.getMonth() + 1, 0);
+      const targetMonth = target.getMonth();
+      const targetYear = target.getFullYear();
 
-      const existing = results.find(r => {
+      const existing = results.find((r) => {
         const dbMonth = new Date(r.month);
-        return dbMonth.getFullYear() === target.getFullYear() && dbMonth.getMonth() === target.getMonth();
+        return (
+          dbMonth.getFullYear() === targetYear &&
+          dbMonth.getMonth() === targetMonth
+        );
       });
 
       filled.push({
-        month: monthNames[target.getMonth()],
+        month: monthNames[targetMonth],
         count: existing ? Number(existing.count) : 0,
       });
     }
 
     return filled;
   }
-
-
 }
 
 export default new DashboardKpi();

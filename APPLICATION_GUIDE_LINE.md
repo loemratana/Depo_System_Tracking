@@ -102,7 +102,26 @@ GET    /brands/:id
 POST   /brands  
 PUT    /brands/:id  
 DELETE /brands/:id  
+## for detail page 
+GET /brands/:id
+GET /brands/:id/products
+GET /brands/:id/depots
 
+# Create brand
+curl -X POST http://localhost:8080/api/v1/brands \
+-H "Content-Type: application/json" \
+-d '{"name":"Coca-Cola","code":"CC","description":"Soft drink","status":"active"}'
+
+# Get all
+curl http://localhost:8080/api/v1/brands?search=Cola
+
+# Update
+curl -X PATCH http://localhost:8080/api/v1/brands/1 \
+-H "Content-Type: application/json" \
+-d '{"description":"Updated"}'
+
+# Delete
+curl -X DELETE http://localhost:8080/api/v1/brands/1
 ---
 
 ## Depot ↔ Brand
@@ -251,6 +270,8 @@ Modules:
 - assignment
 
 ---
+
+# config upstash and arject 
 
 # 📊 System Outcome
 

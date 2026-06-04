@@ -28,7 +28,7 @@ class DistrictController {
 
     deleteDistrict = async (req, res) => {
         try {
-            const result = await districtService.softDelete(req.params.id);
+            const result = await districtService.delete(req.params.id);
 
             return res.status(200).json({
                 success: true,
@@ -50,6 +50,20 @@ class DistrictController {
             this.handleError(res, error, 'Failed to create district');
         }
     }
+    update = async (req, res) => {
+        try {
+            const { id } = req.params;
+
+            const result = await districtService.update(id, req.body);
+
+            res.status(200).json({
+                success: true,
+                data: result
+            });
+        } catch (error) {
+            this.handleError(res, error, 'Failed to update district');
+        }
+    };
 
     downloadDistrictTemplate = async (req, res) => {
         try {

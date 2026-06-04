@@ -7,13 +7,12 @@ datasource db {
 }
 
 model Province {
-  id        Int      @id @default(autoincrement())
-  name      String   @unique @db.VarChar(100)
-  code      String?  @unique @db.VarChar(20)
-  createdAt DateTime @default(now()) @map("created_at")
-
-  districts District[]
-  depots  Depot[]
+  id           Int            @id @default(autoincrement())
+  name         String         @db.VarChar(100)
+  code         String?        @unique @db.VarChar(20)
+  createdAt    DateTime       @default(now()) @map("created_at")
+  depots       Depot[]
+  districts    District[]
 
   @@map("provinces")
 }
@@ -21,57 +20,78 @@ model Province {
 model District {
   id         Int      @id @default(autoincrement())
   provinceId Int      @map("province_id")
-  name       String   @unique @db.VarChar(100)
-  code       String?  @unique @db.VarChar(20)
+  name       String   @db.VarChar(100)
+  code       String?  @db.VarChar(20)
   createdAt  DateTime @default(now()) @map("created_at")
-
-  province Province @relation(fields: [provinceId], references: [id])
-  depots   Depot[]
+  depots     Depot[]
+  province   Province @relation(fields: [provinceId], references: [id])
 
   @@map("districts")
 }
 
+model Employee {
+  id           Int            @id @default(autoincrement())
+  employeeCode String?        @unique @map("employee_code") @db.VarChar(50)
+  position     String?        @db.VarChar(100)
+  phone        String?        @db.VarChar(20)
+  email        String?        @db.VarChar(100)
+  hireDate     DateTime?      @map("hire_date") @db.Date
+  status       EmployeeStatus @default(active)
+  createdAt    DateTime       @default(now()) @map("created_at")
+  address      String?
+  dateOfBirth  DateTime?      @map("date_of_birth") @db.Date
+  department   String?        @db.VarChar(100)
+  englishName  String?        @map("english_name") @db.VarChar(100)
+  gender       String?
+  images       String?
+  khmerName    String?        @map("khmer_name") @db.VarChar(100)
+  salary       Float?         @db.Real
+  updatedAt    DateTime?      @updatedAt @map("updated_at")
+  depots       Depot[]
+  user         User?
+
+  @@map("employees")
+}
+
 model Depot {
-  id         Int         @id @default(autoincrement())
-  districtId Int         @map("district_id")
-  name       String      @db.VarChar(100)
-  code       String?     @unique @db.VarChar(50)
-  address    String?     @db.Text
-  phone      String?     @db.VarChar(20)
-  status     DepotStatus @default(active)
-  createdAt  DateTime    @default(now()) @map("created_at")
+  id           Int            @id @default(autoincrement())
+  districtId   Int            @map("district_id")
+  name         String         @db.VarChar(100)
+  code         String?        @unique @db.VarChar(50)
+  address      String?
+  phone        String?        @db.VarChar(20)
+  status       DepotStatus    @default(active)
+  createdAt    DateTime       @default(now()) @map("created_at")
+  commune      String?        @db.VarChar(100)
+  employeeId   Int?           @map("employee_id")
+  expiryDate   DateTime?      @map("expiry_date") @db.Timestamptz(6)
+  assignedAt DateTime? @map("assigned_at")
+  houseNumber  String?        @map("house_number") @db.VarChar(50)
+  provinceId   Int?           @map("province_id")
+  street       String?        @db.VarChar(100)
+  village      String?        @db.VarChar(100)
+  brandId      Int?           @map("brand_id")
+  district     District       @relation(fields: [districtId], references: [id])
+  employee     Employee?      @relation(fields: [employeeId], references: [id])
+  brand        Brand?         @relation(fields: [brandId], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_brand")
+  province     Province?      @relation(fields: [provinceId], references: [id], map: "fk_depot_province")
+  products     Product[]
 
-
-  // NEW FIELDS:
-  houseNumber        String?  @map("house_number") @db.VarChar(20)
-  street             String?  @db.VarChar(100)
-  village            String?  @db.VarChar(100)
-  commune            String?  @db.VarChar(100)
-  expiryDate  DateTime? @map("expiry_date")  // Expired Date
-
-
-  provinceId Int @map("province_id")
-  province   Province @relation(fields: [provinceId], references: [id])
-
-  district    District     @relation(fields: [districtId], references: [id])
-  products    Product[]
-  employees   Employee[]
-  assignments Assignment[]
-  depotBrands DepotBrand[]
-
+  @@index([createdAt], map: "idx_depots_created_at")
+  @@index([districtId], map: "idx_depots_district_id")
+  @@index([name], map: "idx_name_depot")
   @@map("depots")
 }
 
 model Brand {
-  id          Int         @id @default(autoincrement())
-  name        String      @unique @db.VarChar(100)
-  code        String?     @unique @db.VarChar(50)
-  description String?     @db.Text
-  status      BrandStatus @default(active)
-  createdAt   DateTime    @default(now()) @map("created_at")
-
-  products    Product[]
-  depotBrands DepotBrand[]
+  id           Int            @id @default(autoincrement())
+  name         String         @db.VarChar(100)
+  code         String?        @unique @db.VarChar(50)
+  description  String?
+  status       BrandStatus    @default(active)
+  createdAt    DateTime       @default(now()) @map("created_at")
+  depots       Depot[]
+  products     Product[]
 
   @@map("brands")
 }
@@ -87,92 +107,26 @@ model Product {
   minStock  Int           @default(0) @map("min_stock")
   status    ProductStatus @default(available)
   createdAt DateTime      @default(now()) @map("created_at")
-
-  brand Brand @relation(fields: [brandId], references: [id])
-  depot Depot @relation(fields: [depotId], references: [id])
+  brand     Brand         @relation(fields: [brandId], references: [id])
+  depot     Depot         @relation(fields: [depotId], references: [id])
 
   @@map("products")
 }
 
-model Employee {
-  id Int @id @default(autoincrement())
-
-  // Current working depot
-  depotId Int? @map("depot_id")
-
-  khmerName String @db.VarChar(100)
-
-  englishName String? @map("english_name") @db.VarChar(100)
-
-  employeeCode String? @unique @map("employee_code") @db.VarChar(50)
-  images       String? @map("images") @db.VarChar(200)
-
-  dateOfBirth DateTime? @map("date_of_birth") @db.Date
-
-  gender String?
-
-  address String? @db.Text
-
-  department String? @db.VarChar(100)
-
-  position String? @db.VarChar(100)
-
-  phone String? @db.VarChar(20)
-
-  email String? @unique @db.VarChar(100)
-
-  hireDate DateTime? @map("hire_date") @db.Date
-
-  status EmployeeStatus @default(active)
-
-  createdAt DateTime @default(now()) @map("created_at")
-
-  updatedAt DateTime @updatedAt @map("updated_at")
-
-  // Current depot
-  depot Depot? @relation(fields: [depotId], references: [id])
-
-  // Depots managed by this employee
-  user User?
-
-  assignments Assignment[]
-
-  @@index([depotId])
-  @@map("employees")
-}
-
 model User {
-  id           Int        @id @default(autoincrement())
-  employeeId   Int?       @unique @map("employee_id")
-  username     String     @unique @db.VarChar(50)
-  passwordHash String     @map("password_hash") @db.VarChar(255)
-  role         UserRole   @default(staff)
-  lastLogin    DateTime?  @map("last_login")
-  status       UserStatus @default(active)
-  createdAt    DateTime   @default(now()) @map("created_at")
-
-  employee      Employee?      @relation(fields: [employeeId], references: [id])
-  reports       Report[]
-  refreshTokens RefreshToken[]
+  id           Int            @id @default(autoincrement())
+  employeeId   Int?           @unique @map("employee_id")
+  username     String         @unique @db.VarChar(50)
+  passwordHash String         @map("password_hash") @db.VarChar(255)
+  role         UserRole       @default(staff)
+  lastLogin    DateTime?      @map("last_login")
+  status       UserStatus     @default(active)
+  createdAt    DateTime       @default(now()) @map("created_at")
+  refreshToken RefreshToken[]
+  reports      Report[]
+  employee     Employee?      @relation(fields: [employeeId], references: [id])
 
   @@map("users")
-}
-
-model Assignment {
-  id             Int              @id @default(autoincrement())
-  employeeId     Int              @map("employee_id")
-  depotId        Int              @map("depot_id")
-  assignmentType AssignmentType   @default(permanent) @map("assignment_type")
-  startDate      DateTime         @map("start_date") @db.Date
-  endDate        DateTime?        @map("end_date") @db.Date
-  status         AssignmentStatus @default(active)
-  notes          String?          @db.Text
-  createdAt      DateTime         @default(now()) @map("created_at")
-
-  employee Employee @relation(fields: [employeeId], references: [id])
-  depot    Depot    @relation(fields: [depotId], references: [id])
-
-  @@map("assignments")
 }
 
 model Report {
@@ -183,40 +137,24 @@ model Report {
   parameters  Json?
   filePath    String?    @map("file_path") @db.VarChar(500)
   generatedAt DateTime   @default(now()) @map("generated_at")
-
-  user User @relation(fields: [generatedBy], references: [id])
+  user        User       @relation(fields: [generatedBy], references: [id])
 
   @@map("reports")
 }
 
-model DepotBrand {
-  id           Int              @id @default(autoincrement())
-  depotId      Int              @map("depot_id")
-  brandId      Int              @map("brand_id")
-  assignedDate DateTime         @map("assigned_date") @db.Date
-  status       DepotBrandStatus @default(active)
-  createdAt    DateTime         @default(now()) @map("created_at")
-
-  depot Depot @relation(fields: [depotId], references: [id])
-  brand Brand @relation(fields: [brandId], references: [id])
-
-  @@unique([depotId, brandId])
-  @@map("depot_brands")
-}
-
 model RefreshToken {
-  id        String   @id @default(cuid())
-  token     String   @unique
-  userId    Int
-  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  id        String   @id @map("refresh_tokens_pkey")
+  token     String   @unique @map("refresh_tokens_token_key")
+  userId    Int      @map("user_id")
   isRevoked Boolean  @default(false)
-  expiresAt DateTime
-  createdAt DateTime @default(now())
+  expiresAt DateTime @map("expires_at")
+  createdAt DateTime @default(now()) @map("created_at")
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 
-  @@index([userId])
-  @@index([token])
-  @@index([isRevoked])
+  @@map("refresh_tokens")
 }
+
+
 
 enum DepotStatus {
   active
@@ -251,23 +189,9 @@ enum UserStatus {
   locked
 }
 
-enum AssignmentType {
-  transfer
-  supervision
-  temporary
-  permanent
-}
-
-enum AssignmentStatus {
-  active
-  completed
-  cancelled
-}
-
 enum ReportType {
   inventory
   sales
-  assignment
   employee
   depot
 }
