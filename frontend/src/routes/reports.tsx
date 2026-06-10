@@ -1,0 +1,139 @@
+import { createFileRoute } from "@tanstack/react-router";
+import { CalendarRange, ChevronDown, Download, FileSpreadsheet, FileText } from "lucide-react";
+import {
+  Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis,
+} from "recharts";
+import { PageHeader, Surface, SectionTitle, KpiCard, FilterChip } from "@/components/ui-kit";
+import { regionalCoverage, visitTrend } from "@/features/_data/mock";
+
+export const Route = createFileRoute("/reports")({
+  head: () => ({
+    meta: [
+      { title: "Reports — Brand Depot" },
+      { name: "description", content: "Executive reports with regional summaries, comparisons, and exports." },
+    ],
+  }),
+  component: ReportsPage,
+});
+
+const tooltipStyle = {
+  background: "var(--color-popover)",
+  border: "1px solid var(--color-border)",
+  borderRadius: 6, padding: "8px 10px", fontSize: 11.5,
+  color: "var(--color-popover-foreground)",
+};
+
+function ReportsPage() {
+  return (
+    <>
+      <PageHeader
+        title="Reports"
+        description="Executive-ready summaries, comparisons, and data exports."
+        actions={
+          <>
+            <button className="inline-flex items-center gap-1.5 rounded-md border border-border bg-surface px-2.5 py-1.5 text-[12px] text-foreground hover:border-border-strong">
+              <CalendarRange className="h-3 w-3" /> Q3 2026 vs Q2 2026 <ChevronDown className="h-3 w-3 opacity-60" />
+            </button>
+            <button className="inline-flex items-center gap-1.5 rounded-md bg-primary px-2.5 py-1.5 text-[12px] font-medium text-primary-foreground hover:opacity-90">
+              <Download className="h-3 w-3" /> Export <ChevronDown className="h-3 w-3" />
+            </button>
+          </>
+        }
+      />
+
+      <div className="flex flex-wrap items-center gap-2">
+        <FilterChip active>Regional summary</FilterChip>
+        <FilterChip>Handler performance</FilterChip>
+        <FilterChip>Visit compliance</FilterChip>
+        <FilterChip>Product coverage</FilterChip>
+        <FilterChip>Custom</FilterChip>
+      </div>
+
+      <div className="mt-3 grid grid-cols-2 gap-3 md:grid-cols-4">
+        <KpiCard label="Reports generated" value="48" delta="+12" trend="up" />
+        <KpiCard label="Scheduled" value="6" hint="weekly cadence" />
+        <KpiCard label="Distribution" value="32 ppl" />
+        <KpiCard label="Avg run time" value="1.4s" />
+      </div>
+
+      <div className="mt-3 grid grid-cols-1 gap-3 lg:grid-cols-3">
+        <Surface className="lg:col-span-2">
+          <SectionTitle title="Visits by day" meta="comparison: this week vs last" />
+          <div className="h-[260px]">
+            <ResponsiveContainer width="100%" height="100%">
+              <BarChart data={visitTrend} margin={{ top: 10, right: 8, left: -16, bottom: 0 }}>
+                <CartesianGrid stroke="var(--color-border)" strokeDasharray="3 3" vertical={false} />
+                <XAxis dataKey="day" stroke="var(--color-muted-foreground)" tick={{ fontSize: 11 }} tickLine={false} axisLine={false} />
+                <YAxis stroke="var(--color-muted-foreground)" tick={{ fontSize: 11 }} tickLine={false} axisLine={false} width={36} />
+                <Tooltip contentStyle={tooltipStyle} cursor={{ fill: "var(--color-muted)" }} />
+                <Bar dataKey="visits" fill="var(--color-primary)" radius={[3, 3, 0, 0]} barSize={14} />
+                <Bar dataKey="completed" fill="var(--color-chart-2)" radius={[3, 3, 0, 0]} barSize={14} />
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
+        </Surface>
+
+        <Surface>
+          <SectionTitle title="Regional summary" />
+          <ul className="space-y-3">
+            {regionalCoverage.map((r) => (
+              <li key={r.region}>
+                <div className="mb-1 flex items-center justify-between text-[12px]">
+                  <span className="text-foreground">{r.region}</span>
+                  <span className="tabular-nums text-muted-foreground">{r.coverage}%</span>
+                </div>
+                <div className="h-1.5 overflow-hidden rounded-full bg-muted">
+                  <div className="h-full bg-primary" style={{ width: `${r.coverage}%` }} />
+                </div>
+              </li>
+            ))}
+          </ul>
+        </Surface>
+      </div>
+
+      <Surface className="mt-3">
+        <SectionTitle title="Recent reports" />
+        <div className="overflow-hidden rounded-md border border-border">
+          <table className="w-full text-[12.5px]">
+            <thead className="bg-muted/40 text-[11px] uppercase tracking-wide text-muted-foreground">
+              <tr className="border-b border-border">
+                <th className="px-3 py-2 text-left font-medium">Report</th>
+                <th className="px-3 py-2 text-left font-medium">Period</th>
+                <th className="px-3 py-2 text-left font-medium">Generated by</th>
+                <th className="px-3 py-2 text-left font-medium">Format</th>
+                <th className="px-3 py-2 text-left font-medium">Size</th>
+                <th className="px-3 py-2 text-right font-medium"></th>
+              </tr>
+            </thead>
+            <tbody>
+              {[
+                { name: "Regional Coverage Summary", period: "Q3 2026", by: "J. Mills", format: "pdf", size: "412 KB" },
+                { name: "Handler Productivity Review", period: "Sep 2026", by: "Auto-scheduled", format: "xlsx", size: "1.2 MB" },
+                { name: "Visit Compliance Audit", period: "Last 30 days", by: "L. Chen", format: "pdf", size: "780 KB" },
+                { name: "Product Coverage Detail", period: "Aug 2026", by: "Auto-scheduled", format: "xlsx", size: "2.4 MB" },
+              ].map((r, i) => (
+                <tr key={i} className="border-b border-border/70 last:border-0 hover:bg-muted/30">
+                  <td className="px-3 py-2 text-foreground">{r.name}</td>
+                  <td className="px-3 py-2 text-muted-foreground">{r.period}</td>
+                  <td className="px-3 py-2 text-muted-foreground">{r.by}</td>
+                  <td className="px-3 py-2">
+                    <span className="inline-flex items-center gap-1.5 text-muted-foreground">
+                      {r.format === "pdf" ? <FileText className="h-3 w-3" /> : <FileSpreadsheet className="h-3 w-3" />}
+                      {r.format.toUpperCase()}
+                    </span>
+                  </td>
+                  <td className="px-3 py-2 text-muted-foreground">{r.size}</td>
+                  <td className="px-3 py-2 text-right">
+                    <button className="rounded border border-border px-2 py-0.5 text-[11px] text-foreground hover:border-border-strong">
+                      Download
+                    </button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </Surface>
+    </>
+  );
+}
