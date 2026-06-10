@@ -59,7 +59,6 @@ class DistrictService {
         code: district.code,
         provinceId: district.provinceId,
         provinceName: district.province?.name || null,
-        provinceCode: district.province?.code || null,
         createdAt: district.createdAt,
         updatedAt: district.updatedAt,
         // add any other fields your frontend expects

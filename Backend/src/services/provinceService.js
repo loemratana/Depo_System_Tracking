@@ -93,18 +93,18 @@ class ProvinceService {
 
     async getById(id) {
         try {
-            return await prisma.province.findUnique({
-                where: { id: parseInt(id) },
-                include: {
-                    districts: {
-                        include: {
-                            _count: {
-                                select: { depots: true }
-                            }
-                        }
-                    }
-                }
+            const province = await prisma.province.findUnique({
+                where: {
+                    id: parseInt(id)
+                },
+
             });
+            if (!province) {
+                throw  new Error('Province not found');
+            }
+            logger.info(`Get province service success: ${id}`);
+            return province;
+
         } catch (error) {
             logger.error('ProvinceService getById error:', error);
             throw error;

@@ -42,8 +42,8 @@ class DepotService {
         let employeeId = null;
         const rawEmployeeId =
           data.employeeId !== undefined &&
-          data.employeeId !== null &&
-          data.employeeId !== ""
+            data.employeeId !== null &&
+            data.employeeId !== ""
             ? Number(data.employeeId)
             : null;
 
@@ -356,27 +356,27 @@ class DepotService {
       // Owner is the directly linked employee (could be null)
       const owner = depot.employee
         ? {
-            id: depot.employee.id,
-            khmerName: depot.employee.khmerName,
-            englishName: depot.employee.englishName,
-            employeeCode: depot.employee.employeeCode,
-            phone: depot.employee.phone,
-            email: depot.employee.email,
-            position: depot.employee.position,
-            images: depot.employee.images,
-          }
+          id: depot.employee.id,
+          khmerName: depot.employee.khmerName,
+          englishName: depot.employee.englishName,
+          employeeCode: depot.employee.employeeCode,
+          phone: depot.employee.phone,
+          email: depot.employee.email,
+          position: depot.employee.position,
+          images: depot.employee.images,
+        }
         : null;
 
       // Since there's no assignment history, employees list only contains the current owner
       const employeesFormatted = owner
         ? [
-            {
-              id: owner.id,
-              name: owner.englishName || owner.khmerName,
-              position: owner.position,
-              assignmentType: "permanent", // default, no history
-            },
-          ]
+          {
+            id: owner.id,
+            name: owner.englishName || owner.khmerName,
+            position: owner.position,
+            assignmentType: "permanent", // default, no history
+          },
+        ]
         : [];
 
       // Timeline – just the depot creation event (no assignment history)
@@ -536,11 +536,11 @@ class DepotService {
       expiryDate: d.expiryDate,
       owner: d.employee
         ? {
-            id: d.employee.id,
-            name: d.employee.englishName || d.employee.khmerName,
-            phone: d.employee.phone,
-            image: d.employee.images,
-          }
+          id: d.employee.id,
+          name: d.employee.englishName || d.employee.khmerName,
+          phone: d.employee.phone,
+          image: d.employee.images,
+        }
         : null,
       brands: (d.depotBrands || []).map((db) => db.brand?.name).filter(Boolean), // ✅ safe fallback
     });
@@ -604,7 +604,9 @@ class DepotService {
     filters = {},
   }) {
     const skip = (page - 1) * pageSize;
-    const orderBy = { [sortBy]: sortOrder };
+    const orderBy = sortBy === "id"
+      ? { id: sortOrder }
+      : [{ [sortBy]: sortOrder }, { id: sortOrder }];
 
     const where = {};
 
@@ -662,6 +664,7 @@ class DepotService {
       id: true,
       code: true,
       name: true,
+      khmerName: true,
       phone: true,
       status: true,
       createdAt: true,
@@ -690,6 +693,12 @@ class DepotService {
           images: true,
         },
       },
+      brand: {
+        select: {
+          id: true,
+          name: true,
+        },
+      },
     };
 
     // Use transaction for parallel queries
@@ -711,6 +720,7 @@ class DepotService {
         id: depot.id,
         code: depot.code,
         name: depot.name,
+        khmerName: depot.khmerName,
         phone: depot.phone,
         status: depot.status,
         expiredDate: depot.expiryDate,
@@ -719,15 +729,16 @@ class DepotService {
         city: depot.district?.province?.name,
         owner: owner
           ? {
-              id: owner.id,
-              name: owner.khmerName || owner.englishName,
-              code: owner.employeeCode,
-              phone: owner.phone,
-              email: owner.email,
-              position: owner.position,
-              image: owner.images,
-            }
+            id: owner.id,
+            name: owner.khmerName || owner.englishName,
+            code: owner.employeeCode,
+            phone: owner.phone,
+            email: owner.email,
+            position: owner.position,
+            image: owner.images,
+          }
           : null,
+        brand: depot.brand ? { id: depot.brand.id, name: depot.brand.name } : null,
       };
       if (includeAddress) {
         result.address = {
@@ -873,10 +884,11 @@ class DepotService {
     );
     const employee = await this._getOrCreateEmployee(data, cache);
 
-    // ✅ Directly set employeeId (no assignment table)
+    // Directly set employeeId (no assignment table)
     const depot = await prisma.depot.create({
       data: {
         name: data.name.trim(),
+        khmerName: data.khmerName?.trim() || null,
         code: data.code?.trim() || null,
         address: data.address?.trim() || null,
         phone: data.phone?.trim() || null,
@@ -884,6 +896,7 @@ class DepotService {
         provinceId: province.id,
         districtId: district.id,
         employeeId: employee?.id || null, // ← direct foreign key
+        assignedAt: employee?.id ? new Date() : null,
       },
       include: {
         province: true,
@@ -902,59 +915,59 @@ class DepotService {
   /**
    * Prefetch / batch-create provinces, districts, and employees for bulk import.
    */
+  // ==================== Helper: validate row (already present) ====================
+  _validateRow(data, rowIndex) {
+    const errors = [];
+    if (!data.name?.trim()) errors.push("name is required");
+    if (!data.provinceName?.trim()) errors.push("provinceName is required");
+    if (!data.districtName?.trim()) errors.push("districtName is required");
+    const validStatuses = ["active", "inactive"];
+    if (data.status && !validStatuses.includes(data.status.toLowerCase())) {
+      errors.push(`status must be one of: ${validStatuses.join(", ")}`);
+    }
+    if (errors.length > 0) throw new Error(`Row ${rowIndex}: ${errors.join("; ")}`);
+  }
+
+  // ==================== Helper: employee cache key ====================
+  _employeeCacheKey(data) {
+    if (!data.employeeName?.trim()) return null;
+    return `${data.employeeName.trim().toLowerCase()}|${(data.employeeEmail || "").trim().toLowerCase()}`;
+  }
+
+  // ==================== 1. Warm caches (provinces, districts, employees, brands) ====================
   async _warmBulkImportCaches(tx, records) {
     const cache = {
       provinces: new Map(),
       districts: new Map(),
       employees: new Map(),
+      brands: new Map(),                     // store brand by code (lowercase) and name (lowercase)
       existingDepotCodes: new Set(),
     };
 
+    // ---------- Provinces ----------
     const allProvinces = await tx.province.findMany();
     for (const p of allProvinces) {
       cache.provinces.set(p.name.trim().toLowerCase(), p);
     }
-
-    const provinceNames = [
-      ...new Set(records.map((r) => r.provinceName?.trim()).filter(Boolean)),
-    ];
-    const missingProvinces = provinceNames.filter(
-      (name) => !cache.provinces.has(name.toLowerCase()),
-    );
-
-    if (missingProvinces.length > 0) {
+    const provinceNames = [...new Set(records.map(r => r.provinceName?.trim()).filter(Boolean))];
+    const missingProvinces = provinceNames.filter(name => !cache.provinces.has(name.toLowerCase()));
+    if (missingProvinces.length) {
       await tx.province.createMany({
-        data: missingProvinces.map((name) => ({ name })),
+        data: missingProvinces.map(name => ({ name })),
         skipDuplicates: true,
       });
-      const created = await tx.province.findMany({
-        where: { name: { in: missingProvinces } },
-      });
-      for (const p of created) {
-        cache.provinces.set(p.name.trim().toLowerCase(), p);
-      }
+      const created = await tx.province.findMany({ where: { name: { in: missingProvinces } } });
+      for (const p of created) cache.provinces.set(p.name.trim().toLowerCase(), p);
     }
 
-    const provinceIds = [
-      ...new Set(
-        provinceNames
-          .map((n) => cache.provinces.get(n.toLowerCase())?.id)
-          .filter(Boolean),
-      ),
-    ];
-
-    if (provinceIds.length > 0) {
-      const districts = await tx.district.findMany({
-        where: { provinceId: { in: provinceIds } },
-      });
+    // ---------- Districts ----------
+    const provinceIds = [...new Set(provinceNames.map(n => cache.provinces.get(n.toLowerCase())?.id).filter(Boolean))];
+    if (provinceIds.length) {
+      const districts = await tx.district.findMany({ where: { provinceId: { in: provinceIds } } });
       for (const d of districts) {
-        cache.districts.set(
-          `${d.provinceId}:${d.name.trim().toLowerCase()}`,
-          d,
-        );
+        cache.districts.set(`${d.provinceId}:${d.name.trim().toLowerCase()}`, d);
       }
     }
-
     const districtsToCreate = [];
     const districtKeys = new Set();
     for (const record of records) {
@@ -969,44 +982,22 @@ class DepotService {
         districtsToCreate.push({ name: dName, provinceId: province.id });
       }
     }
-
-    if (districtsToCreate.length > 0) {
-      await tx.district.createMany({
-        data: districtsToCreate,
-        skipDuplicates: true,
-      });
-      const refreshed = await tx.district.findMany({
-        where: { provinceId: { in: provinceIds } },
-      });
+    if (districtsToCreate.length) {
+      await tx.district.createMany({ data: districtsToCreate, skipDuplicates: true });
+      const refreshed = await tx.district.findMany({ where: { provinceId: { in: provinceIds } } });
       for (const d of refreshed) {
-        cache.districts.set(
-          `${d.provinceId}:${d.name.trim().toLowerCase()}`,
-          d,
-        );
+        cache.districts.set(`${d.provinceId}:${d.name.trim().toLowerCase()}`, d);
       }
     }
 
-    const employeeNames = [
-      ...new Set(records.map((r) => r.employeeName?.trim()).filter(Boolean)),
-    ];
-    const employeeEmails = [
-      ...new Set(records.map((r) => r.employeeEmail?.trim()).filter(Boolean)),
-    ];
-
+    // ---------- Employees ----------
+    const employeeNames = [...new Set(records.map(r => r.employeeName?.trim()).filter(Boolean))];
+    const employeeEmails = [...new Set(records.map(r => r.employeeEmail?.trim()).filter(Boolean))];
     const employeeOr = [];
-    if (employeeNames.length > 0) {
-      employeeOr.push({
-        englishName: { in: employeeNames, mode: "insensitive" },
-      });
-    }
-    if (employeeEmails.length > 0) {
-      employeeOr.push({ email: { in: employeeEmails } });
-    }
-
-    if (employeeOr.length > 0) {
-      const existingEmployees = await tx.employee.findMany({
-        where: { OR: employeeOr },
-      });
+    if (employeeNames.length) employeeOr.push({ englishName: { in: employeeNames, mode: "insensitive" } });
+    if (employeeEmails.length) employeeOr.push({ email: { in: employeeEmails } });
+    if (employeeOr.length) {
+      const existingEmployees = await tx.employee.findMany({ where: { OR: employeeOr } });
       for (const emp of existingEmployees) {
         const nameKey = (emp.englishName || "").trim().toLowerCase();
         const emailKey = (emp.email || "").trim().toLowerCase();
@@ -1014,102 +1005,109 @@ class DepotService {
         cache.employees.set(`${nameKey}|`, emp);
       }
     }
-
     const employeesToCreate = [];
     const pendingEmployeeKeys = new Set();
     for (const record of records) {
       const key = this._employeeCacheKey(record);
-      if (!key || cache.employees.has(key) || pendingEmployeeKeys.has(key)) {
-        continue;
-      }
+      if (!key || cache.employees.has(key) || pendingEmployeeKeys.has(key)) continue;
       pendingEmployeeKeys.add(key);
       employeesToCreate.push({
         englishName: record.employeeName.trim(),
-        khmerName:
-          record.employeeKhmerName?.trim() || record.employeeName.trim(),
+        khmerName: record.employeeKhmerName?.trim() || record.employeeName.trim(),
         email: record.employeeEmail?.trim() || null,
         phone: record.employeePhone?.trim() || null,
         position: "Owner",
       });
     }
-
-    if (employeesToCreate.length > 0) {
-      const createdEmployees = await tx.employee.createManyAndReturn({
-        data: employeesToCreate,
-      });
+    if (employeesToCreate.length) {
+      const createdEmployees = await tx.employee.createManyAndReturn({ data: employeesToCreate });
       for (const emp of createdEmployees) {
         const key = `${(emp.englishName || "").trim().toLowerCase()}|${(emp.email || "").trim().toLowerCase()}`;
         cache.employees.set(key, emp);
       }
     }
 
-    const codes = records.map((r) => r.code?.trim()).filter(Boolean);
-    if (codes.length > 0) {
-      const existing = await tx.depot.findMany({
-        where: { code: { in: codes } },
-        select: { code: true },
-      });
-      for (const d of existing) {
-        if (d.code) cache.existingDepotCodes.add(d.code);
+    // ---------- Brands (new) ----------
+    const brandCodes = [...new Set(records.map(r => r.brandCode?.trim()).filter(Boolean))];
+    const brandNames = [...new Set(records.map(r => r.brandName?.trim()).filter(Boolean))];
+    const brandWhere = [];
+    if (brandCodes.length) brandWhere.push({ code: { in: brandCodes, mode: "insensitive" } });
+    if (brandNames.length) brandWhere.push({ name: { in: brandNames, mode: "insensitive" } });
+    if (brandWhere.length) {
+      const brands = await tx.brand.findMany({ where: { OR: brandWhere } });
+      for (const b of brands) {
+        if (b.code) cache.brands.set(b.code.toLowerCase(), b);
+        if (b.name) cache.brands.set(b.name.toLowerCase(), b);
       }
+    }
+
+    // ---------- Existing depot codes ----------
+    const codes = records.map(r => r.code?.trim()).filter(Boolean);
+    if (codes.length) {
+      const existing = await tx.depot.findMany({ where: { code: { in: codes } }, select: { code: true } });
+      for (const d of existing) if (d.code) cache.existingDepotCodes.add(d.code);
     }
 
     return cache;
   }
 
+  // ==================== 2. Resolve a single bulk row (province, district, employee, brand) ====================
   _resolveBulkRow(record, cache, rowNumber) {
     this._validateRow(record, rowNumber);
 
     const code = record.code?.trim() || null;
     if (code) {
-      if (cache.existingDepotCodes.has(code)) {
-        throw new Error(`Depot code "${code}" already exists`);
-      }
+      if (cache.existingDepotCodes.has(code)) throw new Error(`Depot code "${code}" already exists`);
       cache.existingDepotCodes.add(code);
     }
 
-    const province = cache.provinces.get(
-      record.provinceName.trim().toLowerCase(),
-    );
-    if (!province) {
-      throw new Error(`Province "${record.provinceName}" not found`);
-    }
+    const province = cache.provinces.get(record.provinceName.trim().toLowerCase());
+    if (!province) throw new Error(`Province "${record.provinceName}" not found`);
 
-    const district = cache.districts.get(
-      `${province.id}:${record.districtName.trim().toLowerCase()}`,
-    );
-    if (!district) {
-      throw new Error(
-        `District "${record.districtName}" not found for province "${record.provinceName}"`,
-      );
-    }
+    const district = cache.districts.get(`${province.id}:${record.districtName.trim().toLowerCase()}`);
+    if (!district) throw new Error(`District "${record.districtName}" not found for province "${record.provinceName}"`);
 
     const empKey = this._employeeCacheKey(record);
     const employee = empKey ? cache.employees.get(empKey) : null;
 
+    // ---------- Brand lookup ----------
+    let brandId = null;
+    const brandCode = record.brandCode?.trim();
+    const brandName = record.brandName?.trim();
+    if (brandCode) {
+      const brand = cache.brands.get(brandCode.toLowerCase());
+      if (!brand) throw new Error(`Brand code "${brandCode}" not found`);
+      brandId = brand.id;
+    } else if (brandName) {
+      const brand = cache.brands.get(brandName.toLowerCase());
+      if (!brand) throw new Error(`Brand name "${brandName}" not found`);
+      brandId = brand.id;
+    }
+
     return {
       depotData: {
         name: record.name.trim(),
+        khmerName: record.khmerName?.trim() || null,
         code,
         address: record.address?.trim() || null,
         phone: record.phone?.trim() || null,
         status: record.status?.trim().toLowerCase() || "active",
         provinceId: province.id,
         districtId: district.id,
-        employeeId: employee?.id ?? null, // ✅ direct assignment
+        employeeId: employee?.id ?? null,
+        assignedAt: employee?.id ? new Date() : null,
+        brandId: brandId,
       },
     };
   }
 
-  /**
-   * Bulk import depots — batched DB writes.
-   * Returns { results, errors }
-   */
+  // ==================== 3. Main bulk import function ====================
   async bulkCreateDepots(records) {
     const results = [];
     const errors = [];
     const DEPOT_CHUNK = 100;
 
+    // First pass: validate rows and collect valid candidates
     const candidates = [];
     for (const [index, record] of records.entries()) {
       const rowNumber = index + 1;
@@ -1127,13 +1125,13 @@ class DepotService {
 
     const startedAt = Date.now();
 
+    // Transaction: all operations succeed or none
     await prisma.$transaction(
       async (tx) => {
-        const cache = await this._warmBulkImportCaches(
-          tx,
-          candidates.map((c) => c.record),
-        );
+        // Build caches (provinces, districts, employees, brands)
+        const cache = await this._warmBulkImportCaches(tx, candidates.map(c => c.record));
 
+        // Resolve each candidate into depotData + brandId
         const prepared = [];
         for (const { rowNumber, record } of candidates) {
           try {
@@ -1144,10 +1142,11 @@ class DepotService {
           }
         }
 
+        // Chunked depot creation
         for (let i = 0; i < prepared.length; i += DEPOT_CHUNK) {
           const chunk = prepared.slice(i, i + DEPOT_CHUNK);
           const created = await tx.depot.createManyAndReturn({
-            data: chunk.map((c) => c.depotData),
+            data: chunk.map(c => c.depotData),
             select: {
               id: true,
               name: true,
@@ -1156,9 +1155,11 @@ class DepotService {
               districtId: true,
               status: true,
               employeeId: true,
+              brandId: true,
             },
           });
 
+          // Record results
           for (let j = 0; j < created.length; j++) {
             results.push({
               row: chunk[j].rowNumber,
@@ -1171,7 +1172,7 @@ class DepotService {
     );
 
     logger.info(
-      `Bulk depot import: ${results.length} created, ${errors.length} failed in ${Date.now() - startedAt}ms`,
+      `Bulk depot import: ${results.length} created, ${errors.length} failed in ${Date.now() - startedAt}ms`
     );
 
     return {

@@ -48,9 +48,16 @@ router.post('/bulk-import', (req, res, next) => {
   });
 }, depotController.bulkImport);
 
+// JSON-body bulk import (no file upload needed — frontend sends already-mapped rows)
+router.post(
+  '/bulk-import-json',
+  authMiddleware.authenticate,
+  depotController.bulkImportJson,
+);
 
 
-// ✅ Report route – must be BEFORE /:id
+
+//Report route – must be BEFORE /:id
 router.get("/report", authMiddleware.authenticate, depotController.getDepotReport);
 
 // Protected routes (require authentication)

@@ -7,12 +7,12 @@ datasource db {
 }
 
 model Province {
-  id           Int            @id @default(autoincrement())
-  name         String         @db.VarChar(100)
-  code         String?        @unique @db.VarChar(20)
-  createdAt    DateTime       @default(now()) @map("created_at")
-  depots       Depot[]
-  districts    District[]
+  id        Int        @id @default(autoincrement())
+  name      String     @db.VarChar(100)
+  code      String?    @unique @db.VarChar(20)
+  createdAt DateTime   @default(now()) @map("created_at")
+  depots    Depot[]
+  districts District[]
 
   @@map("provinces")
 }
@@ -54,28 +54,29 @@ model Employee {
 }
 
 model Depot {
-  id           Int            @id @default(autoincrement())
-  districtId   Int            @map("district_id")
-  name         String         @db.VarChar(100)
-  code         String?        @unique @db.VarChar(50)
-  address      String?
-  phone        String?        @db.VarChar(20)
-  status       DepotStatus    @default(active)
-  createdAt    DateTime       @default(now()) @map("created_at")
-  commune      String?        @db.VarChar(100)
-  employeeId   Int?           @map("employee_id")
-  expiryDate   DateTime?      @map("expiry_date") @db.Timestamptz(6)
-  assignedAt DateTime? @map("assigned_at")
-  houseNumber  String?        @map("house_number") @db.VarChar(50)
-  provinceId   Int?           @map("province_id")
-  street       String?        @db.VarChar(100)
-  village      String?        @db.VarChar(100)
-  brandId      Int?           @map("brand_id")
-  district     District       @relation(fields: [districtId], references: [id])
-  employee     Employee?      @relation(fields: [employeeId], references: [id])
-  brand        Brand?         @relation(fields: [brandId], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_brand")
-  province     Province?      @relation(fields: [provinceId], references: [id], map: "fk_depot_province")
-  products     Product[]
+  id          Int         @id @default(autoincrement())
+  districtId  Int         @map("district_id")
+  name        String      @db.VarChar(100)
+  khmerName   String?       @db.VarChar(100) @map("khmer_name")
+  code        String?     @unique @db.VarChar(50)
+  address     String?
+  phone       String?     @db.VarChar(20)
+  status      DepotStatus @default(active)
+  createdAt   DateTime    @default(now()) @map("created_at")
+  commune     String?     @db.VarChar(100)
+  employeeId  Int?        @map("employee_id")
+  expiryDate  DateTime?   @map("expiry_date") @db.Timestamptz(6)
+  houseNumber String?     @map("house_number") @db.VarChar(50)
+  provinceId  Int?        @map("province_id")
+  street      String?     @db.VarChar(100)
+  village     String?     @db.VarChar(100)
+  brandId     Int?        @map("brand_id")
+  assignedAt  DateTime?   @map("assigned_at")
+  district    District    @relation(fields: [districtId], references: [id])
+  employee    Employee?   @relation(fields: [employeeId], references: [id])
+  brand       Brand?      @relation(fields: [brandId], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_brand")
+  province    Province?   @relation(fields: [provinceId], references: [id], map: "fk_depot_province")
+  products    Product[]
 
   @@index([createdAt], map: "idx_depots_created_at")
   @@index([districtId], map: "idx_depots_district_id")
@@ -84,14 +85,14 @@ model Depot {
 }
 
 model Brand {
-  id           Int            @id @default(autoincrement())
-  name         String         @db.VarChar(100)
-  code         String?        @unique @db.VarChar(50)
-  description  String?
-  status       BrandStatus    @default(active)
-  createdAt    DateTime       @default(now()) @map("created_at")
-  depots       Depot[]
-  products     Product[]
+  id          Int         @id @default(autoincrement())
+  name        String      @db.VarChar(100)
+  code        String?     @unique @db.VarChar(50)
+  description String?
+  status      BrandStatus @default(active)
+  createdAt   DateTime    @default(now()) @map("created_at")
+  depots      Depot[]
+  products    Product[]
 
   @@map("brands")
 }
@@ -153,8 +154,6 @@ model RefreshToken {
 
   @@map("refresh_tokens")
 }
-
-
 
 enum DepotStatus {
   active

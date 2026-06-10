@@ -5,7 +5,7 @@ import fs from "fs";
 import { parse } from "csv-parse";
 import { prisma } from '../config/db.js';
 const upload = multer({ dest: "uploads/" });
-
+import ExcelJS from "exceljs";
 function parseCSV(buffer) {
   return new Promise((resolve, reject) => {
     const records = [];
@@ -214,6 +214,50 @@ class DepotController {
       return res.status(500).json({
         success: false,
         message: "Internal server error during bulk import.",
+      });
+    }
+  };
+
+  /**
+   * POST /api/depots/bulk-import-json
+   * Accepts a JSON array of already-mapped depot row objects.
+   * Keys: name, provinceName, districtName, code, phone, address, status,
+   *       employeeName, employeeEmail, employeePhone, employeeKhmerName, brandCode, brandName
+   */
+  bulkImportJson = async (req, res) => {
+    try {
+      const records = req.body;
+
+      if (!Array.isArray(records) || records.length === 0) {
+        return res.status(400).json({
+          success: false,
+          message: 'Request body must be a non-empty JSON array of depot rows.',
+        });
+      }
+
+      console.log(`[BulkImportJson] Received ${records.length} rows`);
+
+      const { results, errors } = await depotService.bulkCreateDepots(records);
+
+      console.log(`[BulkImportJson] Done — ${results.length} created, ${errors.length} failed`);
+
+      return res.status(207).json({
+        success: true,
+        message: `${results.length} depot(s) imported, ${errors.length} failed.`,
+        summary: {
+          total: records.length,
+          created: results.length,
+          failed: errors.length,
+        },
+        data: results,
+        errors,
+      });
+    } catch (err) {
+      console.error('[BulkImportJson] Unexpected error:', err);
+      return res.status(500).json({
+        success: false,
+        message: `Internal server error during bulk import: ${err.message}`,
+        detail: err.message,
       });
     }
   };
@@ -441,54 +485,66 @@ class DepotController {
     }
   };
 
-  bulkCreateDepots = async (req, res) => {};
-
   // Download CSV template for bulk import
-  downloadTemplate = (req, res) => {
-    try {
-      const headers = [
-        "name",
-        "code",
-        "provinceName",
-        "districtName",
-        "employeeName",
-        "employeeEmail",
-        "employeePhone",
-        "employeeKhmerName",
-        "address",
-        "phone",
-        "status",
-      ];
+  downloadTemplate = async (req, res) => {
+    const workbook = new ExcelJS.Workbook();
+    const worksheet = workbook.addWorksheet("Depots");
 
-      const exampleRow = [
-        "North Warehouse",
-        "WH-001",
-        "Phnom Penh",
-        "Daun Penh",
-        "Sok Chea",
-        "sok@example.com",
-        "012345678",
-        "សុខ ជា",
-        "Street 123",
-        "023123456",
-        "active",
-      ];
+    worksheet.columns = [
+      { header: "DepotEnglishsname", key: "englishName", width: 25 },
+      { header: "DepotsKhmername", key: "khmerName", width: 25 },
+      { header: "Depotcode", key: "code", width: 15 },
+      { header: "DepotPhone", key: "depotPhone", width: 15 },
+      { header: "provinceName", key: "province", width: 20 },
+      { header: "districtName", key: "district", width: 20 },
+      { header: "SaleSupervisorName", key: "supervisor", width: 25 },
+      { header: "SaleSupervisorEmail", key: "email", width: 25 },
+      { header: "SaleSupervisorPhone", key: "supervisorPhone", width: 20 },
+      { header: "SaleSupervisorKhmerName", key: "supervisorKhmer", width: 25 },
+      { header: "address", key: "address", width: 30 },
+      { header: "phone", key: "phone", width: 15 },
+      { header: "brandCode", key: "brandCode", width: 15 },
+      { header: "status", key: "status", width: 15 },
+    ];
 
-      const csvContent = [headers.join(","), exampleRow.join(",")].join("\n");
+    // Header style
+    worksheet.getRow(1).font = {
+      bold: true,
+      size: 12,
+    };
 
-      res.setHeader("Content-Type", "text/csv");
-      res.setHeader(
+
+    worksheet.getRow(1).height = 25;
+
+    worksheet.addRow({
+      englishName: "North Warehouse",
+      khmerName: "ឃ្លាំងភាគជើង",
+      code: "WH-001",
+      depotPhone: "023123456",
+      province: "Phnom Penh",
+      district: "Daun Penh",
+      supervisor: "Sok Chea",
+      email: "sok@example.com",
+      supervisorPhone: "012345678",
+      supervisorKhmer: "សុខ ជា",
+      address: "Street 123",
+      phone: "023123456",
+      brandCode: "GB-001",
+      status: "active",
+    });
+
+    res.setHeader(
+        "Content-Type",
+        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+    );
+
+    res.setHeader(
         "Content-Disposition",
-        'attachment; filename="depot_import_template.csv"',
-      );
-      res.send(csvContent);
-    } catch (error) {
-      logger.error(`Error generating template: ${error.message}`);
-      res.status(500).json({
-        success: false,
-        message: "Error generating template",
-      });
-    }
+        'attachment; filename="depot_import_template.xlsx"'
+    );
+
+    await workbook.xlsx.write(res);
+    res.end();
   };
 }
 

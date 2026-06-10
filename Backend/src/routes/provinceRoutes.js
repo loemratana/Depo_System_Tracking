@@ -20,7 +20,9 @@ const router = express.Router();
 
 router.post('/', createProvinceValidator, provinceController.createProvince);
 router.get('/', getProvincesValidator, provinceController.getAllProvinces);
+router.get("/:id",provinceController.getById)
 router.put('/:id', provinceController.update)
+router.delete('/:id', provinceController.delete)
 
 router.get('/template', provinceController.downloadProvinceTemplate);
 router.post('/verify', excelUpload.single('file'), provinceController.verifyProvinceFile);

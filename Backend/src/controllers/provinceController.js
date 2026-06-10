@@ -41,6 +41,25 @@ class ProvinceController {
         }
     }
 
+    getById = async (req, res) => {
+        try
+
+        {
+            const result = await provinceService.getById(req.params.id);
+            res.status(200).json({
+                success: true,
+                data: result,
+                message: 'Province found successfully',
+            })
+        }
+
+        catch (error) {
+            this.handleError(res, error);
+        }
+    }
+
+
+
     update = async (req, res) => {
         try {
             const result = await provinceService.update(req.params.id, req.body);
