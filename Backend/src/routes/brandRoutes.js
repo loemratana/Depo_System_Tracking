@@ -8,5 +8,5 @@ router.post("/", BrandController.createBrand);
 router.patch("/:id", BrandController.updateBrand);
 router.delete("/:id", BrandController.deleteBrand);
 router.get("/:id/depots", BrandController.getCountDepots);
-
+router.get("/:brandId/depotsByDepots", BrandController.getDepotByBrand);
 export default router;

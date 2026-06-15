@@ -17,8 +17,10 @@ import { Route as ReportsRouteImport } from './routes/reports'
 import { Route as RegisterRouteImport } from './routes/register'
 import { Route as ProfileRouteImport } from './routes/profile'
 import { Route as ProductsRouteImport } from './routes/products'
+import { Route as ProductAnalyticsRouteImport } from './routes/product-analytics'
 import { Route as NotificationsRouteImport } from './routes/notifications'
 import { Route as LoginRouteImport } from './routes/login'
+import { Route as KpiSystemRouteImport } from './routes/kpi-system'
 import { Route as HandlersRouteImport } from './routes/handlers'
 import { Route as GeographyRouteImport } from './routes/geography'
 import { Route as ForgotPasswordRouteImport } from './routes/forgot-password'
@@ -29,6 +31,7 @@ import { Route as BrandsRouteImport } from './routes/brands'
 import { Route as AnalyticsRouteImport } from './routes/analytics'
 import { Route as ActivityRouteImport } from './routes/activity'
 import { Route as IndexRouteImport } from './routes/index'
+import { Route as ProductsIdRouteImport } from './routes/products_.$id'
 import { Route as GeographyBulkImportRouteImport } from './routes/geography_.bulk-import'
 import { Route as EmployeesIdRouteImport } from './routes/employees_.$id'
 import { Route as DeposBulkImportRouteImport } from './routes/depos_.bulk-import'
@@ -75,6 +78,11 @@ const ProductsRoute = ProductsRouteImport.update({
   path: '/products',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ProductAnalyticsRoute = ProductAnalyticsRouteImport.update({
+  id: '/product-analytics',
+  path: '/product-analytics',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const NotificationsRoute = NotificationsRouteImport.update({
   id: '/notifications',
   path: '/notifications',
@@ -83,6 +91,11 @@ const NotificationsRoute = NotificationsRouteImport.update({
 const LoginRoute = LoginRouteImport.update({
   id: '/login',
   path: '/login',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const KpiSystemRoute = KpiSystemRouteImport.update({
+  id: '/kpi-system',
+  path: '/kpi-system',
   getParentRoute: () => rootRouteImport,
 } as any)
 const HandlersRoute = HandlersRouteImport.update({
@@ -135,6 +148,11 @@ const IndexRoute = IndexRouteImport.update({
   path: '/',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ProductsIdRoute = ProductsIdRouteImport.update({
+  id: '/products_/$id',
+  path: '/products/$id',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const GeographyBulkImportRoute = GeographyBulkImportRouteImport.update({
   id: '/geography_/bulk-import',
   path: '/geography/bulk-import',
@@ -172,8 +190,10 @@ export interface FileRoutesByFullPath {
   '/forgot-password': typeof ForgotPasswordRoute
   '/geography': typeof GeographyRoute
   '/handlers': typeof HandlersRoute
+  '/kpi-system': typeof KpiSystemRoute
   '/login': typeof LoginRoute
   '/notifications': typeof NotificationsRoute
+  '/product-analytics': typeof ProductAnalyticsRoute
   '/products': typeof ProductsRoute
   '/profile': typeof ProfileRoute
   '/register': typeof RegisterRoute
@@ -187,6 +207,7 @@ export interface FileRoutesByFullPath {
   '/depos/bulk-import': typeof DeposBulkImportRoute
   '/employees/$id': typeof EmployeesIdRoute
   '/geography/bulk-import': typeof GeographyBulkImportRoute
+  '/products/$id': typeof ProductsIdRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
@@ -199,8 +220,10 @@ export interface FileRoutesByTo {
   '/forgot-password': typeof ForgotPasswordRoute
   '/geography': typeof GeographyRoute
   '/handlers': typeof HandlersRoute
+  '/kpi-system': typeof KpiSystemRoute
   '/login': typeof LoginRoute
   '/notifications': typeof NotificationsRoute
+  '/product-analytics': typeof ProductAnalyticsRoute
   '/products': typeof ProductsRoute
   '/profile': typeof ProfileRoute
   '/register': typeof RegisterRoute
@@ -214,6 +237,7 @@ export interface FileRoutesByTo {
   '/depos/bulk-import': typeof DeposBulkImportRoute
   '/employees/$id': typeof EmployeesIdRoute
   '/geography/bulk-import': typeof GeographyBulkImportRoute
+  '/products/$id': typeof ProductsIdRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -227,8 +251,10 @@ export interface FileRoutesById {
   '/forgot-password': typeof ForgotPasswordRoute
   '/geography': typeof GeographyRoute
   '/handlers': typeof HandlersRoute
+  '/kpi-system': typeof KpiSystemRoute
   '/login': typeof LoginRoute
   '/notifications': typeof NotificationsRoute
+  '/product-analytics': typeof ProductAnalyticsRoute
   '/products': typeof ProductsRoute
   '/profile': typeof ProfileRoute
   '/register': typeof RegisterRoute
@@ -242,6 +268,7 @@ export interface FileRoutesById {
   '/depos_/bulk-import': typeof DeposBulkImportRoute
   '/employees_/$id': typeof EmployeesIdRoute
   '/geography_/bulk-import': typeof GeographyBulkImportRoute
+  '/products_/$id': typeof ProductsIdRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -256,8 +283,10 @@ export interface FileRouteTypes {
     | '/forgot-password'
     | '/geography'
     | '/handlers'
+    | '/kpi-system'
     | '/login'
     | '/notifications'
+    | '/product-analytics'
     | '/products'
     | '/profile'
     | '/register'
@@ -271,6 +300,7 @@ export interface FileRouteTypes {
     | '/depos/bulk-import'
     | '/employees/$id'
     | '/geography/bulk-import'
+    | '/products/$id'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
@@ -283,8 +313,10 @@ export interface FileRouteTypes {
     | '/forgot-password'
     | '/geography'
     | '/handlers'
+    | '/kpi-system'
     | '/login'
     | '/notifications'
+    | '/product-analytics'
     | '/products'
     | '/profile'
     | '/register'
@@ -298,6 +330,7 @@ export interface FileRouteTypes {
     | '/depos/bulk-import'
     | '/employees/$id'
     | '/geography/bulk-import'
+    | '/products/$id'
   id:
     | '__root__'
     | '/'
@@ -310,8 +343,10 @@ export interface FileRouteTypes {
     | '/forgot-password'
     | '/geography'
     | '/handlers'
+    | '/kpi-system'
     | '/login'
     | '/notifications'
+    | '/product-analytics'
     | '/products'
     | '/profile'
     | '/register'
@@ -325,6 +360,7 @@ export interface FileRouteTypes {
     | '/depos_/bulk-import'
     | '/employees_/$id'
     | '/geography_/bulk-import'
+    | '/products_/$id'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -338,8 +374,10 @@ export interface RootRouteChildren {
   ForgotPasswordRoute: typeof ForgotPasswordRoute
   GeographyRoute: typeof GeographyRoute
   HandlersRoute: typeof HandlersRoute
+  KpiSystemRoute: typeof KpiSystemRoute
   LoginRoute: typeof LoginRoute
   NotificationsRoute: typeof NotificationsRoute
+  ProductAnalyticsRoute: typeof ProductAnalyticsRoute
   ProductsRoute: typeof ProductsRoute
   ProfileRoute: typeof ProfileRoute
   RegisterRoute: typeof RegisterRoute
@@ -353,6 +391,7 @@ export interface RootRouteChildren {
   DeposBulkImportRoute: typeof DeposBulkImportRoute
   EmployeesIdRoute: typeof EmployeesIdRoute
   GeographyBulkImportRoute: typeof GeographyBulkImportRoute
+  ProductsIdRoute: typeof ProductsIdRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -413,6 +452,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ProductsRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/product-analytics': {
+      id: '/product-analytics'
+      path: '/product-analytics'
+      fullPath: '/product-analytics'
+      preLoaderRoute: typeof ProductAnalyticsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/notifications': {
       id: '/notifications'
       path: '/notifications'
@@ -425,6 +471,13 @@ declare module '@tanstack/react-router' {
       path: '/login'
       fullPath: '/login'
       preLoaderRoute: typeof LoginRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/kpi-system': {
+      id: '/kpi-system'
+      path: '/kpi-system'
+      fullPath: '/kpi-system'
+      preLoaderRoute: typeof KpiSystemRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/handlers': {
@@ -497,6 +550,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof IndexRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/products_/$id': {
+      id: '/products_/$id'
+      path: '/products/$id'
+      fullPath: '/products/$id'
+      preLoaderRoute: typeof ProductsIdRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/geography_/bulk-import': {
       id: '/geography_/bulk-import'
       path: '/geography/bulk-import'
@@ -546,8 +606,10 @@ const rootRouteChildren: RootRouteChildren = {
   ForgotPasswordRoute: ForgotPasswordRoute,
   GeographyRoute: GeographyRoute,
   HandlersRoute: HandlersRoute,
+  KpiSystemRoute: KpiSystemRoute,
   LoginRoute: LoginRoute,
   NotificationsRoute: NotificationsRoute,
+  ProductAnalyticsRoute: ProductAnalyticsRoute,
   ProductsRoute: ProductsRoute,
   ProfileRoute: ProfileRoute,
   RegisterRoute: RegisterRoute,
@@ -561,6 +623,7 @@ const rootRouteChildren: RootRouteChildren = {
   DeposBulkImportRoute: DeposBulkImportRoute,
   EmployeesIdRoute: EmployeesIdRoute,
   GeographyBulkImportRoute: GeographyBulkImportRoute,
+  ProductsIdRoute: ProductsIdRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

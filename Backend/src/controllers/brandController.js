@@ -1,5 +1,6 @@
 import brandService from "../services/brandService.js";
 import logger from "../config/logger.js";
+// import {data} from "express-session/session/cookie.js";
 
 
 export class BrandController {
@@ -13,6 +14,20 @@ export class BrandController {
       res
         .status(500)
         .json({ success: false, message: "Failed to fetch brands" });
+    }
+  };
+
+  getDepotByBrand = async (req, res) => {
+    try {
+      const { brandId } = req.params;
+      const depots = await brandService.getDepotsByBrand(brandId);
+
+      res.status(201).json({ success: true,data: depots });
+
+    } catch (error) {
+      res.status(500).json({
+        message: error.message || "Internal server error",
+      });
     }
   };
 

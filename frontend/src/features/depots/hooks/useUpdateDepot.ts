@@ -1,7 +1,7 @@
 // hooks/useUpdateDepot.ts
 import { useState } from 'react';
 import axios from '@/api/axios-client';
-import { Depot } from '@/types/depot.types';
+import { Depot } from '@/features/depots/types/depot.types';
 
 export function useUpdateDepot() {
     const [isUpdating, setIsUpdating] = useState(false);

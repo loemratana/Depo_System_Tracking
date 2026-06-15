@@ -243,7 +243,7 @@ export const GeographyPage: React.FC = () => {
   const inactiveDistricts = districts.filter((d) => d.status === "inactive").length;
 
   return (
-    <div className="space-y-6 p-4 md:p-6 max-w-[1600px] mx-auto">
+    <div className="space-y-6 p-4 md:p-6 max-w-full mx-auto">
       {/* Header Section with enhanced visual */}
       <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
         <div className="space-y-1">

@@ -1,4 +1,4 @@
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, keepPreviousData } from "@tanstack/react-query";
 import { Employee } from "../types/employee.types";
 import axiosClient from "../../../api/axios-client";
 
@@ -20,7 +20,7 @@ interface EmployeesResponse {
 }
 
 export const useEmployees = (params: UseEmployeesParams) => {
-  const { data, isLoading, error, refetch } = useQuery<EmployeesResponse>({
+  const { data, isLoading, isFetching, error, refetch } = useQuery<EmployeesResponse>({
     queryKey: ["employees", params],
     queryFn: async () => {
       const response = await axiosClient.get("/employees", { params });
@@ -35,11 +35,13 @@ export const useEmployees = (params: UseEmployeesParams) => {
         },
       };
     },
+    placeholderData: keepPreviousData,
   });
 
   return {
     employees: data?.employees ?? [],
     loading: isLoading,
+    isFetching,
     error: error?.message || null,
     total: data?.pagination.total ?? 0,
     totalPages: data?.pagination.pages ?? 0,

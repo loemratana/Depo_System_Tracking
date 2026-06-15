@@ -47,8 +47,12 @@ model Employee {
   khmerName    String?        @map("khmer_name") @db.VarChar(100)
   salary       Float?         @db.Real
   updatedAt    DateTime?      @updatedAt @map("updated_at")
+  remarks      String?        @db.Text
   depots       Depot[]
   user         User?
+  kpis         EmployeeKPI[]
+  productPerformances ProductPerformance[]
+  documents    EmployeeDocument[]
 
   @@map("employees")
 }
@@ -77,6 +81,7 @@ model Depot {
   brand       Brand?      @relation(fields: [brandId], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_brand")
   province    Province?   @relation(fields: [provinceId], references: [id], map: "fk_depot_province")
   products    Product[]
+  kpis        EmployeeKPI[]
 
   @@index([createdAt], map: "idx_depots_created_at")
   @@index([districtId], map: "idx_depots_district_id")
@@ -106,10 +111,11 @@ model Product {
   price     Decimal?      @db.Decimal(10, 2)
   quantity  Int           @default(0)
   minStock  Int           @default(0) @map("min_stock")
-  status    ProductStatus @default(available)
+  status    ProductStatus @default(OK)
   createdAt DateTime      @default(now()) @map("created_at")
   brand     Brand         @relation(fields: [brandId], references: [id])
   depot     Depot         @relation(fields: [depotId], references: [id])
+  performances ProductPerformance[]
 
   @@map("products")
 }
@@ -166,9 +172,9 @@ enum BrandStatus {
 }
 
 enum ProductStatus {
-  available
-  out_of_stock
-  discontinued
+  OK
+  LOW
+  OUT_OF_STOCK
 }
 
 enum EmployeeStatus {
@@ -198,4 +204,51 @@ enum ReportType {
 enum DepotBrandStatus {
   active
   inactive
+}
+
+
+model EmployeeKPI {
+  id          Int      @id @default(autoincrement())
+  employeeId  Int      @map("employee_id")
+  depotId     Int      @map("depot_id")
+  month       DateTime @db.Date 
+  targetValue Float    @map("target_value")
+  actualValue Float    @default(0) @map("actual_value")
+  performance Float?
+  remarks     String?  @db.Text
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  employee    Employee @relation(fields: [employeeId], references: [id])
+  depot       Depot    @relation(fields: [depotId], references: [id])
+
+  @@unique([employeeId, depotId, month]) 
+  @@map("employee_kpis")
+}
+
+model ProductPerformance {
+  id           Int      @id @default(autoincrement())
+  productId    Int      @map("product_id")
+  employeeId   Int      @map("employee_id") 
+  month        DateTime @db.Date
+  quantitySold Int      @default(0) @map("quantity_sold")
+  revenue      Decimal  @default(0) @db.Decimal(10, 2)
+  createdAt    DateTime @default(now()) @map("created_at")
+
+  product      Product  @relation(fields: [productId], references: [id])
+  employee     Employee @relation(fields: [employeeId], references: [id])
+
+  @@map("product_performances")
+}
+
+model EmployeeDocument {
+  id          Int      @id @default(autoincrement())
+  employeeId  Int      @map("employee_id")
+  fileName    String   @map("file_name") @db.VarChar(200)
+  fileUrl     String   @map("file_url")  
+  fileType    String?  @map("file_type")
+  uploadedAt  DateTime @default(now()) @map("uploaded_at")
+
+  employee    Employee @relation(fields: [employeeId], references: [id])
+
+  @@map("employee_documents")
 }

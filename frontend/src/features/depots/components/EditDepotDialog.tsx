@@ -40,6 +40,7 @@ export const EditDepotDialog: React.FC<EditDepotDialogProps> = ({
   const [formData, setFormData] = useState<Partial<Depot>>({
     code: "",
     name: "",
+    khmerName: "",
     provinceName: "",
     districtName: "",
     employeeName: "",
@@ -51,8 +52,7 @@ export const EditDepotDialog: React.FC<EditDepotDialogProps> = ({
     commune: "",
     expiryDate: "",
     brandName: "",
-    brandId:null as number | null,
-
+    brandId: null as number | null,
   });
 
   // Pre-fill form when depot changes
@@ -61,6 +61,7 @@ export const EditDepotDialog: React.FC<EditDepotDialogProps> = ({
       setFormData({
         code: depot.code || "",
         name: depot.name || "",
+        khmerName: depot.khmerName ?? "",
         provinceName: depot.provinceName || "",
         districtName: depot.districtName || "",
         employeeName: depot.employeeName || "",
@@ -177,13 +178,35 @@ export const EditDepotDialog: React.FC<EditDepotDialogProps> = ({
           </div>
           <div className="grid grid-cols-2 gap-4">
             <div className="space-y-1.5">
+              <Label htmlFor="khmerName" className="text-xs font-medium">
+                Khmer Name
+              </Label>
+              <Input
+                id="khmerName"
+                value={formData.khmerName || ""}
+                onChange={(e) => setFormData({ ...formData, khmerName: e.target.value })}
+                placeholder="ឈ្មោះជាភាសាខ្មែរ"
+                className="h-9 text-sm"
+              />
+            </div>
+            <div className="space-y-1.5">
               <Label htmlFor="brandName" className="text-xs font-medium">
                 Brand (optional)
               </Label>
               <AutocompleteInput
                 id="brandName"
                 value={formData.brandName || ""}
-                onChange={(val) => setFormData({ ...formData, brandName: val })}
+                onChange={(val) => {
+                  // Resolve the selected name back to its brand ID
+                  const matched = allBrands.find(
+                    (b: any) => b.name.toLowerCase() === val.toLowerCase()
+                  );
+                  setFormData({
+                    ...formData,
+                    brandName: val,
+                    brandId: matched ? matched.id : null,
+                  });
+                }}
                 placeholder="e.g. Coca-Cola"
                 options={brandNameOptions} //array of strings
               />

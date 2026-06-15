@@ -23,15 +23,12 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       <AppSidebar collapsed={collapsed} onToggle={() => setCollapsed((c) => !c)} />
       <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
         <AppHeader />
-        <main className="flex-1 overflow-y-auto overflow-x-hidden scroll-smooth">
+        <main className="flex-1 overflow-y-auto overflow-x-hidden scroll-smooth p-4">
           <motion.div
             initial={{ opacity: 0, y: 4 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.18, ease: "easeOut" }}
-            // Example: px-6 (default), but on computer screens (lg) use px-2
-            // This will feel much tighter and use more of your computer screen
-            className="mx-auto w-full max-w-[1800px] px-6 py-6"
-
+            className="w-full h-full flex flex-col"
           >
             {children}
           </motion.div>

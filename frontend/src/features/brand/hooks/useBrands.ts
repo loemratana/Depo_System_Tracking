@@ -2,7 +2,9 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { brandService } from "../services/brandService.ts";
 import { toast } from "sonner";
-import type { CreateBrandInput, UpdateBrandInput } from "../types/brand.types";
+import type { AssignedDepot, Brand, CreateBrandInput, UpdateBrandInput } from "../types/brand.types";
+import { useState, useEffect } from 'react';
+
 
 // Query hook – fetches brands from backend
 export const useBrands = (search?: string, status?: string) => {
@@ -14,6 +16,16 @@ export const useBrands = (search?: string, status?: string) => {
       return result;
     },
     staleTime:5 *60 *10000,
+  });
+};
+
+// hooks/useBrands.ts
+export const useDepotsByBrand = (brandId: number) => {
+  return useQuery<AssignedDepot[]>({
+    queryKey: ["brand-depots", brandId],
+    queryFn: () => brandService.getDepotsByBrand(brandId),
+    enabled: !!brandId,
+    staleTime: 5 * 60 * 1000,
   });
 };
 

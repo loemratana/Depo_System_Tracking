@@ -86,6 +86,7 @@ class DepotService {
         const depot = await tx.depot.create({
           data: {
             name: data.name.trim(),
+            khmerName: data.khmerName,
             code: data.code || null,
             address: data.address || null,
             phone: data.phone || null,
@@ -228,6 +229,7 @@ class DepotService {
       // 4. Build update data (only fields that are provided)
       const updateData = {};
       if (data.name !== undefined) updateData.name = data.name;
+      if(data.khmerName !== undefined) updateData.khmerName = data.khmerName;
       if (data.code !== undefined) updateData.code = data.code;
       if (data.address !== undefined) updateData.address = data.address;
       if (data.phone !== undefined) updateData.phone = data.phone;
@@ -673,6 +675,7 @@ class DepotService {
       street: includeAddress,
       village: includeAddress,
       commune: includeAddress,
+      address: true,
       district: {
         select: {
           id: true,
@@ -727,6 +730,7 @@ class DepotService {
         createdAt: depot.createdAt,
         district: depot.district?.name,
         city: depot.district?.province?.name,
+        address:depot.address,
         owner: owner
           ? {
             id: owner.id,

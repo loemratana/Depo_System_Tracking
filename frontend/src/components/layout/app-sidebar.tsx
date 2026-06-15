@@ -16,6 +16,8 @@ import {
   Command,
   Layers,
   Tags,
+  Target,
+  BarChart,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -31,19 +33,22 @@ const PRIMARY: NavItem[] = [
 
   // { to: "/handlers", label: "Handlers", icon: Users },
   { to: "/employees", label: "Employees", icon: Users },
-  { to: "/visits", label: "Visits", icon: MapPin},
+  // { to: "/visits", label: "Visits", icon: MapPin},
 ];
 
 const INSIGHTS: NavItem[] = [
+  { to: "/product-analytics", label: "Product Analytics", icon: BarChart },
+  { to: "/kpi-system", label: "KPI System", icon: Target },
+
   { to: "/reports", label: "Reports", icon: FileBarChart2 },
   { to: "/analytics", label: "Analytics", icon: LineChart },
+  
 ];
-
 // SYSTEM holds administrative or diagnostic operations like Bulk Import/Export, settings, etc.
 const SYSTEM: NavItem[] = [
-  { to: "/bulk-operations", label: "Bulk Operations", icon: Layers },
-  { to: "/activity", label: "Activity Log", icon: History },
-  { to: "/notifications", label: "Notifications", icon: Bell, badge: "3" },
+  // { to: "/bulk-operations", label: "Bulk Operations", icon: Layers },
+  // { to: "/activity", label: "Activity Log", icon: History },
+  // { to: "/notifications", label: "Notifications", icon: Bell, badge: "3" },
   { to: "/settings", label: "Settings", icon: Settings },
 ];
 

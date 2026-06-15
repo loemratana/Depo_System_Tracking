@@ -96,6 +96,7 @@ function DashboardPage() {
     <>
       <PageHeader
         title="Operations overview"
+        className="p-4"
         description="Live signal across depots, handlers, and field visits — updated 2 minutes ago."
         actions={
           <>
@@ -107,7 +108,7 @@ function DashboardPage() {
         }
       />
 
-      <div className="grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-5">
+      <div className="grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-5 pr-4 pl-4">
         {/* 1. Brand Depots */}
         {loading ? (
           <Skeleton className="h-28 w-full rounded-lg" />
@@ -115,6 +116,8 @@ function DashboardPage() {
           <KpiCard
             label="Brand Depots"
             value={data ? formatNumber(data.brandDepots) : '—'}
+            delta="this month"
+            trend="up"
             icon={Warehouse}
           />
         )}
@@ -126,26 +129,30 @@ function DashboardPage() {
           <KpiCard
             label="Handlers"
             value={data ? formatNumber(data.handlers) : '—'}
+            delta="this month"
+            trend="up"
             icon={Users}
           />
         )}
 
-        {/* 3. Expired Depots */}
+        {/* 3. Total Brands */}
         {loading ? (
           <Skeleton className="h-28 w-full rounded-lg" />
         ) : (
           <KpiCard
-            label="Expired Depots"
+            label="Total Brands"
             value={data ? formatNumber(data.expiredDepots) : '—'}
+            delta="this month"
+            trend="up"
             icon={MapPin}
           />
         )}
 
-        {/* 4. Product Coverage (mock) */}
+        {/* 4. AVG KPI Achievement (mock) */}
         <KpiCard
-          label="Product Coverage"
+          label="AVG KPI Achievement"
           value="86%"
-          delta="+0.9pp"
+          delta="last month"
           trend="up"
           icon={Package}
         />
@@ -177,13 +184,13 @@ function DashboardPage() {
       </div>
 
       {/* Charts */}
-      <div className="mt-3 grid grid-cols-1 gap-3 lg:grid-cols-3">
-        <Surface className="lg:col-span-2">
+      <div className="mt-3 grid grid-cols-1 gap-3 lg:grid-cols-3 pr-4 pl-4">
+        <Surface className="lg:col-span-2 dark:bg-gray-900">
           <SectionTitle
             title="Monthly Assignment"
             meta="last 6 months"   // ← changed from "last 7 days"
             action={
-              <div className="flex items-center gap-3 text-[11px] text-muted-foreground">
+              <div className="flex items-center gap-3 text-[11px] text-muted-foreground ">
                 <span className="flex items-center gap-1.5">
                   <span className="h-1.5 w-3 rounded-sm bg-primary" /> Total assignments
                 </span>
@@ -220,7 +227,7 @@ function DashboardPage() {
           </div>
         </Surface>
 
-        <Surface>
+        <Surface className="dark:bg-gray-900">
           <SectionTitle title="Regional coverage" meta="this quarter" />
           <div className="h-[230px]">
             <ResponsiveContainer width="100%" height="100%">
@@ -236,8 +243,8 @@ function DashboardPage() {
         </Surface>
       </div>
 
-      <div className="mt-3 grid grid-cols-1 gap-3 lg:grid-cols-3">
-        <Surface className="lg:col-span-2">
+      <div className="mt-3 grid grid-cols-1 gap-3 lg:grid-cols-3 pr-4 pl-4">
+        <Surface className="lg:col-span-2 dark:bg-gray-900">
           <SectionTitle title="Product coverage trend" meta="6 weeks" />
           <div className="h-[220px]">
             <ResponsiveContainer width="100%" height="100%">
@@ -259,7 +266,7 @@ function DashboardPage() {
           </div>
         </Surface>
 
-        <Surface>
+        <Surface className="dark:bg-gray-900">
           <SectionTitle title="Live activity" action={<a className="text-[11px] text-primary hover:underline" href="/activity">View all <ArrowUpRight className="inline h-3 w-3" /></a>} />
           <ul className="-mx-1 max-h-[260px] space-y-px overflow-y-auto pr-1">
             {activity.slice(0, 6).map((e) => (
@@ -286,7 +293,7 @@ function DashboardPage() {
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.2, delay: 0.05 }}
       >
-        <Surface className="mt-3">
+        <Surface className="mt-3 dark:bg-gray-900">
           <SectionTitle title="Active field visits" meta="updated just now" action={<a className="text-[11px] text-primary hover:underline" href="/visits">Open visits</a>} />
           <div className="overflow-hidden rounded-md border border-border">
             <table className="w-full text-[12px]">

@@ -56,7 +56,7 @@ export function BrandTable({
   };
 
   return (
-    <div className="border border-border rounded-lg bg-card/10 overflow-hidden shadow-sm">
+    <div className="border border-border rounded-lg bg-card/10 overflow-hidden shadow-sm dark:bg-gray-950">
       <div className="overflow-x-auto w-full">
         <table className="w-full text-left border-collapse table-fixed select-text">
           <thead className="bg-card/75 border-b border-border/80 sticky top-0 z-10 select-none">
