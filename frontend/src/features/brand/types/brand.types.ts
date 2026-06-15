@@ -59,3 +59,13 @@ export interface BrandDepotCount {
   brand_name: string;
   total_depots: number;
 }
+
+
+export interface AssignedDepot {
+  id: number;
+  name: string;
+  code: string;
+  region: string;
+  district: string;
+  status: "active" | "inactive";
+}

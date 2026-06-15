@@ -56,7 +56,7 @@ import {
 import { locationService } from "@/features/depots/services/location-service";
 import { useAllDepots } from "../features/depots/hooks/useAllDepots.ts";
 import { brandService } from "@/features/brand/services/brandService.ts";
-
+import { FaTelegramPlane } from "react-icons/fa";
 export const Route = createFileRoute("/depos")({
   head: () => ({
     meta: [{ title: "Manager Report — Brand Depot" }],
@@ -73,6 +73,7 @@ const reportTone: Record<string, "success" | "warning" | "danger"> = {
 import AutocompleteInput from "@/features/depots/components/AutocompleteInput";
 import { Brand } from "@/features/brand/types/brand.types.ts";
 import { useMemo } from "react";
+import { email } from "zod/v4";
 
 function DeposPage() {
   const queryClient = useQueryClient();
@@ -92,6 +93,7 @@ function DeposPage() {
   const [formData, setFormData] = React.useState({
     code: "",
     name: "",
+    khmerName: "",
     provinceName: "",
     districtName: "",
     employeeId: null as number | null,
@@ -129,16 +131,16 @@ function DeposPage() {
         search,
         status,
       }),
-    staleTime: 5 * 60 * 1000. // 5minute
+    staleTime: 5 * 60 * 1000, // 5minute
   });
   //  Brand name options for autocomplete (array of strings)
   const brandNameOptions = useMemo(() => {
-    const brands = brandsData ?? [];   // adjust if your API returns { data: [...] }
+    const brands = brandsData ?? []; // adjust if your API returns { data: [...] }
     return brands.map((b: any) => b.name);
   }, [brandsData]);
 
-  // Full brand list for ID lookup
-  const allBrands = useMemo(() => brandsData?.data ?? [], [brandsData]);
+  // Full brand list for ID lookup (brandsData is already the array from getAllFilter)
+  const allBrands = useMemo(() => brandsData ?? [], [brandsData]);
   // Find province ID from selected name
   const selectedProvinceId = React.useMemo(() => {
     if (!provincesData || !formData.provinceName) return undefined;
@@ -146,7 +148,6 @@ function DeposPage() {
     const province = provinces.find((p: any) => p.name === formData.provinceName);
     return province?.id;
   }, [provincesData, formData.provinceName]);
-
 
   // Extract province and district name lists for dropdowns
   const masterProvinces = React.useMemo(() => {
@@ -160,8 +161,6 @@ function DeposPage() {
     queryFn: () => locationService.getDistricts(),
     staleTime: 0,
   });
-
-
 
   // Then filter districts client-side based on selected province name
   const masterDistricts = React.useMemo(() => {
@@ -179,10 +178,17 @@ function DeposPage() {
 
   // Fetch Depots from API using useAllDepots to allow full local filtering
   const { data: response, isLoading } = useAllDepots();
-  
+
   React.useEffect(() => {
     setPage(1);
-  }, [query, selectedOwners, selectedProvinces, selectedDistricts, selectedBrands, selectedStatuses]);
+  }, [
+    query,
+    selectedOwners,
+    selectedProvinces,
+    selectedDistricts,
+    selectedBrands,
+    selectedStatuses,
+  ]);
 
   // Fetch all employees for owner dropdown
   const { data: employeesResponse } = useQuery({
@@ -200,6 +206,7 @@ function DeposPage() {
       setFormData({
         code: "",
         name: "",
+        khmerName: "",
         provinceName: "",
         districtName: "",
         employeeId: null,
@@ -252,19 +259,21 @@ function DeposPage() {
       ownerId: d.owner?.id,
       owner: d.owner?.name || "No Owner Assigned",
       ownerImage: d.owner?.image || null,
-      phone: d.phone || d.owner?.phone || "N/A",
+      phone: d.phone || "N/A",
+      ownerPhone: d.owner?.phone || "N/A",
       nationalId: d.owner?.code || "N/A", // using employeeCode as National ID for now
       brands: d.brand ? [d.brand.name] : [],
+      email: d.email?.email,
       createdAt: d.createdAt
         ? new Date(d.createdAt).toLocaleDateString(undefined, {
-          year: "numeric",
-          month: "short",
-          day: "numeric",
-        })
+            year: "numeric",
+            month: "short",
+            day: "numeric",
+          })
         : "N/A",
-      fullAddress: d.address
-        ? `${d.address.houseNumber || ""} ${d.address.street || ""} ${d.address.village || ""}, ${d.district}, ${d.city}`
-        : `${d.district}, ${d.city}`,
+      fullAddress: d.address,
+      // ? `${d.address.houseNumber || ""} ${d.address.street || ""} ${d.address.village || ""}, ${d.district}, ${d.city}`
+      // : `${d.district}, ${d.city}`,
     };
   });
   const filtered = enhancedDepots.filter((d: any) => {
@@ -372,7 +381,7 @@ function DeposPage() {
     }
 
     const names = Array.from(
-      new Set(sourceDistricts.map((d: any) => d.name).filter(Boolean))
+      new Set(sourceDistricts.map((d: any) => d.name).filter(Boolean)),
     ) as string[];
 
     return names.map((name) => ({ label: name, value: name }));
@@ -432,6 +441,7 @@ function DeposPage() {
     const cleanPath = path.replace(/^[/\\]+/, "").replace(/\\/g, "/");
     return `http://localhost:5000/${cleanPath}`;
   };
+
   return (
     <div className="space-y-4">
       <PageHeader
@@ -486,13 +496,35 @@ function DeposPage() {
 
                   <div className="grid grid-cols-2 gap-4">
                     <div className="space-y-1.5">
+                      <Label htmlFor="khmerName" className="text-xs font-medium">
+                        Khmer Name
+                      </Label>
+                      <Input
+                        id="khmerName"
+                        value={formData.khmerName || ""}
+                        onChange={(e) => setFormData({ ...formData, khmerName: e.target.value })}
+                        placeholder="ឈ្មោះជាភាសាខ្មែរ"
+                        className="h-9 text-sm"
+                      />
+                    </div>
+                    <div className="space-y-1.5">
                       <Label htmlFor="brandName" className="text-xs font-medium">
                         Brand *
                       </Label>
                       <AutocompleteInput
                         id="brandName"
                         value={formData.brandName || ""}
-                        onChange={(val) => setFormData({ ...formData, brandName: val })}
+                        onChange={(val) => {
+                          // Resolve the selected name back to its brand ID
+                          const matched = allBrands.find(
+                            (b: any) => b.name.toLowerCase() === val.toLowerCase(),
+                          );
+                          setFormData({
+                            ...formData,
+                            brandName: val,
+                            brandId: matched ? matched.id : null,
+                          });
+                        }}
                         placeholder="e.g. Coca-Cola"
                         options={brandNameOptions} // array of strings
                       />
@@ -741,11 +773,11 @@ function DeposPage() {
       />
 
       {/* KPI Cards */}
-      <div className="grid grid-cols-4 gap-4 pb-2">
+      <div className="grid grid-cols-4 gap-4 pb-2 pr-4 pl-4">
         <div
           onClick={() => handleStatusClick("all")}
           className={cn(
-            "cursor-pointer transition-all duration-200",
+            "cursor-pointer transition-all duration-200 ",
             selectedStatuses.size === 0 ? "ring-2 ring-primary/20 rounded-lg" : "",
           )}
         >
@@ -753,6 +785,7 @@ function DeposPage() {
             label="Total Depots"
             value={isLoading ? "..." : totalDepots}
             icon={Building2}
+            delta="All time operations"
             hint="All time operations"
           />
         </div>
@@ -807,7 +840,7 @@ function DeposPage() {
       </div>
 
       {/*filter element*/}
-      <Surface padded={false} className="relative z-0">
+      <Surface padded={false} className="relative z-0 dark:bg-gray-950">
         {/* Filter bar */}
         <div className="flex flex-col gap-3 border-b border-border p-3 sticky top-0 z-20 bg-surface/95 backdrop-blur supports-[backdrop-filter]:bg-surface/60">
           <div className="flex items-center justify-between">
@@ -827,21 +860,21 @@ function DeposPage() {
                 selectedBrands.size > 0 ||
                 selectedStatuses.size > 0 ||
                 query !== "") && (
-                  <Button
-                    variant="ghost"
-                    onClick={() => {
-                      setSelectedOwners(new Set());
-                      setSelectedProvinces(new Set());
-                      setSelectedDistricts(new Set());
-                      setSelectedBrands(new Set());
-                      setSelectedStatuses(new Set());
-                      setQuery("");
-                    }}
-                    className="h-8 px-2 text-xs"
-                  >
-                    Reset Filters
-                  </Button>
-                )}
+                <Button
+                  variant="ghost"
+                  onClick={() => {
+                    setSelectedOwners(new Set());
+                    setSelectedProvinces(new Set());
+                    setSelectedDistricts(new Set());
+                    setSelectedBrands(new Set());
+                    setSelectedStatuses(new Set());
+                    setQuery("");
+                  }}
+                  className="h-8 px-2 text-xs"
+                >
+                  Reset Filters
+                </Button>
+              )}
             </div>
           </div>
           <div className="flex flex-wrap items-center gap-2">
@@ -882,7 +915,7 @@ function DeposPage() {
         </div>
 
         {/* Table */}
-        <div className="overflow-x-auto min-h-[300px]">
+        <div className="overflow-x-auto min-h-[300px] ">
           {isLoading ? (
             <div className="flex items-center justify-center h-[300px]">
               <Loader2 className="h-8 w-8 animate-spin text-primary" />
@@ -918,220 +951,245 @@ function DeposPage() {
                 </tr>
               </thead>
               <tbody>
-                {filtered.slice((page - 1) * pageSize, page * pageSize).map((d: any) => (
-                  <React.Fragment key={d.id}>
-                    <tr className="border-b border-border/70 transition-colors hover:bg-muted/30">
-                      <td className="px-3 py-2.5">
-                        <input
-                          type="checkbox"
-                          checked={selected.has(d.id)}
-                          onChange={() => toggleSelect(d.id)}
-                          className="h-3.5 w-3.5 rounded border-border accent-primary"
-                        />
-                      </td>
-                      <td className="px-1 py-2.5 text-center">
-                        <button
-                          onClick={() => toggleExpand(d.id)}
-                          className="text-muted-foreground hover:text-foreground transition-colors"
-                        >
-                          {expandedRows.has(d.id) ? (
-                            <ChevronDown className="h-4 w-4" />
-                          ) : (
-                            <ChevronRight className="h-4 w-4" />
-                          )}
-                        </button>
-                      </td>
-                      <td className="px-3 py-2.5">
-                        <div className="flex flex-col">
-                          <span className="font-medium text-foreground">
-                            {d.name} {d.khmerName && <span className="text-muted-foreground/80 font-normal">({d.khmerName})</span>}
-                          </span>
-                          <span className="font-mono text-[10.5px] text-muted-foreground">
-                            {d.code}
-                          </span>
-                        </div>
-                      </td>
-                      <td className="px-3 py-2">
-                        {d.ownerId ? (
-                          <Link
-                            to="/employees/$id"
-                            params={{ id: String(d.ownerId) }}
-                            className="flex items-center gap-2.5 hover:bg-muted/40 rounded-md p-1 transition-colors"
+                {filtered.slice((page - 1) * pageSize, page * pageSize).map((d: any) => {
+                  const telegramPhone = d.ownerPhone?.replace(/\s+/g, "").replace(/^0/, "+855");
+                  return (
+                    <React.Fragment key={d.id}>
+                      <tr className="border-b border-border/70 transition-colors hover:bg-muted/30">
+                        <td className="px-3 py-2.5">
+                          <input
+                            type="checkbox"
+                            checked={selected.has(d.id)}
+                            onChange={() => toggleSelect(d.id)}
+                            className="h-3.5 w-3.5 rounded border-border accent-primary"
+                          />
+                        </td>
+                        <td className="px-1 py-2.5 text-center">
+                          <button
+                            onClick={() => toggleExpand(d.id)}
+                            className="text-muted-foreground hover:text-foreground transition-colors"
                           >
-                            <div className="relative h-8 w-8 shrink-0">
-                              {d.ownerImage ? (
-                                <img
-                                  src={getImageUrl(d.ownerImage)}
-                                  alt={d.owner}
-                                  className="h-8 w-8 rounded-full object-cover border-2 border-border"
-                                  onError={(e) => {
-                                    console.error(
-                                      "Image failed to load:",
-                                      getImageUrl(d.ownerImage),
-                                    );
-                                    e.currentTarget.style.display = "none";
-                                    const fallback = e.currentTarget
-                                      .nextElementSibling as HTMLElement;
-                                    if (fallback) fallback.style.display = "flex";
-                                  }}
-                                />
-                              ) : null}
-                              <span
-                                style={{ display: d.ownerImage ? "none" : "flex" }}
-                                className="h-8 w-8 items-center justify-center rounded-full bg-primary/10 text-[10px] font-bold text-primary uppercase"
-                              >
-                                {d.owner
-                                  ? d.owner
-                                    .split(" ")
-                                    .map((n: string) => n[0])
-                                    .join("")
-                                    .substring(0, 2)
-                                  : "?"}
-                              </span>
-                            </div>
-                            <div className="flex flex-col min-w-0">
-                              <span className="text-[12.5px] font-medium text-foreground truncate hover:text-blue-600">
-                                {d.owner}
-                              </span>
-                              <span className="text-[10.5px] text-muted-foreground">Owner</span>
-                            </div>
-                          </Link>
-                        ) : (
-                          // No owner assigned fallback (unchanged)
-                          <div className="flex items-center gap-2.5 rounded-md p-1">
-                            <div className="relative h-8 w-8 shrink-0">
-                              <span className="h-8 w-8 flex items-center justify-center rounded-full bg-muted text-[10px] font-bold text-muted-foreground uppercase">
-                                ?
-                              </span>
-                            </div>
-                            <div className="flex flex-col min-w-0">
-                              <span className="text-[12.5px] font-medium text-muted-foreground truncate">
-                                No Owner Assigned
-                              </span>
-                            </div>
-                          </div>
-                        )}
-                      </td>
-                      <td className="px-3 py-2.5">
-                        <div className="flex flex-col">
-                          <span className="text-foreground/80">{d.district}</span>
-                          <span className="text-[10.5px] text-muted-foreground">{d.city}</span>
-                        </div>
-                      </td>
-                      <td className="px-3 py-2.5 text-foreground/80">
-                        <div className="flex gap-1 flex-wrap">
-                          {d.brands.map((b: string) => (
-                            <span
-                              key={b}
-                              className="rounded border border-blue-500/20 bg-blue-500/10 text-blue-600 px-1.5 py-0.5 text-[10px] whitespace-nowrap"
-                            >
-                              {b}
+                            {expandedRows.has(d.id) ? (
+                              <ChevronDown className="h-4 w-4" />
+                            ) : (
+                              <ChevronRight className="h-4 w-4" />
+                            )}
+                          </button>
+                        </td>
+                        <td className="px-3 py-2.5">
+                          <div className="flex flex-col">
+                            <span className="font-medium text-foreground">
+                              {d.name}{" "}
+                              {d.khmerName && (
+                                <span className="text-muted-foreground/80 font-normal">
+                                  ({d.khmerName})
+                                </span>
+                              )}
                             </span>
-                          ))}
-                        </div>
-                      </td>
-                      <td className="px-3 py-2.5 text-muted-foreground">{d.createdAt}</td>
-                      <td className="px-3 py-2.5">
-                        <StatusBadge tone={reportTone[d.reportStatus] || "muted"} dot>
-                          {d.reportStatus.replace("_", " ").toUpperCase()}
-                        </StatusBadge>
-                      </td>
-                      <td className="px-3 py-2.5 text-right">
-                        <DropdownMenu>
-                          <DropdownMenuTrigger asChild>
-                            <button className="rounded p-1 text-muted-foreground hover:bg-muted hover:text-foreground transition-colors outline-none focus:ring-2 focus:ring-ring focus:ring-offset-1">
-                              <MoreHorizontal className="h-3.5 w-3.5" />
-                            </button>
-                          </DropdownMenuTrigger>
-                          <DropdownMenuContent align="end" className="w-48">
-                            <DropdownMenuLabel>Actions</DropdownMenuLabel>
-                            <DropdownMenuSeparator />
-                            <DropdownMenuItem className="cursor-pointer" asChild>
-                              <Link to={`/depos/${d.id}`}>
-                                <Eye className="mr-2 h-4 w-4" />
-                                View Details
-                              </Link>
-                            </DropdownMenuItem>
-                            <DropdownMenuItem
-                              className="cursor-pointer"
-                              onClick={() => handleEditClick(d)}
-                            >
-                              <Edit className="mr-2 h-4 w-4" />
-                              Edit
-                            </DropdownMenuItem>
-                            <DropdownMenuItem className="cursor-pointer">
-                              <UserPlus className="mr-2 h-4 w-4" />
-                              Assign Employee
-                            </DropdownMenuItem>
-                            <DropdownMenuItem onClick={() => generateDepotReport(d)}>
-                              <FileText className="mr-2 h-4 w-4" />
-                              Generate Report
-                            </DropdownMenuItem>
-                            <DropdownMenuSeparator />
-                            <DropdownMenuItem
-                              className="cursor-pointer text-destructive focus:bg-destructive focus:text-destructive-foreground"
-                              onClick={() => handleDeleteClick(d)} // 👈 open dialog
-                            >
-                              <Trash2 className="mr-2 h-4 w-4" />
-                              Delete
-                            </DropdownMenuItem>
-                          </DropdownMenuContent>
-                        </DropdownMenu>
-                      </td>
-                    </tr>
-                    {/* Expanded Row */}
-                    {expandedRows.has(d.id) && (
-                      <tr className="border-b border-border bg-muted/20">
-                        <td colSpan={9} className="p-0">
-                          <div className="px-14 py-5 grid grid-cols-3 gap-6 text-[12px]">
-                            <div>
-                              <h4 className="font-medium text-foreground mb-2 flex items-center gap-1.5">
-                                <MapPin className="h-3.5 w-3.5 text-muted-foreground" /> Full
-                                Address
-                              </h4>
-                              <p className="text-muted-foreground leading-relaxed">
-                                {d.fullAddress}
-                              </p>
-                            </div>
-                            <div>
-                              <h4 className="font-medium text-foreground mb-2 flex items-center gap-1.5">
-                                <User className="h-3.5 w-3.5 text-muted-foreground" /> Contact
-                                Details
-                              </h4>
-                              <p className="text-muted-foreground mb-1.5">
-                                <span className="text-foreground/70 inline-block w-20">Phone:</span>{" "}
-                                {d.phone}
-                              </p>
-                              <p className="text-muted-foreground">
-                                <span className="text-foreground/70 inline-block w-20">Email:</span>{" "}
-                                {d.Email}
-                              </p>
-                            </div>
-                            <div>
-                              <h4 className="font-medium text-foreground mb-2 flex items-center gap-1.5">
-                                <Tag className="h-3.5 w-3.5 text-muted-foreground" /> License Info
-                              </h4>
-                              <p className="text-muted-foreground mb-1.5">
-                                <span className="text-foreground/70 inline-block w-16">
-                                  Expire Date:
-                                </span>{" "}
-                                {d.expireDate}
-                              </p>
-                              <p className="text-muted-foreground">
-                                <span className="text-foreground/70 inline-block w-16">
-                                  Standing:
-                                </span>{" "}
-                                {d.reportStatus === "expired"
-                                  ? "Action Required"
-                                  : "In Good Standing"}
-                              </p>
-                            </div>
+                            <span className="font-mono text-[10.5px] text-muted-foreground">
+                              {d.code}
+                            </span>
                           </div>
                         </td>
+                        <td className="px-3 py-2">
+                          {d.ownerId ? (
+                            <Link
+                              to="/employees/$id"
+                              params={{ id: String(d.ownerId) }}
+                              className="flex items-center gap-2.5 hover:bg-muted/40 rounded-md p-1 transition-colors"
+                            >
+                              <div className="relative h-8 w-8 shrink-0">
+                                {d.ownerImage ? (
+                                  <img
+                                    src={getImageUrl(d.ownerImage)}
+                                    alt={d.owner}
+                                    className="h-8 w-8 rounded-full object-cover border-2 border-border"
+                                    onError={(e) => {
+                                      console.error(
+                                        "Image failed to load:",
+                                        getImageUrl(d.ownerImage),
+                                      );
+                                      e.currentTarget.style.display = "none";
+                                      const fallback = e.currentTarget
+                                        .nextElementSibling as HTMLElement;
+                                      if (fallback) fallback.style.display = "flex";
+                                    }}
+                                  />
+                                ) : null}
+                                <span
+                                  style={{ display: d.ownerImage ? "none" : "flex" }}
+                                  className="h-8 w-8 items-center justify-center rounded-full bg-primary/10 text-[10px] font-bold text-primary uppercase"
+                                >
+                                  {d.owner
+                                    ? d.owner
+                                        .split(" ")
+                                        .map((n: string) => n[0])
+                                        .join("")
+                                        .substring(0, 2)
+                                    : "?"}
+                                </span>
+                              </div>
+                              <div className="flex flex-col min-w-0">
+                                <span className="text-[12.5px] font-medium text-foreground truncate hover:text-blue-600">
+                                  {d.owner}
+                                </span>
+                                <span className="text-[10.5px] text-muted-foreground">Owner</span>
+                              </div>
+                            </Link>
+                          ) : (
+                            // No owner assigned fallback (unchanged)
+                            <div className="flex items-center gap-2.5 rounded-md p-1">
+                              <div className="relative h-8 w-8 shrink-0">
+                                <span className="h-8 w-8 flex items-center justify-center rounded-full bg-muted text-[10px] font-bold text-muted-foreground uppercase">
+                                  ?
+                                </span>
+                              </div>
+                              <div className="flex flex-col min-w-0">
+                                <span className="text-[12.5px] font-medium text-muted-foreground truncate">
+                                  No Owner Assigned
+                                </span>
+                              </div>
+                            </div>
+                          )}
+                        </td>
+                        <td className="px-3 py-2.5">
+                          <div className="flex flex-col">
+                            <span className="text-foreground/80">{d.district}</span>
+                            <span className="text-[10.5px] text-muted-foreground">{d.city}</span>
+                          </div>
+                        </td>
+                        <td className="px-3 py-2.5 text-foreground/80">
+                          <div className="flex gap-1 flex-wrap">
+                            {d.brands.map((b: string) => (
+                              <span
+                                key={b}
+                                className="rounded border border-blue-500/20 bg-blue-500/10 text-blue-600 px-1.5 py-0.5 text-[10px] whitespace-nowrap"
+                              >
+                                {b}
+                              </span>
+                            ))}
+                          </div>
+                        </td>
+                        <td className="px-3 py-2.5 text-muted-foreground">{d.createdAt}</td>
+                        <td className="px-3 py-2.5">
+                          <StatusBadge tone={reportTone[d.reportStatus] || "muted"} dot>
+                            {d.reportStatus.replace("_", " ").toUpperCase()}
+                          </StatusBadge>
+                        </td>
+                        <td className="px-3 py-2.5 text-right">
+                          <DropdownMenu>
+                            <DropdownMenuTrigger asChild>
+                              <button className="rounded p-1 text-muted-foreground hover:bg-muted hover:text-foreground transition-colors outline-none focus:ring-2 focus:ring-ring focus:ring-offset-1">
+                                <MoreHorizontal className="h-3.5 w-3.5" />
+                              </button>
+                            </DropdownMenuTrigger>
+                            <DropdownMenuContent align="end" className="w-48">
+                              <DropdownMenuLabel>Actions</DropdownMenuLabel>
+                              <DropdownMenuSeparator />
+                              <DropdownMenuItem className="cursor-pointer" asChild>
+                                <Link to={`/depos/${d.id}`}>
+                                  <Eye className="mr-2 h-4 w-4" />
+                                  View Details
+                                </Link>
+                              </DropdownMenuItem>
+                              <DropdownMenuItem
+                                className="cursor-pointer"
+                                onClick={() => handleEditClick(d)}
+                              >
+                                <Edit className="mr-2 h-4 w-4" />
+                                Edit
+                              </DropdownMenuItem>
+                              <DropdownMenuItem className="cursor-pointer">
+                                <UserPlus className="mr-2 h-4 w-4" />
+                                Assign Employee
+                              </DropdownMenuItem>
+                              <DropdownMenuItem onClick={() => generateDepotReport(d)}>
+                                <FileText className="mr-2 h-4 w-4" />
+                                Generate Report
+                              </DropdownMenuItem>
+                              <DropdownMenuSeparator />
+                              <DropdownMenuItem
+                                className="cursor-pointer text-destructive focus:bg-destructive focus:text-destructive-foreground"
+                                onClick={() => handleDeleteClick(d)} // open dialog
+                              >
+                                <Trash2 className="mr-2 h-4 w-4" />
+                                Delete
+                              </DropdownMenuItem>
+                            </DropdownMenuContent>
+                          </DropdownMenu>
+                        </td>
                       </tr>
-                    )}
-                  </React.Fragment>
-                ))}
+                      {/* Expanded Row */}
+                      {expandedRows.has(d.id) && (
+                        <tr className="border-b border-border bg-muted/20">
+                          <td colSpan={9} className="p-0">
+                            <div className="px-14 py-5 grid grid-cols-3 gap-6 text-[12px]">
+                              <div>
+                                <h4 className="font-medium text-foreground mb-2 flex items-center gap-1.5">
+                                  <MapPin className="h-3.5 w-3.5 text-muted-foreground" /> Full
+                                  Address
+                                </h4>
+                                <p className="text-muted-foreground leading-relaxed">
+                                  {d.fullAddress}
+                                </p>
+                              </div>
+                              <div>
+                                <h4 className="font-medium text-foreground mb-2 flex items-center gap-1.5">
+                                  <User className="h-3.5 w-3.5 text-muted-foreground" /> Contact
+                                  Details
+                                </h4>
+                                <p className="text-muted-foreground mb-1.5">
+                                  <span className="text-foreground/70 inline-block w-20">
+                                    Phone:
+                                  </span>{" "}
+                                  {d.phone}
+                                </p>
+                                <p className="text-muted-foreground">
+                                  <span className="text-foreground/70 inline-block w-20">
+                                    Email:
+                                  </span>{" "}
+                                  {d.email}
+                                </p>
+                              </div>
+
+                              {/*Owner contact Details */}
+                              <div>
+                                <h4 className="font-medium text-foreground mb-2 flex items-center gap-1.5">
+                                  <Tag className="h-3.5 w-3.5 text-muted-foreground" /> Owner
+                                  Contact Details
+                                </h4>
+
+                                <p className="text-muted-foreground mb-1.5 flex items-center">
+                                  <span className="text-foreground/70 inline-block w-16">
+                                    Phone:
+                                  </span>
+
+                                  <a
+                                    href={`https://t.me/${telegramPhone}`}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    className="inline-flex items-center gap-1 text-blue-600 hover:underline"
+                                  >
+                                    <FaTelegramPlane className="h-4 w-4" />
+
+                                    {d.ownerPhone ? d.ownerPhone : "null"}
+                                  </a>
+                                </p>
+
+                                <p className="text-muted-foreground">
+                                  <span className="text-foreground/70 inline-block w-16">
+                                    Email:
+                                  </span>{" "}
+                                  {d.email ? d.email : "Don't Have"}
+                                </p>
+                              </div>
+                            </div>
+                          </td>
+                        </tr>
+                      )}
+                    </React.Fragment>
+                  );
+                })}
               </tbody>
             </table>
           )}
@@ -1140,9 +1198,7 @@ function DeposPage() {
         {!isLoading && (
           <div className="flex items-center justify-between border-t border-border px-3 py-2 text-[11.5px] text-muted-foreground">
             <span>
-              {selected.size > 0
-                ? `${selected.size} selected`
-                : `${filtered.length} depots found`}
+              {selected.size > 0 ? `${selected.size} selected` : `${filtered.length} depots found`}
             </span>
             <div className="flex items-center gap-1">
               <button

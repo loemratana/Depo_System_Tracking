@@ -123,10 +123,10 @@ export function KpiCard({
   hint?: string;
 }) {
   const trendColor =
-    trend === "up" ? "text-success" : trend === "down" ? "text-destructive" : "text-muted-foreground";
+    trend === "up" ? "text-green-600 dark:text-green-400" : trend === "down" ? "text-red-600 dark:text-red-400" : "ext-gray-500 dark:text-gray-400";
 
   return (
-    <div className="rounded-lg border border-border bg-card p-4">
+    <div className="rounded-lg border border-gray-200 bg-white p-4  dark:border-gray-800 dark:bg-gray-900">
       <div className="flex items-center justify-between">
         <span className="text-[11.5px] font-medium uppercase tracking-wide text-muted-foreground">
           {label}

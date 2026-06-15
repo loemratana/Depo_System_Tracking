@@ -13,11 +13,12 @@ import employeeRoutes from './routes/employeeRoutes.js';
 import uploadRoutes from './routes/uploadRoutes.js';
 import db from './config/db.js';
 import brandRoutes from "./routes/brandRoutes.js";
+import productRoutes from "./routes/productsRoutes.js";
 import path from 'path';
-import logger, { stream } from './config/logger.js';
 import environment from './config/env.js';
 import reportRoutes from "./routes/reportRoutes.js";
 import { arcjetMiddleware } from "./middleware/arcjet.js";
+import productAnalyticsRoutes from "./routes/productAnalyticsRoutes.js";
 
 const app = express();
 
@@ -68,7 +69,6 @@ app.use(compression());
 app.use(
   morgan(
     environment.isDevelopment ? 'dev' : 'combined',
-    { stream }
   )
 );
 
@@ -96,6 +96,8 @@ app.use('/api/v1/upload', uploadRoutes);
 app.use('/api/v1/depots', depotRoutes);
 app.use('/api/v1/report', reportRoutes);
 app.use('/api/v1/brands', brandRoutes);
+app.use('/api/v1/products', productRoutes);
+app.use("/api/v1/analytics", productAnalyticsRoutes);
 
 
 /* ========================

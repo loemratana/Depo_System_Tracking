@@ -20,19 +20,16 @@ import {
   Tag,
   Box,
   TrendingUp,
+  Loader2,
 } from "lucide-react";
 import { format } from "date-fns";
 import { cn } from "@/lib/utils";
-import { useBrandDepotCount, useBrands } from "@/features/brand/hooks/useBrands.ts";
+import { useBrandDepotCount, useDepotsByBrand } from "@/features/brand/hooks/useBrands.ts";
 
 // Mock data – replace with real API calls later
 const mockProducts = [
   { id: 1, sku: "SKU001", name: "Coca-Cola 1.5L", price: 1.2, quantity: 1200, status: "available" },
   { id: 2, sku: "SKU002", name: "Sprite 1L", price: 0.9, quantity: 850, status: "low" },
-];
-const mockDepots = [
-  { id: 1, name: "Phnom Penh Central", code: "PPC", district: "Daun Penh", region: "Phnom Penh" },
-  { id: 2, name: "Siem Reap Hub", code: "SRH", district: "Siem Reap City", region: "Siem Reap" },
 ];
 const mockActivityLogs = [
   {
@@ -53,24 +50,36 @@ const mockActivityLogs = [
 
 export default function BrandDetailPage() {
   const { id } = useParams({ from: "/brands_/$id" });
-
   const brandId = Number(id);
 
-  // depot count hook
-  const { data: depotCount, isLoading: depotLoading } = useBrandDepotCount(brandId);
-  const { data: brands, isLoading: brandsLoading, error: brandsError } = useBrands();
-  // brand detail query
+  // Depot count hook
+  const { data: depotCount, isLoading: depotCountLoading } = useBrandDepotCount(brandId);
+
+  // Depots by brand hook (real API)
+  const {
+    data: depotsData,
+    isLoading: depotsLoading,
+    isError: depotsError,
+  } = useDepotsByBrand(brandId);
+
+  // Brand detail query
   const {
     data: brand,
     isLoading: brandLoading,
-    error,
+    error: brandError,
   } = useQuery({
     queryKey: ["brand", id],
     queryFn: () => brandService.getById(Number(id)),
     enabled: !!id,
   });
-  const isLoading = brandLoading || depotLoading;
 
+  const isLoading = brandLoading || depotCountLoading || depotsLoading;
+
+  // Ensure depots is always an array
+  const depots = Array.isArray(depotsData) ? depotsData : [];
+  console.log("Raw depotsData:", depotsData); // See what comes out
+  console.log("brandId:", brandId);
+  console.log("depots result:", depots);
   if (isLoading) {
     return (
       <div className="flex h-[400px] items-center justify-center">
@@ -84,7 +93,7 @@ export default function BrandDetailPage() {
     );
   }
 
-  if (error || !brand) {
+  if (brandError || !brand) {
     return (
       <div className="flex h-[400px] items-center justify-center">
         <div className="text-[13px] text-muted-foreground">
@@ -98,8 +107,9 @@ export default function BrandDetailPage() {
     if (!date) return "—";
     return format(new Date(date), "dd MMM yyyy");
   };
+
   return (
-    <div className="min-h-screen bg-muted/20">
+    <div className="min-h-screen bg-muted/20 ">
       {/* Top action bar (sticky) */}
       <div className="sticky top-0 z-30 flex items-center justify-between border-b bg-background/95 backdrop-blur px-6 py-3">
         <div className="flex items-center gap-4">
@@ -123,7 +133,7 @@ export default function BrandDetailPage() {
 
       <main className="max-w-[1400px] mx-auto px-6 py-6 space-y-6">
         {/* Brand header card */}
-        <div className="bg-card border border-border rounded-lg p-5 ">
+        <div className="bg-card border border-border rounded-lg p-5">
           <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
             <div className="flex items-center gap-4">
               <div className="h-14 w-14 rounded-xl bg-primary/10 flex items-center justify-center text-primary ring-1 ring-primary/20">
@@ -159,7 +169,7 @@ export default function BrandDetailPage() {
 
         {/* Stats row */}
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-          <Card className="border-border ">
+          <Card className="border-border">
             <CardContent className="p-4 flex items-center justify-between">
               <div className="space-y-0.5">
                 <p className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground">
@@ -172,14 +182,14 @@ export default function BrandDetailPage() {
               </div>
             </CardContent>
           </Card>
-          <Card className="border-border ">
+          <Card className="border-border">
             <CardContent className="p-4 flex items-center justify-between">
               <div className="space-y-0.5">
                 <p className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground">
                   Depots
                 </p>
                 <p className="text-2xl font-bold text-foreground">
-                  {depotCount?.total_depots ?? 0}
+                  {depotCount?.total_depots ?? depots.length}
                 </p>
               </div>
               <div className="p-2 rounded-full bg-primary/10 text-primary">
@@ -187,7 +197,7 @@ export default function BrandDetailPage() {
               </div>
             </CardContent>
           </Card>
-          <Card className="border-border ">
+          <Card className="border-border">
             <CardContent className="p-4 flex items-center justify-between">
               <div className="space-y-0.5">
                 <p className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground">
@@ -222,7 +232,7 @@ export default function BrandDetailPage() {
                 value="depots"
                 className="data-[state=active]:bg-transparent data-[state=active]:text-foreground data-[state=active]:shadow-none data-[state=active]:border-b-2 data-[state=active]:border-primary rounded-none px-0 py-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground"
               >
-                Depots ({mockDepots.length})
+                Depots ({depots.length})
               </TabsTrigger>
               <TabsTrigger
                 value="activity"
@@ -233,7 +243,7 @@ export default function BrandDetailPage() {
             </TabsList>
           </div>
 
-          {/* Overview Tab */}
+          {/* Overview Tab (unchanged) */}
           <TabsContent value="overview" className="mt-4">
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
               <Card className="border-border">
@@ -265,7 +275,7 @@ export default function BrandDetailPage() {
                 </CardContent>
               </Card>
 
-              <Card className="border-border ">
+              <Card className="border-border">
                 <CardHeader className="pb-2 border-b border-border/60">
                   <CardTitle className="text-sm font-semibold flex items-center gap-2">
                     <Box className="h-4 w-4 text-muted-foreground" />
@@ -290,9 +300,9 @@ export default function BrandDetailPage() {
             </div>
           </TabsContent>
 
-          {/* Products Tab */}
+          {/* Products Tab (mock) */}
           <TabsContent value="products" className="mt-4">
-            <Card className="border-border ">
+            <Card className="border-border">
               <CardContent className="p-0">
                 {mockProducts.length === 0 ? (
                   <div className="text-center py-12 text-muted-foreground">
@@ -350,17 +360,35 @@ export default function BrandDetailPage() {
             </Card>
           </TabsContent>
 
-          {/* Depots Tab */}
+          {/* Depots Tab – NOW WITH REAL API DATA */}
           <TabsContent value="depots" className="mt-4">
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              {mockDepots.length === 0 ? (
-                <Card className="border-border  col-span-2">
-                  <CardContent className="py-12 text-center text-muted-foreground">
-                    No depots assigned to this brand.
-                  </CardContent>
-                </Card>
-              ) : (
-                mockDepots.map((depot) => (
+            {depotsLoading ? (
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {Array.from({ length: 4 }).map((_, i) => (
+                  <Card key={i} className="border-border">
+                    <CardContent className="p-4 space-y-3">
+                      <Skeleton className="h-4 w-2/3" />
+                      <Skeleton className="h-3 w-1/3" />
+                      <Skeleton className="h-3 w-1/2" />
+                    </CardContent>
+                  </Card>
+                ))}
+              </div>
+            ) : depotsError ? (
+              <Card className="border-border col-span-2">
+                <CardContent className="py-12 text-center text-destructive text-sm">
+                  Failed to load depots. Please try again.
+                </CardContent>
+              </Card>
+            ) : depots.length === 0 ? (
+              <Card className="border-border col-span-2">
+                <CardContent className="py-12 text-center text-muted-foreground">
+                  No depots assigned to this brand.
+                </CardContent>
+              </Card>
+            ) : (
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {depots.map((depot) => (
                   <Card key={depot.id} className="border-border hover:shadow-md transition-all">
                     <CardContent className="p-4">
                       <div className="flex items-start justify-between">
@@ -379,14 +407,14 @@ export default function BrandDetailPage() {
                       </div>
                     </CardContent>
                   </Card>
-                ))
-              )}
-            </div>
+                ))}
+              </div>
+            )}
           </TabsContent>
 
-          {/* Activity Tab */}
+          {/* Activity Tab (mock) */}
           <TabsContent value="activity" className="mt-4">
-            <Card className="border-border ">
+            <Card className="border-border">
               <CardContent className="p-5">
                 {mockActivityLogs.length === 0 ? (
                   <div className="text-center py-12 text-muted-foreground">

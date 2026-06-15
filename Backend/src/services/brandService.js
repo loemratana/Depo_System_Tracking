@@ -21,6 +21,43 @@ class BrandService {
     });
     return brands;
   }
+  async getDepotsByBrand(brandId) {
+    try {
+      const parsedId = parseInt(brandId);
+
+      if (isNaN(parsedId)) {
+        throw  new Error(`Brand with id "${brandId}" not found.`);
+      }
+      const depots = await prisma.depot.findMany({
+        where: {
+          brandId: parsedId,
+          status: 'active',
+        },
+        include: {
+          district: { select: { name: true } },
+          province: { select: { name: true } },
+          brand: { select: { name: true } },
+        },
+        orderBy: { name: 'asc' },
+      });
+
+      logger.info(`Depot ${depots.length} depots found.`);
+
+      // Transform to frontend-friendly format
+      return depots.map(depot => ({
+        id: depot.id,
+        name: depot.name,
+        code: depot.code,
+        district: depot.district?.name ?? '',
+        province: depot.province?.name ?? '',
+      }));
+    }
+    catch (error) {
+      logger.error(error);
+      throw error;
+
+    }
+  }
 
   async getById(id) {
     const brandId = parseInt(id);

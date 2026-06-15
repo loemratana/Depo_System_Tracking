@@ -21,8 +21,16 @@ export const EmployeePage: React.FC = () => {
   const [departmentFilter, setDepartmentFilter] = useState("");
   const [pageIndex, setPageIndex] = useState(0); // 0‑based for UI
   const [pageSize, setPageSize] = useState(10);
+  const [fromDate, setFromDate] = useState(() => {
+    const today = new Date();
+    return new Date(today.getFullYear(), today.getMonth(), 1).toISOString().split('T')[0];
+  });
+  const [toDate, setToDate] = useState(() => {
+    const today = new Date();
+    return new Date(today.getFullYear(), today.getMonth() + 1, 0).toISOString().split('T')[0];
+  });
   // Fetch current page from API
-  const { employees, loading, error, total, totalPages, refetch } = useEmployees({
+  const { employees, loading, isFetching, error, total, totalPages, refetch } = useEmployees({
     page: pageIndex + 1, // convert to 1‑based for API
     limit: pageSize,
     search: searchQuery,
@@ -100,13 +108,16 @@ export const EmployeePage: React.FC = () => {
   }
 
   return (
-    <div className="flex flex-col h-full w-full bg-white dark:bg-zinc-950">
+    <div className="flex flex-col h-full w-full bg-background">
       {/* Header */}
-      <div className="sticky top-0 z-10 bg-white/80 dark:bg-zinc-950/80 backdrop-blur-md border-b border-zinc-100 dark:border-zinc-800 px-6 py-4">
+      <div className="sticky top-0 z-10 bg-background/80 backdrop-blur-md border-b border-border px-6 py-4">
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
           <div>
-            <h1 className="text-[16px] font-semibold text-zinc-900 dark:text-zinc-100 tracking-tight">
+            <h1 className="flex items-center gap-2 text-[16px] font-semibold text-zinc-900 dark:text-zinc-100 tracking-tight">
               Employee Directory
+              {isFetching && !loading && (
+                <div className="h-3.5 w-3.5 animate-spin rounded-full border-[1.5px] border-zinc-300 dark:border-zinc-700 border-t-zinc-800 dark:border-t-zinc-300" />
+              )}
             </h1>
             <p className="text-[11px] text-zinc-400 dark:text-zinc-500 mt-0.5 uppercase tracking-wider font-medium">
               Field Operations Personnel
@@ -127,6 +138,10 @@ export const EmployeePage: React.FC = () => {
             departments={departments}
             total={total}
             filtered={employees.length}
+            fromDate={fromDate}
+            toDate={toDate}
+            onFromDateChange={(val) => { setFromDate(val); setPageIndex(0); }}
+            onToDateChange={(val) => { setToDate(val); setPageIndex(0); }}
           />
         </div>
       </div>

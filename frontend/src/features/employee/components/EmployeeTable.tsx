@@ -50,6 +50,7 @@ export const EmployeeTable: React.FC<EmployeeTableProps> = ({ employees, onEdit,
                   <TableHead className="p-2">Contact</TableHead>
                   <TableHead className="p-2">Gender</TableHead>
                   <TableHead className="p-2">Salary</TableHead>
+                  <TableHead className="p-2">KPI Score</TableHead>
                   <TableHead className="p-2">Status</TableHead>
                   <TableHead className="p-2">Joined Date</TableHead>
                   <TableHead className="p-3 pe-6 w-12 text-right">Action</TableHead>
@@ -155,6 +156,27 @@ export const EmployeeTable: React.FC<EmployeeTableProps> = ({ employees, onEdit,
                         <span className="text-sm font-medium text-foreground">
                           {emp.salary ? `$${emp.salary.toLocaleString()}` : "NULL"}
                         </span>
+                      </TableCell>
+
+                      {/* KPI Score (Mock) */}
+                      <TableCell className="whitespace-nowrap p-2">
+                        {(() => {
+                          const mockKpi = 75 + ((emp.id * 17) % 25);
+                          const isHigh = mockKpi >= 90;
+                          const isMedium = mockKpi >= 80 && mockKpi < 90;
+                          return (
+                            <span
+                              className={cn(
+                                "inline-flex items-center rounded-full px-2 py-0.5 text-xs font-semibold tabular-nums",
+                                isHigh && "bg-blue-100 text-blue-700 dark:bg-blue-500/20 dark:text-blue-400",
+                                isMedium && "bg-amber-100 text-amber-700 dark:bg-amber-500/20 dark:text-amber-400",
+                                !isHigh && !isMedium && "bg-red-100 text-red-700 dark:bg-red-500/20 dark:text-red-400"
+                              )}
+                            >
+                              {mockKpi}%
+                            </span>
+                          );
+                        })()}
                       </TableCell>
 
                       {/* Status Badge */}
