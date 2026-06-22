@@ -1,9 +1,15 @@
 <mxfile host="app.diagrams.net">
   <diagram name="Page-1" id="7UVCSGgqXSfkHj33E3dt">
-    <mxGraphModel dx="1664" dy="727" grid="0" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="0" pageScale="1" pageWidth="3300" pageHeight="2339" background="none" math="0" shadow="0">
+    <mxGraphModel dx="2020" dy="1369" grid="0" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="0" pageScale="1" pageWidth="3300" pageHeight="2339" background="none" math="0" shadow="0">
       <root>
         <mxCell id="0" />
         <mxCell id="1" parent="0" />
+        <mxCell id="Rg8kv41HFo1m6vScDtBl-36" edge="1" parent="1" source="Rg8kv41HFo1m6vScDtBl-35" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;flowAnimation=1;" target="Rg8kv41HFo1m6vScDtBl-23">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="Rg8kv41HFo1m6vScDtBl-35" parent="1" style="rounded=0;whiteSpace=wrap;html=1;" value="" vertex="1">
+          <mxGeometry height="953" width="451" x="1274" y="361" as="geometry" />
+        </mxCell>
         <mxCell id="P68_ryrLO60qGplhXghF-5" parent="1" style="rounded=0;whiteSpace=wrap;html=1;" value="" vertex="1">
           <mxGeometry height="630" width="440" x="677.69" y="798" as="geometry" />
         </mxCell>
@@ -126,6 +132,21 @@
         </mxCell>
         <mxCell id="Rg8kv41HFo1m6vScDtBl-16" parent="1" style="rounded=1;whiteSpace=wrap;html=1;" value="" vertex="1">
           <mxGeometry height="60" width="148" x="1340.5" y="408" as="geometry" />
+        </mxCell>
+        <mxCell id="Rg8kv41HFo1m6vScDtBl-18" parent="1" style="text;html=1;whiteSpace=wrap;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;rounded=0;fontSize=15;fontStyle=1" value="Depopts Module" vertex="1">
+          <mxGeometry height="30" width="160" x="1337" y="423" as="geometry" />
+        </mxCell>
+        <mxCell id="Rg8kv41HFo1m6vScDtBl-19" parent="1" style="text;html=1;whiteSpace=wrap;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;rounded=0;fontSize=15;fontStyle=1" value="Depopts Module" vertex="1">
+          <mxGeometry height="30" width="160" x="1346" y="542" as="geometry" />
+        </mxCell>
+        <mxCell id="Rg8kv41HFo1m6vScDtBl-20" parent="1" style="text;html=1;whiteSpace=wrap;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;rounded=0;fontSize=15;fontStyle=1" value="Depopts Module" vertex="1">
+          <mxGeometry height="30" width="160" x="1346" y="1094" as="geometry" />
+        </mxCell>
+        <mxCell id="Rg8kv41HFo1m6vScDtBl-21" parent="1" style="text;html=1;whiteSpace=wrap;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;rounded=0;fontSize=15;fontStyle=1" value="Depopts Module" vertex="1">
+          <mxGeometry height="30" width="160" x="1343" y="1203" as="geometry" />
+        </mxCell>
+        <mxCell id="Rg8kv41HFo1m6vScDtBl-23" parent="1" style="image;aspect=fixed;html=1;points=[];align=center;fontSize=12;image=img/lib/azure2/databases/Azure_Database_PostgreSQL_Server_Group.svg;labelBackgroundColor=#f0a30a;fontColor=#000000;labelBorderColor=#BD7000;" value="" vertex="1">
+          <mxGeometry height="129.2" width="114" x="2062" y="772.9" as="geometry" />
         </mxCell>
       </root>
     </mxGraphModel>
