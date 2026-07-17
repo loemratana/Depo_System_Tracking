@@ -1,6 +1,5 @@
 
-import { productAnalyticsService } from "../services/productAnalyticsService.js";
-
+import productAnalyticsService from "../services/ProductAnalyticsService.js";
 export const productAnalyticsController = {
     async getPerformance(req, res, next) {
         try {
