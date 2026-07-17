@@ -27,7 +27,7 @@ export function EmptyState({
         className
       )}
     >
-      <div className="flex h-10 w-10 items-center justify-center rounded-lg border border-border bg-card shadow-sm shrink-0 mb-4">
+      <div className="flex h-10 w-10 items-center justify-center rounded-lg border border-border bg-card  shrink-0 mb-4">
         <Icon className="h-5 w-5 text-muted-foreground/60" />
       </div>
 

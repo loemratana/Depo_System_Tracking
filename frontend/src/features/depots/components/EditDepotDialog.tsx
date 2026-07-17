@@ -2,7 +2,7 @@
 "use client";
 
 import React, { useState, useEffect, useMemo } from "react";
-import { X, Loader2 } from "lucide-react";
+import { X, Loader2, CalendarDays, User, MapPin, Building2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -45,6 +45,8 @@ export const EditDepotDialog: React.FC<EditDepotDialogProps> = ({
     districtName: "",
     employeeName: "",
     phone: "",
+    dateOfbirth:"",
+    sex:undefined,
     address: "",
     homeNumber: "",
     street: "",
@@ -53,6 +55,7 @@ export const EditDepotDialog: React.FC<EditDepotDialogProps> = ({
     expiryDate: "",
     brandName: "",
     brandId: null as number | null,
+    note: "",
   });
 
   // Pre-fill form when depot changes
@@ -74,6 +77,7 @@ export const EditDepotDialog: React.FC<EditDepotDialogProps> = ({
         expiryDate: depot.expiryDate?.split("T")[0] || "",
         brandName: depot.brandName || "", // single brand name
         brandId: depot.brandId ?? null,
+        note: depot.note || "",
       });
     }
   }, [depot]);
@@ -141,15 +145,22 @@ export const EditDepotDialog: React.FC<EditDepotDialogProps> = ({
 
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
-      <DialogContent className="sm:max-w-[650px] max-h-[90vh] overflow-y-auto">
-        <DialogHeader>
-          <DialogTitle>Edit Depot</DialogTitle>
-          <DialogDescription className="text-xs text-muted-foreground">
-            Update depot information below.
-          </DialogDescription>
-        </DialogHeader>
-        <form onSubmit={handleSubmit} className="space-y-5 mt-2">
-          {/* Row 1: Depot Code + Depot Name */}
+    <DialogContent className="sm:max-w-[650px] max-h-[90vh] overflow-y-auto">
+      <DialogHeader>
+        <DialogTitle>Edit Depot</DialogTitle>
+        <DialogDescription className="text-xs text-muted-foreground">
+          Update depot information below.
+        </DialogDescription>
+      </DialogHeader>
+  
+      <form onSubmit={handleSubmit} className="space-y-6 mt-2">
+        {/* ===== SECTION 1: Depot Information ===== */}
+        <div className="space-y-4">
+          <div className="flex items-center gap-2 border-b border-border pb-2">
+            <Building2 className="h-4 w-4 text-muted-foreground" />
+            <h3 className="text-sm font-semibold text-foreground">Depot Information</h3>
+          </div>
+  
           <div className="grid grid-cols-2 gap-4">
             <div className="space-y-1.5">
               <Label htmlFor="code" className="text-xs font-medium">
@@ -176,6 +187,7 @@ export const EditDepotDialog: React.FC<EditDepotDialogProps> = ({
               />
             </div>
           </div>
+  
           <div className="grid grid-cols-2 gap-4">
             <div className="space-y-1.5">
               <Label htmlFor="khmerName" className="text-xs font-medium">
@@ -191,13 +203,12 @@ export const EditDepotDialog: React.FC<EditDepotDialogProps> = ({
             </div>
             <div className="space-y-1.5">
               <Label htmlFor="brandName" className="text-xs font-medium">
-                Brand (optional)
+                Brand
               </Label>
               <AutocompleteInput
                 id="brandName"
                 value={formData.brandName || ""}
                 onChange={(val) => {
-                  // Resolve the selected name back to its brand ID
                   const matched = allBrands.find(
                     (b: any) => b.name.toLowerCase() === val.toLowerCase()
                   );
@@ -208,24 +219,32 @@ export const EditDepotDialog: React.FC<EditDepotDialogProps> = ({
                   });
                 }}
                 placeholder="e.g. Coca-Cola"
-                options={brandNameOptions} //array of strings
+                options={brandNameOptions}
               />
             </div>
-            {/* <div className="space-y-1.5">
-              <Label htmlFor="name" className="text-xs font-medium">
-                Depot Name <span className="text-red-500">*</span>
+            <div className="space-y-1.5 col-span-2">
+              <Label htmlFor="note" className="text-xs font-medium">
+                Brand Asset Notes
               </Label>
-              <Input
-                id="name"
-                value={formData.name}
-                onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                placeholder="e.g. Central Hub"
-                className="h-9 text-sm"
+              <textarea
+                id="note"
+                value={formData.note || ""}
+                onChange={(e) => setFormData({ ...formData, note: e.target.value })}
+                placeholder="e.g. 12 coolers, 45 display racks, POS material low"
+                rows={3}
+                className="flex min-h-[80px] w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
               />
-            </div> */}
+            </div>
           </div>
-
-          {/* Row 2: Province + District */}
+        </div>
+  
+        {/* ===== SECTION 2: Address Details ===== */}
+        <div className="space-y-4">
+          <div className="flex items-center gap-2 border-b border-border pb-2">
+            <MapPin className="h-4 w-4 text-muted-foreground" />
+            <h3 className="text-sm font-semibold text-foreground">Address Details</h3>
+          </div>
+  
           <div className="grid grid-cols-2 gap-4">
             <div className="space-y-1.5">
               <Label htmlFor="provinceName" className="text-xs font-medium">
@@ -252,8 +271,7 @@ export const EditDepotDialog: React.FC<EditDepotDialogProps> = ({
               />
             </div>
           </div>
-
-          {/* Row 3: Home Number + Street */}
+  
           <div className="grid grid-cols-2 gap-4">
             <div className="space-y-1.5">
               <Label htmlFor="homeNumber" className="text-xs font-medium">
@@ -280,8 +298,7 @@ export const EditDepotDialog: React.FC<EditDepotDialogProps> = ({
               />
             </div>
           </div>
-
-          {/* Row 4: Village + Commune */}
+  
           <div className="grid grid-cols-2 gap-4">
             <div className="space-y-1.5">
               <Label htmlFor="village" className="text-xs font-medium">
@@ -308,8 +325,28 @@ export const EditDepotDialog: React.FC<EditDepotDialogProps> = ({
               />
             </div>
           </div>
-
-          {/* Row 5: Owner Name + Phone */}
+  
+          <div className="space-y-1.5">
+            <Label htmlFor="address" className="text-xs font-medium">
+              Full Address (Optional)
+            </Label>
+            <Input
+              id="address"
+              value={formData.address || ""}
+              onChange={(e) => setFormData({ ...formData, address: e.target.value })}
+              placeholder="Additional address details"
+              className="h-9 text-sm"
+            />
+          </div>
+        </div>
+  
+        {/* ===== SECTION 3: Employee & Contact ===== */}
+        <div className="space-y-4">
+          <div className="flex items-center gap-2 border-b border-border pb-2">
+            <User className="h-4 w-4 text-muted-foreground" />
+            <h3 className="text-sm font-semibold text-foreground">Employee & Contact</h3>
+          </div>
+  
           <div className="grid grid-cols-2 gap-4">
             <div className="space-y-1.5">
               <Label htmlFor="employeeName" className="text-xs font-medium">
@@ -336,8 +373,15 @@ export const EditDepotDialog: React.FC<EditDepotDialogProps> = ({
               />
             </div>
           </div>
-
-          {/* Row 6: Expiry Date + Full Address (optional) */}
+        </div>
+  
+        {/* ===== SECTION 4: Additional Info ===== */}
+        <div className="space-y-4">
+          <div className="flex items-center gap-2 border-b border-border pb-2">
+            <CalendarDays className="h-4 w-4 text-muted-foreground" />
+            <h3 className="text-sm font-semibold text-foreground">Additional Info</h3>
+          </div>
+  
           <div className="grid grid-cols-2 gap-4">
             <div className="space-y-1.5">
               <Label htmlFor="expiryDate" className="text-xs font-medium">
@@ -351,36 +395,25 @@ export const EditDepotDialog: React.FC<EditDepotDialogProps> = ({
                 className="h-9 text-sm"
               />
             </div>
-            <div className="space-y-1.5">
-              <Label htmlFor="address" className="text-xs font-medium">
-                Full Address (Optional)
-              </Label>
-              <Input
-                id="address"
-                value={formData.address || ""}
-                onChange={(e) => setFormData({ ...formData, address: e.target.value })}
-                placeholder="Additional address details"
-                className="h-9 text-sm"
-              />
-            </div>
           </div>
-
-          {/* Action Buttons */}
-          <div className="flex justify-end gap-3 pt-2">
-            <Button type="button" variant="outline" onClick={onClose} className="h-9 text-sm">
-              Cancel
-            </Button>
-            <Button
-              type="submit"
-              disabled={isUpdating}
-              className="h-9 text-sm bg-blue-600 hover:bg-blue-700"
-            >
-              {isUpdating && <Loader2 className="mr-2 h-3.5 w-3.5 animate-spin" />}
-              Save Changes
-            </Button>
-          </div>
-        </form>
-      </DialogContent>
-    </Dialog>
+        </div>
+  
+        {/* Action Buttons */}
+        <div className="flex justify-end gap-3 pt-2 border-t border-border">
+          <Button type="button" variant="outline" onClick={onClose} className="h-9 text-sm">
+            Cancel
+          </Button>
+          <Button
+            type="submit"
+            disabled={isUpdating}
+            className="h-9 text-sm bg-blue-600 hover:bg-blue-700"
+          >
+            {isUpdating && <Loader2 className="mr-2 h-3.5 w-3.5 animate-spin" />}
+            Save Changes
+          </Button>
+        </div>
+      </form>
+    </DialogContent>
+  </Dialog>
   );
 };

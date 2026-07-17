@@ -12,13 +12,13 @@ import {
   userIdValidator,
   paginationValidator,
 } from "../validators/authValidator.js";
-import aj from "../lib/arcjet.js";
+import { arcjetMiddleware } from "../middleware/arcjet.js";
 import { validateEmail, detectBot, slidingWindow } from "@arcjet/node";
 const router = express.Router();
 
 // Public routes
-router.post('/register', registerValidator, authController.register);
-router.post('/login', loginValidator, authController.login);
+router.post('/register', arcjetMiddleware, registerValidator, authController.register);
+router.post('/login', arcjetMiddleware, loginValidator, authController.login);
 router.post('/refresh', refreshTokenValidator, authController.refreshToken);
 
 // router.post('/forgot-password', forgotPasswordValidator, authController.forgotPassword);

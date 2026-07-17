@@ -218,7 +218,7 @@ export const DistrictDrawerForm: React.FC<DistrictDrawerFormProps> = ({
             </Button>
             <Button 
               type="submit" 
-              className="h-10 px-6 min-w-[120px]" 
+              className="h-10 px-6 min-w-[120px] bg-blue-600" 
               disabled={isSubmitting || !formData.provinceId}
             >
               {isSubmitting ? 'Saving...' : editingDistrict ? 'Save Changes' : 'Create District'}
@@ -230,4 +230,4 @@ export const DistrictDrawerForm: React.FC<DistrictDrawerFormProps> = ({
   );
 };
 
-
+

@@ -13,29 +13,35 @@ export const useEmployeeDetail = (id?: string) => {
     queryFn: async () => {
       if (!id) throw new Error("Employee ID is required");
 
-      // Fetch employee basic info
       const employeeRes = await axiosClient.get(`/employees/${id}`);
       const employee = employeeRes.data.data ?? employeeRes.data;
 
-      // Fetch depots handled by this employee
       const depotsRes = await axiosClient.get(`/employees/${id}/employeeDepotDetails`);
       const rawDepots = depotsRes.data.data ?? depotsRes.data ?? [];
 
-      // Map raw depot data to HandledDepot interface
-      // Inside useEmployeeDetail.ts
-      const handledDepots = rawDepots
-        .filter((d: any) => d.depot_id != null) // 🔥 keep only valid IDs
+      const handledDepots: HandledDepot[] = (Array.isArray(rawDepots) ? rawDepots : [])
+        .filter((d: any) => d?.id != null)
         .map((d: any) => ({
-          id: d.depot_id,
-          name: d.depot_name ?? null,
-          code: d.depot_code ?? null,
-          province: d.depot_address ?? null,
-          assignmentStatus: d.assignment_status === "active" ? "assigned" : "completed",
-          visitFrequency: d.assignment_type ?? null,
-          lastVisit: d.start_date ? new Date(d.start_date).toLocaleDateString() : null,
-          coverageStatus: "full",
-          productsManaged: 0,
-          activeTasks: 0,
+          id: Number(d.id),
+          name: d.name ?? "—",
+          code: d.code ?? null,
+          khmerName: d.khmerName ?? null,
+          address: d.address ?? null,
+          phone: d.phone ?? null,
+          status: d.status ?? "active",
+          province: d.province ?? null,
+          district: d.district ?? null,
+          brandName: d.brandName ?? null,
+          brandCode: d.brandCode ?? null,
+          assignmentStatus: d.assignmentStatus ?? "assigned",
+          coverageStatus: d.coverageStatus ?? "full",
+          visitFrequency: d.visitFrequency ?? "—",
+          lastVisit: d.lastVisit ?? "—",
+          productsManaged: Number(d.productsManaged ?? 0),
+          staffCount: Number(d.staffCount ?? 0),
+          activeTasks: Number(d.activeTasks ?? 0),
+          assignedAt: d.assignedAt ?? null,
+          expiryDate: d.expiryDate ?? null,
         }));
 
       return { employee, handledDepots };

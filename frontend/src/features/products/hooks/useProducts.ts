@@ -6,7 +6,6 @@ import type {
   ProductQueryParams,
   CreateProductInput,
   UpdateStockInput,
-  UpdatePriceInput,
   UpdateMinStockInput,
 } from "../types/product.types";
 
@@ -124,26 +123,7 @@ export const useUpdateStock = () => {
 };
 
 // ─────────────────────────────────────────────────────
-// 7. UPDATE PRICE
-// PATCH /api/products/{id}/price
-// ─────────────────────────────────────────────────────
-export const useUpdatePrice = () => {
-  const queryClient = useQueryClient();
-
-  return useMutation({
-    mutationFn: (input: UpdatePriceInput) => productService.updatePrice(input),
-    onSuccess: (product) => {
-      queryClient.invalidateQueries({ queryKey: productKeys.lists() });
-      queryClient.invalidateQueries({ queryKey: productKeys.detail(product.id) });
-      toast.success(`Price updated — ${product.name}: $${product.price.toFixed(2)}`);
-    },
-    onError: (err: any) =>
-      toast.error(err?.response?.data?.message || "Failed to update price"),
-  });
-};
-
-// ─────────────────────────────────────────────────────
-// 8. UPDATE MIN STOCK THRESHOLD
+// 7. UPDATE MIN STOCK THRESHOLD
 // PATCH /api/products/{id}/min-stock
 // ─────────────────────────────────────────────────────
 export const useUpdateMinStock = () => {
@@ -184,9 +164,14 @@ export const useRecordSale = () => {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: productService.recordSale,
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["products"] });
-      // queryClient.invalidateQueries({ queryKey: ["low-stock-products"] });
+    onSuccess: (_data, variables) => {
+      queryClient.invalidateQueries({ queryKey: productKeys.all });
+      // A sale changes KPI actuals and analytics, refresh those too
+      queryClient.invalidateQueries({ queryKey: ["kpi-system"] });
+      queryClient.invalidateQueries({ queryKey: ["analytics"] });
+      toast.success(`Sale recorded — ${variables.quantitySold} units`);
     },
+    onError: (err: any) =>
+      toast.error(err?.response?.data?.message || "Failed to record sale"),
   });
 };

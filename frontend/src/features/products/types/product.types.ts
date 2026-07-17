@@ -27,7 +27,6 @@ export interface Product {
   id: number;
   name: string;
   sku: string;
-  price: number;
   quantity: number;
   minStock: number;
   status: ProductStatus;
@@ -55,7 +54,6 @@ export interface ProductPerformance {
     id: number;
     name: string;
     sku: string;
-    price: number;
     minStock: number;
     currentStock: number;
   };
@@ -132,7 +130,6 @@ export interface ProductQueryParams {
 export interface CreateProductInput {
   name: string;
   sku?: string;
-  price: number;
   quantity?: number;
   minStock?: number;
   depotId: number;
@@ -143,13 +140,9 @@ export interface CreateProductInput {
 export interface UpdateStockInput {
   id: number;
   quantity: number;
-  reason?: "manual" | "sale" | "return" | "adjustment";
+  // Must match the backend validator: sale | restock | damage | adjustment | manual
+  reason?: "manual" | "sale" | "restock" | "damage" | "adjustment";
   employeeId?: number;
-}
-
-export interface UpdatePriceInput {
-  id: number;
-  price: number;
 }
 
 export interface UpdateMinStockInput {
@@ -160,9 +153,10 @@ export interface UpdateMinStockInput {
 
 export interface RecordSaleInput {
   productId: number;
-  employeeId: number;
+  employeeId?: number; // omitted → backend assigns the depot owner
   quantitySold: number;
   saleDate?: string; // ISO date string
+  revenue?: number; // total sale amount for KPI revenue tracking
 }
 
 export interface RecordSaleResponse {

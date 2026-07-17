@@ -50,13 +50,17 @@ interface ProductTableProps {
 }
 
 const STATUS_MAP: Record<
-  ProductStatus,
+  string,
   { label: string; tone: "success" | "destructive" | "neutral" | "warning" }
 > = {
   ok: { label: "In Stock", tone: "success" },
+  OK: { label: "In Stock", tone: "success" },
   low: { label: "Low Stock", tone: "warning" },
+  LOW: { label: "Low Stock", tone: "warning" },
   out_of_stock: { label: "Out of Stock", tone: "destructive" },
+  OUT_OF_STOCK: { label: "Out of Stock", tone: "destructive" },
   discontinued: { label: "Discontinued", tone: "neutral" },
+  DISCONTINUED: { label: "Discontinued", tone: "neutral" },
 }
 
 export const ProductTable: React.FC<ProductTableProps> = ({
@@ -110,8 +114,8 @@ export const ProductTable: React.FC<ProductTableProps> = ({
       },
       cell: ({ row }) => (
         <div className="flex items-center gap-3">
-          <div className="h-9 w-9 rounded-md bg-muted flex items-center justify-center shrink-0 border border-border/50">
-            <Package className="h-4 w-4 text-muted-foreground" />
+          <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-blue-600 shadow-sm">
+            <Package className="h-4 w-4 text-white" />
           </div>
           <div className="flex flex-col">
             <span className="font-medium text-foreground">{row.original.name}</span>
@@ -141,18 +145,6 @@ export const ProductTable: React.FC<ProductTableProps> = ({
           <span className="font-medium">{row.original.depot?.name ?? "—"}</span>
         </div>
       ),
-    },
-    {
-      accessorKey: "price",
-      header: () => <div className="text-right">Price</div>,
-      cell: ({ row }) => {
-        const amount = parseFloat(row.getValue("price") || "0")
-        const formatted = new Intl.NumberFormat("en-US", {
-          style: "currency",
-          currency: "USD",
-        }).format(amount)
-        return <div className="text-right font-medium">{formatted}</div>
-      },
     },
     {
       accessorKey: "quantity",
@@ -242,11 +234,11 @@ export const ProductTable: React.FC<ProductTableProps> = ({
 
   return (
     <div className="w-full">
-      <div className="flex items-center justify-end py-4 gap-2">
+      <div className="mb-3 flex items-center justify-end">
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
-            <Button variant="outline" className="ml-auto">
-              Columns <ChevronDown className="ml-2 h-4 w-4" />
+            <Button variant="outline" size="sm" className="h-8 text-xs">
+              Columns <ChevronDown className="ml-1.5 h-3.5 w-3.5" />
             </Button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end">
@@ -270,14 +262,14 @@ export const ProductTable: React.FC<ProductTableProps> = ({
           </DropdownMenuContent>
         </DropdownMenu>
       </div>
-      <div className="rounded-md border bg-card">
+      <div className="overflow-hidden rounded-xl border border-border/70 bg-card">
         <Table>
-          <TableHeader>
+          <TableHeader className="bg-muted/40">
             {table.getHeaderGroups().map((headerGroup) => (
-              <TableRow key={headerGroup.id}>
+              <TableRow key={headerGroup.id} className="hover:bg-transparent border-b border-border/60">
                 {headerGroup.headers.map((header) => {
                   return (
-                    <TableHead key={header.id}>
+                    <TableHead key={header.id} className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
                       {header.isPlaceholder
                         ? null
                         : flexRender(
@@ -296,6 +288,7 @@ export const ProductTable: React.FC<ProductTableProps> = ({
                 <TableRow
                   key={row.id}
                   data-state={row.getIsSelected() && "selected"}
+                  className="border-b border-border/40 last:border-0"
                 >
                   {row.getVisibleCells().map((cell) => (
                     <TableCell key={cell.id} className="py-3">
@@ -320,12 +313,12 @@ export const ProductTable: React.FC<ProductTableProps> = ({
           </TableBody>
         </Table>
       </div>
-      <div className="flex items-center justify-between space-x-2 py-4">
-        <div className="flex-1 text-sm text-muted-foreground">
+      {table.getFilteredSelectedRowModel().rows.length > 0 && (
+        <div className="py-2 text-xs text-muted-foreground">
           {table.getFilteredSelectedRowModel().rows.length} of{" "}
           {table.getFilteredRowModel().rows.length} row(s) selected.
         </div>
-      </div>
+      )}
     </div>
   )
 }

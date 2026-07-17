@@ -1,8 +1,26 @@
-// services/product.service.js
-import { prisma } from "../config/db.js";
+import {prisma} from "../config/db.js";
 import logger from "../config/logger.js";
-import { startOfMonth } from "date-fns";
-import { PrismaClient, ProductStatus } from "@prisma/client";
+import {utcMonthStart} from "../helpers/date.helper.js";
+import {ProductStatus} from "@prisma/client";
+
+function normalizeProductStatus(status) {
+    if (!status) return null;
+    const map = {
+        ok: ProductStatus.OK,
+        OK: ProductStatus.OK,
+        low: ProductStatus.LOW,
+        LOW: ProductStatus.LOW,
+        out_of_stock: ProductStatus.OUT_OF_STOCK,
+        OUT_OF_STOCK: ProductStatus.OUT_OF_STOCK,
+    };
+    return map[status] ?? status;
+}
+
+function resolveProductStatus(quantity, minStock) {
+    if (Number(quantity) === 0) return ProductStatus.OUT_OF_STOCK;
+    if (Number(quantity) < Number(minStock)) return ProductStatus.LOW;
+    return ProductStatus.OK;
+}
 
 class ProductService {
     /**
@@ -10,41 +28,34 @@ class ProductService {
      */
     async create(data) {
         try {
-            if (!data) {
-                throw new Error("Request body is missing or empty");
-            }
+            if (!data) throw new Error("Request body is missing or empty");
 
             const {
                 name,
                 sku,
-                price,
                 quantity = 0,
                 minStock = 0,
                 depotId,
-                brandId,
-                description
+                description,
             } = data;
 
             // ========================
-            // VALIDATION (CLEAN)
+            // VALIDATION
             // ========================
             if (!name?.trim()) throw new Error("Product name is required");
-            if (price === undefined || price === null) {
-                throw new Error("Product price is required");
-            }
             if (!depotId) throw new Error("depotId is required");
-            if (!brandId) throw new Error("brandId is required");
 
             // ========================
-            // CHECK FOREIGN KEYS
+            // FETCH DEPOT (to get brandId)
             // ========================
-            const [brand, depot] = await Promise.all([
-                prisma.brand.findUnique({ where: { id: brandId } }),
-                prisma.depot.findUnique({ where: { id: depotId } })
-            ]);
-
-            if (!brand) throw new Error(`Brand not found (id: ${brandId})`);
+            const depot = await prisma.depot.findUnique({
+                where: { id: depotId },
+                select: { id: true, brandId: true },
+            });
             if (!depot) throw new Error(`Depot not found (id: ${depotId})`);
+            if (!depot.brandId) {
+                throw new Error(`Depot ${depotId} has no associated brand`);
+            }
 
             // ========================
             // SKU GENERATION
@@ -54,50 +65,47 @@ class ProductService {
             // ========================
             // STATUS LOGIC
             // ========================
-            const status =
-                quantity > minStock
-                    ? ProductStatus.OK
-                    : ProductStatus.LOW;
+            const status = resolveProductStatus(quantity, minStock);
 
             // ========================
-            // CREATE PRODUCT
+            // CREATE PRODUCT – using connect for both relations
             // ========================
             const product = await prisma.product.create({
                 data: {
                     name: name.trim(),
                     sku: finalSku,
-                    price: Number(price),
                     quantity: Number(quantity),
                     minStock: Number(minStock),
                     status,
-                    depotId,
-                    brandId,
+                    // Instead of setting depotId and brandId scalars, we connect via relations
+                    depot: { connect: { id: depot.id } },
+                    brand: { connect: { id: depot.brandId } },
+                    // If description exists, uncomment:
+                    // description: description?.trim() || null,
                 },
                 include: {
                     depot: {
-                        select: { id: true, name: true, code: true }
+                        select: { id: true, name: true, code: true, brandId: true },
                     },
                     brand: {
-                        select: { id: true, name: true, code: true }
-                    }
-                }
+                        select: { id: true, name: true, code: true },
+                    },
+                },
             });
 
-            // ========================
-            // LOGGING (SAFE)
-            // ========================
             logger.info({
                 message: "Product created",
                 productId: product.id,
                 name: product.name,
-                sku: product.sku
+                sku: product.sku,
+                depotId: product.depotId,
+                brandId: product.brandId,
             });
 
             return product;
 
         } catch (error) {
             logger.error("Product creation error:", error);
-
             throw new Error(
                 error instanceof Error
                     ? error.message
@@ -131,8 +139,8 @@ class ProductService {
         // ======================
         if (search) {
             where.OR = [
-                { name: { contains: search, mode: "insensitive" } },
-                { sku: { contains: search, mode: "insensitive" } }
+                {name: {contains: search, mode: "insensitive"}},
+                {sku: {contains: search, mode: "insensitive"}}
             ];
         }
 
@@ -141,12 +149,11 @@ class ProductService {
         // ======================
         if (depotId) where.depotId = Number(depotId);
         if (brandId) where.brandId = Number(brandId);
-        if (status) where.status = status;
+        if (status) where.status = normalizeProductStatus(status);
 
         // Filter products that are at or below minimum stock level
-        // Uses the `status` field which is kept in sync by create/updateStock/updateMinStock
         if (minStockAlert) {
-            where.status = { in: ['low', 'out_of_stock'] };
+            where.status = {in: [ProductStatus.LOW, ProductStatus.OUT_OF_STOCK]};
         }
 
         // ======================
@@ -157,14 +164,14 @@ class ProductService {
                 where,
                 skip,
                 take: Number(limit),
-                orderBy: { [sortBy]: sortOrder },
+                orderBy: {[sortBy]: sortOrder},
                 include: {
-                    depot: { select: { id: true, name: true, code: true } },
-                    brand: { select: { id: true, name: true, code: true } }
+                    depot: {select: {id: true, name: true, code: true}},
+                    brand: {select: {id: true, name: true, code: true}}
                 }
             }),
 
-            prisma.product.count({ where }) // FIXED missing total
+            prisma.product.count({where}) // FIXED missing total
         ]);
 
         return {
@@ -186,12 +193,7 @@ class ProductService {
             where: { id: parseInt(id) },
             include: {
                 depot: { include: { district: true, province: true } },
-                brand: true,
-                // productPerformances: {        //now it works
-                //     orderBy: { month: "desc" },
-                //     take: 12,
-                //     include: { employee: { select: { id: true, name: true } } }
-                // }
+                brand: true
             }
         });
         if (!product) throw new Error("Product not found");
@@ -208,23 +210,15 @@ class ProductService {
             throw new Error(`Stock cannot be negative. Current: ${product.quantity}`);
         }
 
-        // Determine correct status based on quantity and minStock
-        let status;
-        if (quantity === 0) {
-            status = 'OUT_OF_STOCK';
-        } else if (quantity < product.minStock) {
-            status = 'LOW';
-        } else {
-            status = 'OK';
-        }
+        const status = resolveProductStatus(quantity, product.minStock);
 
         const updated = await prisma.product.update({
-            where: { id: parseInt(id) },
+            where: {id: parseInt(id)},
             data: {
                 quantity: quantity,
-                status: status   // uppercase values: 'OK', 'LOW', 'OUT_OF_STOCK'
+                status,
             },
-            include: { depot: true, brand: true }
+            include: {depot: true, brand: true}
         });
 
         logger.info(`Stock updated for product ${id}: ${product.quantity} → ${quantity} (${reason})`);
@@ -244,31 +238,16 @@ class ProductService {
     }
 
     /**
-     * 5.UPDATE PRICE
-     */
-    async updatePrice(id, price) {
-        const product = await this.findById(id);
-
-        const updated = await prisma.product.update({
-            where: { id: parseInt(id) },
-            data: { price: price }
-        });
-
-        logger.info(`Price updated for product ${id}: ${product.price} → ${price}`);
-        return updated;
-    }
-
-    /**
      * 6.UPDATE MIN STOCK LEVEL
      */
     async updateMinStock(id, minStock) {
         const product = await this.findById(id);
 
         const updated = await prisma.product.update({
-            where: { id: parseInt(id) },
+            where: {id: parseInt(id)},
             data: {
                 minStock: minStock,
-                status: product.quantity >= minStock ? 'ok' : 'low'
+                status: resolveProductStatus(product.quantity, minStock),
             }
         });
 
@@ -290,41 +269,42 @@ class ProductService {
      *   status = 'low'        → quantity < minStock  (but stock > 0)
      *   status = 'out_of_stock' → quantity = 0
      */
-    async getLowStockProducts(req, res, next) {
-        try {
-            const { depotId } = req.query;
-            const where = {
-                quantity: { lt: prisma.product.fields.minStock }
-            };
-            if (depotId) {
-                where.depotId = parseInt(depotId);
-            }
 
-            const products = await prisma.product.findMany({
-                where,
-                include: {
-                    depot: { select: { id: true, name: true, code: true } },
-                    brand: { select: { id: true, name: true } }
-                },
-                orderBy: { quantity: "asc" }
-            });
+    // productsServices.js – inside ProductService class
 
-            const result = products.map(p => ({
-                id: p.id,
-                name: p.name,
-                sku: p.sku,
-                quantity: p.quantity,
-                minStock: p.minStock,
-                deficit: Math.max(0, p.minStock - p.quantity),
-                status: p.status,
-                depot: p.depot,
-                brand: p.brand
-            }));
-
-            res.json({ success: true, count: result.length, data: result });
-        } catch (error) {
-            next(error);
+    /**
+     * Get products with low stock (quantity < minStock)
+     * @param {number|null} depotId - optional depot filter
+     * @returns {Promise<Array>} list of low stock products with deficit info
+     */
+    async getLowStockProducts(depotId = null) {
+        const where = {
+            status: {in: [ProductStatus.LOW, ProductStatus.OUT_OF_STOCK]},
+        };
+        if (depotId) {
+            where.depotId = Number(depotId);
         }
+
+        const products = await prisma.product.findMany({
+            where,
+            include: {
+                depot: {select: {id: true, name: true, code: true}},
+                brand: {select: {id: true, name: true}}
+            },
+            orderBy: {quantity: 'asc'}
+        });
+
+        return products.map(p => ({
+            id: p.id,
+            name: p.name,
+            sku: p.sku,
+            quantity: p.quantity,
+            minStock: p.minStock,
+            deficit: Math.max(0, p.minStock - p.quantity),
+            status: p.status,
+            depot: p.depot,
+            brand: p.brand
+        }));
     }
 
     /**
@@ -333,46 +313,59 @@ class ProductService {
      * @param {number} employeeId
      * @param {number} quantitySold
      * @param {Date} [saleDate] - defaults to now
+     * @param {number} [revenue] - total sale amount (products no longer carry a price)
      * @returns {Promise<Object>} updated product, performance record, KPI update
      */
-    async recordSale(productId, employeeId, quantitySold, saleDate = new Date()) {
+    async recordSale(productId, employeeId = null, quantitySold, saleDate = new Date(), revenue = 0) {
         const product = await this.findById(productId);
         if (product.quantity < quantitySold) {
             throw new Error(`Insufficient stock. Available: ${product.quantity}, requested: ${quantitySold}`);
         }
 
-        const monthStart = new Date(saleDate.getFullYear(), saleDate.getMonth(), 1);
-        const revenue = quantitySold * product.price;
+        // 🔍 If employeeId is not provided, get the depot manager
+        let targetEmployeeId = employeeId;
+        if (!targetEmployeeId) {
+            const depot = await prisma.depot.findUnique({
+                where: {id: product.depotId},
+                select: {employeeId: true}
+            });
+            if (depot?.employeeId) {
+                targetEmployeeId = depot.employeeId;
+            } else {
+                throw new Error(`No employee assigned to depot ${product.depotId}. Cannot record sale.`);
+            }
+        }
+
+        const monthStart = utcMonthStart(saleDate);
+        revenue = Number(revenue) || 0;
 
         return await prisma.$transaction(async (tx) => {
             // 1. Update product stock
             const newQuantity = product.quantity - quantitySold;
-            let status = 'OK';
-            if (newQuantity === 0) status = 'OUT_OF_STOCK';
-            else if (newQuantity < product.minStock) status = 'LOW';
+            const status = resolveProductStatus(newQuantity, product.minStock);
 
             const updatedProduct = await tx.product.update({
-                where: { id: productId },
-                data: { quantity: newQuantity, status }
+                where: {id: productId},
+                data: {quantity: newQuantity, status}
             });
 
-            // 2. Update ProductPerformance (find or create)
+            // 2. ProductPerformance – use the targetEmployeeId and the product’s depot month
             const existingPerf = await tx.productPerformance.findFirst({
-                where: { productId, employeeId, month: monthStart }
+                where: {productId, employeeId: targetEmployeeId, month: monthStart}
             });
             if (existingPerf) {
                 await tx.productPerformance.update({
-                    where: { id: existingPerf.id },
+                    where: {id: existingPerf.id},
                     data: {
-                        quantitySold: { increment: quantitySold },
-                        revenue: { increment: revenue }
+                        quantitySold: {increment: quantitySold},
+                        revenue: {increment: revenue}
                     }
                 });
             } else {
                 await tx.productPerformance.create({
                     data: {
                         productId,
-                        employeeId,
+                        employeeId: targetEmployeeId,
                         month: monthStart,
                         quantitySold,
                         revenue
@@ -380,31 +373,29 @@ class ProductService {
                 });
             }
 
-            // 3. Update EmployeeKPI (already has unique constraint, so upsert works)
-            const depot = await tx.depot.findFirst({ where: { employeeId } });
-            if (depot) {
-                await tx.employeeKPI.upsert({
-                    where: {
-                        employeeId_depotId_month: {
-                            employeeId,
-                            depotId: depot.id,
-                            month: monthStart
-                        }
-                    },
-                    update: {
-                        actualValue: { increment: quantitySold },
-                        performance: { increment: revenue }
-                    },
-                    create: {
-                        employeeId,
-                        depotId: depot.id,
-                        month: monthStart,
-                        targetValue: 0,
-                        actualValue: quantitySold,
-                        performance: revenue
+            // 3. EmployeeKPI – always use the product’s depot (not the first depot of the employee)
+            const kpiDepotId = product.depotId;
+            await tx.employeeKPI.upsert({
+                where: {
+                    employeeId_depotId_month: {
+                        employeeId: targetEmployeeId,
+                        depotId: kpiDepotId,
+                        month: monthStart
                     }
-                });
-            }
+                },
+                update: {
+                    actualValue: {increment: quantitySold},
+                    performance: {increment: revenue}
+                },
+                create: {
+                    employeeId: targetEmployeeId,
+                    depotId: kpiDepotId,
+                    month: monthStart,
+                    targetValue: 0,
+                    actualValue: quantitySold,
+                    performance: revenue
+                }
+            });
 
             return updatedProduct;
         });
@@ -415,8 +406,7 @@ class ProductService {
      */
     async getProductPerformance(id, year, month) {
         const product = await this.findById(id);
-        const monthStart = new Date(year, month - 1, 1);
-        const monthEnd = new Date(year, month, 0);
+        const monthStart = utcMonthStart(new Date(year, month - 1, 1));
 
         // Get monthly sales from ProductPerformance
         const performances = await prisma.productPerformance.findMany({
@@ -426,14 +416,19 @@ class ProductService {
             },
             include: {
                 employee: {
-                    select: { id: true, name: true, email: true }
+                    select: {
+                        id: true,
+                        englishName: true,
+                        khmerName: true,
+                        email: true,
+                    }
                 }
             }
         });
 
         // Calculate summary
         const totalQuantitySold = performances.reduce((sum, p) => sum + p.quantitySold, 0);
-        const totalRevenue = performances.reduce((sum, p) => sum + (p.revenue || 0), 0);
+        const totalRevenue = performances.reduce((sum, p) => sum + Number(p.revenue || 0), 0);
 
         // Get stock at start and end of month (from product quantity history - simplified)
         // Note: Without stock movement table, we use current quantity as end of month
@@ -446,7 +441,6 @@ class ProductService {
                 id: product.id,
                 name: product.name,
                 sku: product.sku,
-                price: product.price,
                 minStock: product.minStock,
                 currentStock: product.quantity
             },
@@ -465,9 +459,12 @@ class ProductService {
                 averagePrice: totalQuantitySold > 0 ? totalRevenue / totalQuantitySold : 0,
                 byEmployee: performances.map(p => ({
                     employeeId: p.employee.id,
-                    employeeName: p.employee.name,
+                    employeeName:
+                        p.employee.englishName ||
+                        p.employee.khmerName ||
+                        `Employee #${p.employee.id}`,
                     quantitySold: p.quantitySold,
-                    revenue: p.revenue
+                    revenue: Number(p.revenue || 0)
                 }))
             },
             stock: {
@@ -482,30 +479,33 @@ class ProductService {
      * Helper: Update ProductPerformance when stock decreases due to sale
      */
     async updateProductPerformance(productId, employeeId, quantitySold) {
-        const monthStart = startOfMonth(new Date());
-        const price = await this.getProductPrice(productId);
-        const revenue = quantitySold * price;
+        const monthStart = utcMonthStart(new Date());
+        const revenue = 0;
 
-        await prisma.productPerformance.upsert({
-            where: {
-                productId_employeeId_month: {
-                    productId: productId,
-                    employeeId: employeeId,
-                    month: monthStart
-                }
-            },
-            update: {
-                quantitySold: { increment: quantitySold },
-                revenue: { increment: revenue }
-            },
-            create: {
-                productId: productId,
-                employeeId: employeeId,
-                month: monthStart,
-                quantitySold: quantitySold,
-                revenue: revenue
-            }
+        // ProductPerformance has no unique constraint on (productId, employeeId,
+        // month), so upsert with a compound key is not possible here.
+        const existing = await prisma.productPerformance.findFirst({
+            where: {productId, employeeId, month: monthStart}
         });
+        if (existing) {
+            await prisma.productPerformance.update({
+                where: {id: existing.id},
+                data: {
+                    quantitySold: {increment: quantitySold},
+                    revenue: {increment: revenue}
+                }
+            });
+        } else {
+            await prisma.productPerformance.create({
+                data: {
+                    productId,
+                    employeeId,
+                    month: monthStart,
+                    quantitySold,
+                    revenue
+                }
+            });
+        }
 
         // Also update EmployeeKPI actualValue
         await this.updateEmployeeKPI(employeeId, monthStart, quantitySold, revenue);
@@ -517,7 +517,7 @@ class ProductService {
     async updateEmployeeKPI(employeeId, month, quantitySold, revenue) {
         // Find the depot for this employee (simplified - assumes one depot per employee)
         const depot = await prisma.depot.findFirst({
-            where: { employeeId: employeeId }
+            where: {employeeId: employeeId}
         });
 
         if (depot) {
@@ -530,8 +530,8 @@ class ProductService {
                     }
                 },
                 update: {
-                    actualValue: { increment: quantitySold },
-                    performance: { increment: revenue }
+                    actualValue: {increment: quantitySold},
+                    performance: {increment: revenue}
                 },
                 create: {
                     employeeId: employeeId,
@@ -543,17 +543,6 @@ class ProductService {
                 }
             });
         }
-    }
-
-    /**
-     * Helper: Get product price
-     */
-    async getProductPrice(productId) {
-        const product = await prisma.product.findUnique({
-            where: { id: productId },
-            select: { price: true }
-        });
-        return product?.price || 0;
     }
 
     /**
@@ -571,6 +560,8 @@ class ProductService {
         return name.toUpperCase().replace(/\s/g, '-').substring(0, 20);
     }
 
+
+
     /**
      * Helper: Get month name
      */
@@ -580,16 +571,25 @@ class ProductService {
         return months[month - 1];
     }
 
-    /**
-     * Soft delete product
-     */
+
     async delete(id) {
-        await this.findById(id);
-        const deleted = await prisma.product.update({
-            where: { id: parseInt(id) },
+        const productId = parseInt(id);
+        await this.findById(productId); // optional existence check
+
+        const deletedProduct = await prisma.$transaction(async (tx) => {
+            // 1. Delete all product_performances for this product
+            await tx.productPerformance.deleteMany({
+                where: { productId },
+            });
+
+            // 2. Now delete the product
+            return tx.product.delete({
+                where: { id: productId },
+            });
         });
-        logger.info(`Product soft deleted: ${id}`);
-        return deleted;
+
+        logger.info(`Product permanently deleted: ${id}`);
+        return deletedProduct;
     }
 }
 

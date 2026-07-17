@@ -19,7 +19,7 @@ class EmployeeService {
             where.department = filters.department;
         }
         if (filters.depotId) {
-            where.depotId = parseInt(filters.depotId);
+            where.depots = { some: { id: parseInt(filters.depotId) } };
         }
 
         const [employees, total] = await Promise.all([
@@ -68,10 +68,19 @@ class EmployeeService {
         if (isNaN(parsedId)) {
             return null;
         }
-        return prisma.employee.findUnique({
-            where: {id: parsedId},
+        const employee = await prisma.employee.findUnique({
+            where: { id: parsedId },
             include: {
-                depot: true,
+                depots: {
+                    select: {
+                        id: true,
+                        name: true,
+                        code: true,
+                        status: true,
+                    },
+                    orderBy: { name: "asc" },
+                    take: 1,
+                },
                 user: {
                     select: {
                         username: true,
@@ -79,13 +88,19 @@ class EmployeeService {
                         status: true,
                     },
                 },
-                assignments: {
-                    include: {
-                        depot: true,
-                    },
+                _count: {
+                    select: { depots: true },
                 },
             },
         });
+
+        if (!employee) return null;
+
+        const { depots, ...rest } = employee;
+        return {
+            ...rest,
+            depot: depots[0] ?? null,
+        };
     }
 
     async create(data) {
@@ -326,13 +341,76 @@ class EmployeeService {
 
     async getEmployeeDepotDetails(employeeId) {
         try {
-            const result = await prisma.$queryRaw`
-                SELECT *
-                FROM vw_employee_depot
-                WHERE employee_id = ${Number(employeeId)}
-            `;
+            const id = Number(employeeId);
+            if (isNaN(id)) throw new Error("Invalid employee ID");
 
-            return result;
+            const depots = await prisma.depot.findMany({
+                where: { employeeId: id },
+                include: {
+                    district: {
+                        select: {
+                            id: true,
+                            name: true,
+                            province: { select: { id: true, name: true } },
+                        },
+                    },
+                    province: { select: { id: true, name: true } },
+                    brand: { select: { id: true, name: true, code: true } },
+                    _count: { select: { products: true, staffs: true } },
+                },
+                orderBy: { name: "asc" },
+            });
+
+            const now = new Date();
+
+            return depots.map((depot) => {
+                const expiry = depot.expiryDate ? new Date(depot.expiryDate) : null;
+                let assignmentStatus = "assigned";
+                if (depot.status === "inactive" || depot.status === "vacancy") {
+                    assignmentStatus = "completed";
+                } else if (expiry && expiry < now) {
+                    assignmentStatus = "overdue";
+                }
+
+                let coverageStatus = "full";
+                if (depot.status === "vacancy") coverageStatus = "at_risk";
+                else if (expiry) {
+                    const in30Days = new Date(now);
+                    in30Days.setDate(in30Days.getDate() + 30);
+                    if (expiry < now) coverageStatus = "at_risk";
+                    else if (expiry <= in30Days) coverageStatus = "partial";
+                }
+
+                return {
+                    id: depot.id,
+                    name: depot.name,
+                    code: depot.code,
+                    khmerName: depot.khmerName,
+                    address: depot.address,
+                    phone: depot.phone,
+                    status: depot.status,
+                    province:
+                        depot.province?.name ||
+                        depot.district?.province?.name ||
+                        null,
+                    district: depot.district?.name || null,
+                    brandName: depot.brand?.name || null,
+                    brandCode: depot.brand?.code || null,
+                    assignmentStatus,
+                    coverageStatus,
+                    assignedAt: depot.assignedAt,
+                    expiryDate: depot.expiryDate,
+                    productsManaged: depot._count.products,
+                    staffCount: depot._count.staffs,
+                    activeTasks: depot._count.products,
+                    visitFrequency: depot.assignedAt
+                        ? `Since ${new Date(depot.assignedAt).toLocaleDateString()}`
+                        : "—",
+                    lastVisit: depot.assignedAt
+                        ? new Date(depot.assignedAt).toLocaleDateString()
+                        : "—",
+                };
+            });
         } catch (error) {
             logger.error("EmployeeService error:", error);
             throw error;

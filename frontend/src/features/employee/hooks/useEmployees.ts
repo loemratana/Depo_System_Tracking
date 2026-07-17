@@ -7,6 +7,7 @@ interface UseEmployeesParams {
   limit: number;
   search?: string;
   department?: string;
+  enabled?: boolean;
 }
 
 interface EmployeesResponse {
@@ -20,21 +21,23 @@ interface EmployeesResponse {
 }
 
 export const useEmployees = (params: UseEmployeesParams) => {
+  const { enabled = true, ...queryParams } = params;
   const { data, isLoading, isFetching, error, refetch } = useQuery<EmployeesResponse>({
-    queryKey: ["employees", params],
+    queryKey: ["employees", queryParams],
     queryFn: async () => {
-      const response = await axiosClient.get("/employees", { params });
+      const response = await axiosClient.get("/employees", { params: queryParams });
       // Adjust according to your actual API response structure
       return {
         employees: response.data.employees || response.data.data || [],
         pagination: response.data.pagination || {
-          page: params.page,
-          limit: params.limit,
+          page: queryParams.page,
+          limit: queryParams.limit,
           total: 0,
           pages: 0,
         },
       };
     },
+    enabled,
     placeholderData: keepPreviousData,
   });
 

@@ -1,5 +1,6 @@
-import React, { useState } from "react";
+import React, { useState, useMemo } from "react";
 import { PageHeader, Surface } from "@/components/ui-kit";
+import { KpiSummaryGrid } from "@/features/kpi/components/KpiSummaryGrid";
 import { ProductHeader } from "../components/ProductHeader";
 import { ProductFilterBar, ProductFilterState } from "../components/ProductFilterBar";
 import { ProductTable } from "../components/ProductTable";
@@ -17,7 +18,8 @@ import {
 } from "../hooks/useProducts";
 import type { Product } from "../types/product.types";
 import type { CreateProductInput } from "../types/product.types";
-import { Loader2, Package, AlertTriangle, DollarSign } from "lucide-react";
+import { Package, AlertTriangle } from "lucide-react";
+import { Button } from "@/components/ui/button";
 
 // ─── Filter state (UI) ─────────────────────────────
 const DEFAULT_FILTERS: ProductFilterState = {
@@ -106,38 +108,33 @@ export const ProductsPage: React.FC = () => {
     setEditProduct(null);
   };
 
-  // const updateStock = useUpdateStock();
   const recordSale = useRecordSale();
-   // add this
 
   const handleAdjustStock = (
     productId: number,
     type: "ADD" | "REMOVE",
     amount: number,
-    reason: string,
+    reason: "manual" | "sale" | "restock" | "damage" | "adjustment",
     employeeId?: number,
+    revenue?: number,
   ) => {
     const product = products.find((p) => p.id === productId);
     if (!product) return;
 
-    // If it's a sale (REMOVE + reason === "sale")
-    if (type === "REMOVE" && reason === "sale" && employeeId) {
+    if (type === "REMOVE" && reason === "sale") {
+      // Call the sale endpoint – employeeId is optional (auto‑assign if omitted)
       recordSale.mutate({
         productId,
-        employeeId,
+        employeeId, // may be undefined
         quantitySold: amount,
         saleDate: new Date().toISOString(),
+        revenue, // optional total sale amount for KPI revenue
       });
     } else {
-      // Generic stock update for restock, damage, adjustment
+      // Generic stock update (restock, damage, adjustment, etc.)
       const newQuantity =
         type === "ADD" ? product.quantity + amount : Math.max(0, product.quantity - amount);
-      updateStock.mutate({
-        id: productId,
-        quantity: newQuantity,
-        reason: reason as any,
-        employeeId,
-      });
+      updateStock.mutate({ id: productId, quantity: newQuantity, reason, employeeId });
     }
   };
 
@@ -151,52 +148,45 @@ export const ProductsPage: React.FC = () => {
     setFormOpen(true);
   };
 
+  const productKpiCards = useMemo(
+    () => [
+      {
+        id: "total",
+        label: "Total Products",
+        value: pagination?.total ?? 0,
+        icon: Package,
+        hint: "Across all depots",
+        accent: "primary" as const,
+      },
+      {
+        id: "low-stock",
+        label: "Low Stock Alerts",
+        value: lowStockCount,
+        icon: AlertTriangle,
+        hint: lowStockCount > 0 ? "Needs attention" : "All stock levels OK",
+        accent: "warning" as const,
+        selected: showLowStockOnly,
+        onClick: () => {
+          setShowLowStockOnly((prev) => !prev);
+          setPage(1);
+        },
+      },
+    ],
+    [pagination?.total, lowStockCount, showLowStockOnly],
+  );
+
   return (
-    <>
+    <div className="space-y-5">
       <PageHeader
         title="Products"
         description="Manage product distribution, stock levels, and assignments across your depot network."
       />
 
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mt-6">
-        <Surface className="p-4 flex items-center gap-4 bg-gradient-to-br from-blue-500/5 to-blue-500/10 border border-blue-500/20 shadow-sm transition-all hover:shadow-md">
-          <div className="p-3 bg-blue-500/10 rounded-xl text-blue-600 dark:text-blue-400">
-            <Package className="w-5 h-5" />
-          </div>
-          <div>
-            <p className="text-sm font-medium text-muted-foreground">Total Products</p>
-            <h3 className="text-2xl font-bold tracking-tight">{pagination?.total ?? 0}</h3>
-          </div>
-        </Surface>
+      <KpiSummaryGrid cards={productKpiCards} columns={2} isLoading={isLoading} />
 
-        <Surface className="p-4 flex items-center gap-4 bg-gradient-to-br from-amber-500/5 to-amber-500/10 border border-amber-500/20 shadow-sm transition-all hover:shadow-md">
-          <div className="p-3 bg-amber-500/10 rounded-xl text-amber-600 dark:text-amber-400">
-            <AlertTriangle className="w-5 h-5" />
-          </div>
-          <div>
-            <p className="text-sm font-medium text-muted-foreground">Low Stock Alerts</p>
-            <h3 className="text-2xl font-bold tracking-tight">{lowStockCount}</h3>
-          </div>
-        </Surface>
-
-        <Surface className="p-4 flex items-center gap-4 bg-gradient-to-br from-emerald-500/5 to-emerald-500/10 border border-emerald-500/20 shadow-sm transition-all hover:shadow-md">
-          <div className="p-3 bg-emerald-500/10 rounded-xl text-emerald-600 dark:text-emerald-400">
-            <DollarSign className="w-5 h-5" />
-          </div>
-          <div>
-            <p className="text-sm font-medium text-muted-foreground">Est. Page Value</p>
-            <h3 className="text-2xl font-bold tracking-tight">
-              $
-              {products
-                .reduce((acc, p) => acc + (Number(p.price) || 0) * (p.quantity || 0), 0)
-                .toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-            </h3>
-          </div>
-        </Surface>
-      </div>
-
-      <Surface className="mt-6 shadow-sm border-border/50 overflow-hidden" padded>
-        <ProductHeader
+      <Surface padded={false} className="overflow-hidden">
+        <div className="p-4">
+          <ProductHeader
           searchQuery={searchQuery}
           onSearchChange={handleSearchChange}
           showFilters={showFilters}
@@ -220,9 +210,10 @@ export const ProductsPage: React.FC = () => {
 
           {/* Loading state */}
           {isLoading && (
-            <div className="flex items-center justify-center h-48 text-muted-foreground gap-2">
-              <Loader2 className="h-5 w-5 animate-spin" />
-              <span className="text-sm">Loading products…</span>
+            <div className="space-y-2 py-4">
+              {Array.from({ length: 6 }).map((_, i) => (
+                <div key={i} className="h-12 animate-pulse rounded-lg bg-muted/50" />
+              ))}
             </div>
           )}
 
@@ -252,31 +243,36 @@ export const ProductsPage: React.FC = () => {
 
           {/* Server-side pagination controls */}
           {pagination && pagination.totalPages > 1 && (
-            <div className="flex items-center justify-between pt-4 px-1">
+            <div className="flex items-center justify-between border-t border-border/70 bg-muted/20 px-4 py-3">
               <p className="text-xs text-muted-foreground">
                 Showing {products.length} of {pagination.total} products
               </p>
-              <div className="flex items-center gap-2">
-                <button
-                  className="text-xs px-3 py-1.5 rounded border border-border hover:bg-muted/40 disabled:opacity-40 disabled:cursor-not-allowed"
+              <div className="flex items-center gap-1.5">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="h-7 px-2.5 text-xs"
                   onClick={() => setPage((p) => Math.max(1, p - 1))}
                   disabled={page === 1}
                 >
                   Previous
-                </button>
-                <span className="text-xs text-muted-foreground font-medium">
+                </Button>
+                <span className="px-2 text-xs tabular-nums text-muted-foreground">
                   Page {page} of {pagination.totalPages}
                 </span>
-                <button
-                  className="text-xs px-3 py-1.5 rounded border border-border hover:bg-muted/40 disabled:opacity-40 disabled:cursor-not-allowed"
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="h-7 px-2.5 text-xs"
                   onClick={() => setPage((p) => Math.min(pagination.totalPages, p + 1))}
                   disabled={page === pagination.totalPages}
                 >
                   Next
-                </button>
+                </Button>
               </div>
             </div>
           )}
+        </div>
         </div>
       </Surface>
 
@@ -300,7 +296,6 @@ export const ProductsPage: React.FC = () => {
         product={adjustStockProduct as any}
         onSave={handleAdjustStock}
         isSaving={updateStock.isPending || recordSale.isPending} // show loading while saving
-
       />
 
       {/* Delete Confirmation Dialog */}
@@ -312,6 +307,6 @@ export const ProductsPage: React.FC = () => {
         product={deleteProduct as any}
         onConfirm={handleDelete}
       />
-    </>
+    </div>
   );
 };

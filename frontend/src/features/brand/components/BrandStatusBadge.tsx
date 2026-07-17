@@ -9,9 +9,9 @@ interface BrandStatusBadgeProps {
 
 export function BrandStatusBadge({ status, className }: BrandStatusBadgeProps) {
   const styles = {
-    active: "bg-emerald-500/10 border-emerald-500/20 text-emerald-600 dark:text-emerald-400 font-semibold",
-    inactive: "bg-amber-500/10 border-amber-500/20 text-amber-600 dark:text-amber-400 font-semibold",
-    archived: "bg-zinc-500/10 border-zinc-500/20 text-zinc-500 dark:text-zinc-400 font-medium",
+    active: "bg-green-600 text-white border-green-600",
+    inactive: "bg-amber-500 text-white border-amber-500",
+    archived: "bg-slate-500 text-white border-slate-500",
   };
 
   const labels = {
@@ -23,15 +23,12 @@ export function BrandStatusBadge({ status, className }: BrandStatusBadgeProps) {
   return (
     <span
       className={cn(
-        "inline-flex items-center gap-1.5 px-2 py-0.5 rounded text-[10px] uppercase tracking-wider border select-none shrink-0",
+        "inline-flex items-center gap-1.5 rounded-full border px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider shadow-sm select-none shrink-0",
         styles[status],
-        className
+        className,
       )}
     >
-      <span className={cn("h-1 w-1 rounded-full", 
-        status === "active" ? "bg-emerald-500" :
-        status === "inactive" ? "bg-amber-500" : "bg-zinc-500"
-      )} />
+      <span className="h-1.5 w-1.5 rounded-full bg-white/90" />
       {labels[status]}
     </span>
   );

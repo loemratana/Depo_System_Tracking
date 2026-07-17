@@ -4,6 +4,17 @@
 
 @custom-variant dark (&:is(.dark *));
 
+@font-face {
+  font-family: 'NotoSansKhmer';
+  src: url('/fonts/NotoSansKhmer-Regular.ttf') format('truetype');
+  font-weight: normal;
+  font-style: normal;
+}
+
+.khmer-text {
+  font-family: 'NotoSansKhmer', 'Khmer OS', 'Moul', 'Helvetica', sans-serif;
+}
+
 @theme inline {
   --font-sans: "Inter", "Battambang", "Suwannaphum", ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
   --radius-sm: 4px;

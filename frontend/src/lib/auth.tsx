@@ -40,6 +40,7 @@ interface AuthContextValue extends AuthState {
   register: (data: any) => Promise<void>;
   logout: () => Promise<void>;
   refreshSession: () => Promise<boolean>;
+  updateUser: (patch: Partial<User>) => void;
   isAuthenticated: boolean;
   user: User | null;
   hasRole: (role: UserRole | UserRole[]) => boolean;
@@ -176,10 +177,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         expiresAt: parseExpiry(tokens.expiresIn),
         user: {
           id: user.id.toString(),
-          name: user.employee?.khmerName || user.username,
+          name: user.employee?.khmerName || user.employee?.englishName || user.username,
           email: user.employee?.email || user.username,
           role: user.role,
+          avatar: user.employee?.images || user.images || user.avatar || undefined,
           workspace: "Brand Depot",
+          lastLogin: user.lastLogin,
           emailVerified: true,
           twoFactorEnabled: false,
         },
@@ -255,6 +258,17 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   }, [state.session]);
 
+  const updateUser = React.useCallback((patch: Partial<User>) => {
+    const stored = loadSession();
+    if (!stored) return;
+    const updated: AuthSession = {
+      ...stored,
+      user: { ...stored.user, ...patch },
+    };
+    saveSession(updated, localStorage.getItem(REMEMBER_KEY) === "1");
+    dispatch({ type: "SET_SESSION", payload: updated });
+  }, []);
+
   const hasRole = React.useCallback(
     (role: UserRole | UserRole[]): boolean => {
       if (!state.session?.user) return false;
@@ -273,9 +287,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       register,
       logout,
       refreshSession,
+      updateUser,
       hasRole,
     }),
-    [state, login, register, logout, refreshSession, hasRole],
+    [state, login, register, logout, refreshSession, updateUser, hasRole],
   );
 
   return <AuthCtx.Provider value={value}>{children}</AuthCtx.Provider>;

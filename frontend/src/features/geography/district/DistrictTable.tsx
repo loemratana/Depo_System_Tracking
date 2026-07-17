@@ -7,7 +7,7 @@ import {
   RowSelectionState,
   useReactTable,
 } from "@tanstack/react-table";
-import { MapPin, ChevronLeft, ChevronRight } from "lucide-react";
+import { MapPin, ChevronLeft, ChevronRight, Pencil, Trash2 } from "lucide-react";
 import {
   Table,
   TableBody,
@@ -142,7 +142,7 @@ export const DistrictTable: React.FC<DistrictTableProps> = ({
         header: "Province",
         cell: ({ row }) => {
           const provinceName = row.original.provinceName;
-      
+
           return (
             <span className="text-[12px] text-muted-foreground group-hover:text-foreground transition-colors">
               {provinceName || "Not found"}
@@ -170,16 +170,19 @@ export const DistrictTable: React.FC<DistrictTableProps> = ({
                 variant="ghost"
                 size="sm"
                 onClick={() => onEditDistrict(district)}
-                className="h-8 px-2"
+                className="h-8 px-2 flex items-center gap-1"
               >
+                <Pencil className="w-4 h-4" />
                 Edit
               </Button>
+
               <Button
                 variant="ghost"
                 size="sm"
                 onClick={() => onDeleteDistrict(district)}
-                className="h-8 px-2 text-destructive hover:text-destructive/80"
+                className="h-8 px-2 flex items-center gap-1 text-destructive hover:text-destructive/80"
               >
+                <Trash2 className="w-4 h-4" />
                 Delete
               </Button>
             </div>
@@ -233,7 +236,7 @@ export const DistrictTable: React.FC<DistrictTableProps> = ({
   if (districts.length === 0 && totalCount === 0) {
     return (
       <div className="flex flex-col items-center justify-center py-24 text-center">
-        <div className="w-16 h-16 rounded-2xl bg-muted/30 flex items-center justify-center mb-5 border border-border/50 shadow-sm">
+        <div className="w-16 h-16 rounded-2xl bg-muted/30 flex items-center justify-center mb-5 border border-border/50 -sm">
           <MapPin className="w-8 h-8 text-muted-foreground/40" />
         </div>
         <h3 className="text-base font-semibold text-foreground">No districts found</h3>
@@ -247,7 +250,7 @@ export const DistrictTable: React.FC<DistrictTableProps> = ({
   return (
     <div className="space-y-4">
       <Table>
-        <TableHeader className="bg-muted/40 sticky top-0 z-10 backdrop-blur-sm shadow-[0_1px_2px_rgba(0,0,0,0.05)]">
+        <TableHeader className="bg-muted/40 sticky top-0 z-10 backdrop-blur-sm -[0_1px_2px_rgba(0,0,0,0.05)]">
           {table.getHeaderGroups().map((headerGroup) => (
             <TableRow key={headerGroup.id} className="hover:bg-transparent border-none">
               {headerGroup.headers.map((header) => (
@@ -307,12 +310,12 @@ export const DistrictTable: React.FC<DistrictTableProps> = ({
               onValueChange={(value) => onPageSizeChange(Number(value))}
             >
               <SelectTrigger className="h-8 w-[70px]">
-                <SelectValue placeholder={pageSize} />
+                <SelectValue placeholder={pageSize === 100 ? "All" : pageSize} />
               </SelectTrigger>
               <SelectContent side="top">
-                {[10, 20, 30, 50].map((size) => (
+                {[10, 20, 30, 50, 100].map((size) => (
                   <SelectItem key={size} value={size.toString()}>
-                    {size}
+                    {size === 100 ? "All" : size}
                   </SelectItem>
                 ))}
               </SelectContent>

@@ -9,6 +9,8 @@ export interface Depot {
   employeeName?: string;
   ownerId?: number;
   phone?: string;
+  dateOfbirth:string;
+  sex?: 'male' | 'female' | 'other';
   address?: string;
   homeNumber?: string;
   street?: string;
@@ -18,4 +20,5 @@ export interface Depot {
   status?: string;
   brandId?: number | null;
   brandName?: string;
+  note?: string | null;
 }

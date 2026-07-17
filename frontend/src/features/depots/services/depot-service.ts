@@ -15,5 +15,10 @@ export const depotService = {
       }>("/depots/report", { params })
       .then((res) => res.data),
   getDepots: (params?: { page?: number; pageSize?: number }) =>
-    api.get("/depots", { params }).then((res) => res.data),	
+    api.get("/depots", { params }).then((res) => res.data),
+  exportDepotReport: (format: "pdf" | "excel", params?: { fromDate?: string; toDate?: string; status?: string }) =>
+    api.get("/depots/report", {
+      params: { ...params, format },
+      responseType: "blob",
+    }),
 };

@@ -25,5 +25,19 @@ class DashboardController {
       next(error);
     }
   };
+
+  getBrandDistribution = async (req, res, next) => {
+    try {
+      const { year, month } = req.query;
+      const data = await dashboardKpi.getBrandDistribution({ year, month });
+      res.status(200).json({
+        success: true,
+        data,
+      });
+    } catch (error) {
+      console.error("Error fetching brand distribution:", error);
+      next(error);
+    }
+  };
 }
 export default new DashboardController();

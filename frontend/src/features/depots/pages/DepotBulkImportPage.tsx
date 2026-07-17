@@ -21,6 +21,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
 import {
   buildValidationMap,
+  normalizeImportPlaceholder,
   parseCSV,
   type RowValidation,
 } from "../utils/depot-import-utils";
@@ -129,22 +130,52 @@ export function DepotBulkImportPage() {
         salesupervisoremail: "employeeEmail",
         salesupervisorphone: "employeePhone",
         salesupervisorkhmername: "employeeKhmerName",
+        dob: "dob",
+        dateofbirth: "dob",
+        sex: "sex",
+        gender: "sex",
+        expireddate: "expiryDate",
+        expirydate: "expiryDate",
+        depoidnumber: "depotNumber",
+      };
+
+      const formatCellValue = (cell: unknown): string => {
+        if (cell === undefined || cell === null) return "";
+        if (cell instanceof Date && !isNaN(cell.getTime())) {
+          const months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+          return `${cell.getDate()}/${months[cell.getMonth()]}/${cell.getFullYear()}`;
+        }
+        const str = String(cell).trim();
+        if (/^\d+(\.\d+)?$/.test(str)) {
+          const serial = parseFloat(str);
+          if (serial > 1000 && serial < 100000) {
+            const date = new Date(Math.round((serial - 25569) * 86400 * 1000));
+            if (!isNaN(date.getTime())) {
+              const months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+              return `${date.getUTCDate()}/${months[date.getUTCMonth()]}/${date.getUTCFullYear()}`;
+            }
+          }
+        }
+        return normalizeImportPlaceholder(str);
       };
 
       const h = jsonData[0].map((header) => {
         const str = String(header).trim();
         const lower = str.toLowerCase();
-        return HEADER_MAP[lower] || str;
+        const normalized = lower.replace(/[\s_-]+/g, "");
+        return HEADER_MAP[normalized] || HEADER_MAP[lower] || str;
       });
 
       const r = jsonData
         .slice(1)
-        .filter((row) => row.some((cell) => String(cell).trim() !== ""))
+        .filter((row) =>
+          row.some((cell) => normalizeImportPlaceholder(formatCellValue(cell)) !== ""),
+        )
         .map((row, idx) => {
           const rowData: Record<string, string> = {};
           h.forEach((header, i) => {
             // Only assign if the value exists, but don't overwrite with empty if already set (handles duplicate mapped keys)
-            const val = row[i] !== undefined && row[i] !== null ? String(row[i]).trim() : "";
+            const val = row[i] !== undefined && row[i] !== null ? formatCellValue(row[i]) : "";
             if (val !== "" || !rowData[header]) {
               rowData[header] = val;
             }
@@ -215,24 +246,30 @@ export function DepotBulkImportPage() {
 
     try {
       const res = await axiosClient.post("/depots/bulk-import-json", validRows, {
-        timeout: 120000,
+        timeout: 600000,
       });
 
-      const created = res.data.summary?.created ?? res.data.data?.length ?? 0;
+      const created = res.data.summary?.created ?? 0;
+      const updated = res.data.summary?.updated ?? 0;
+      const imported = res.data.summary?.imported ?? created + updated;
       const failed = res.data.summary?.failed ?? 0;
       const backendErrors: { row: number; error: string }[] = (res.data.errors ?? []).map(
         (e: { row: number; error: string }) => ({ row: e.row, error: e.error }),
       );
 
-      setImportResult({ created, failed });
+      setImportResult({ created: imported, failed });
       setImportErrors(backendErrors);
       setStep("complete");
       queryClient.invalidateQueries({ queryKey: ["depots"] });
 
       if (failed > 0) {
-        toast.warning(`Imported ${created} depot(s), ${failed} failed`);
+        toast.warning(`Imported ${imported} depot(s) (${created} new, ${updated} updated), ${failed} failed`);
       } else {
-        toast.success(`Successfully imported ${created} depot(s)`);
+        toast.success(
+          updated > 0
+            ? `Imported ${imported} depot(s): ${created} created, ${updated} updated`
+            : `Successfully imported ${created} depot(s)`,
+        );
       }
     } catch (err: unknown) {
       const e = err as {
@@ -241,7 +278,7 @@ export function DepotBulkImportPage() {
       };
       if (e.code === "ECONNABORTED") {
         toast.error("Request timeout", {
-          description: "Import took too long. Try a smaller file.",
+          description: "Import is still running on large files. Wait a moment, refresh the depot list, then retry with fewer rows if nothing was saved.",
         });
       } else if (e.response?.status === 401) {
         toast.error("Unauthorized", { description: "Please sign in again and retry." });
@@ -283,7 +320,7 @@ export function DepotBulkImportPage() {
   const displayHeaders = useMemo(() => headers.filter((h) => h !== "_originalIndex"), [headers]);
 
   return (
-    <div className="mx-auto min-h-screen space-y-6 p-6">
+    <div className=" min-h-screen space-y-6 p-6">
       <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
         <div className="flex items-start gap-4">
           <Button variant="outline" size="sm" asChild className="shrink-0">
@@ -313,7 +350,7 @@ export function DepotBulkImportPage() {
         </Button>
       </div>
 
-      <Card className="border-border/80 shadow-sm">
+      <Card className="border-border/80 ">
         <CardContent className="p-6">
           <div className="mb-8 rounded-lg border border-border/60 bg-muted/20 px-4 py-5">
             <div className="flex flex-wrap items-center justify-between gap-4">

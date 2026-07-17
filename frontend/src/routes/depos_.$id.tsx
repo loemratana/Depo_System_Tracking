@@ -12,7 +12,6 @@ import {
   MapPin,
   Phone,
   User,
-  AlertTriangle,
   Printer,
   FileText,
   Briefcase,
@@ -24,6 +23,9 @@ import {
   FileOutput,
   Edit,
 } from "lucide-react";
+import { DepotEditDialog } from "@/features/depots/components/DepotDetailEditDialog";
+import { ManageStaffDialog } from "@/features/depots/components/ManageStaffDialog";
+
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -36,16 +38,21 @@ export const Route = createFileRoute("/depos_/$id")({
   component: DepotDetailPage,
 });
 
-const reportTone: Record<string, "success" | "warning" | "danger"> = {
+const reportTone: Record<string, "success" | "warning" | "danger" | "info" | "muted"> = {
   active: "success",
+  vacancy: "info",
   expiring_soon: "warning",
   expired: "danger",
+  inactive: "muted",
 };
 
 function DepotDetailPage() {
   const { id } = Route.useParams();
   const exportRef = React.useRef<HTMLDivElement>(null);
   const [isExporting, setIsExporting] = React.useState(false);
+  const [editDialogOpen, setEditDialogOpen] = React.useState(false);
+  const [staffDialogOpen, setStaffDialogOpen] = React.useState(false);
+
 
   const {
     data: depotData,
@@ -103,9 +110,12 @@ function DepotDetailPage() {
   // brands can be [{id, name}] or ["string"]
   const rawBrands: any[] = raw?.brands || [];
   const brandNames: string[] = rawBrands.map((b: any) => (typeof b === "string" ? b : b.name));
+  const brandAssetNote = raw?.note?.trim() || "";
 
-  // employees from API
-  const employeesList: any[] = raw?.employees || [];
+  // staff from staffs table
+  const staffsList: any[] = raw?.staffs || [];
+  const productCount = raw?.counts?.products ?? 0;
+  const staffCount = raw?.counts?.staffs ?? staffsList.length;
 
   // Timeline - use API data if available, else show created entry only
   const apiTimeline: any[] = raw?.timeline || [];
@@ -160,6 +170,7 @@ function DepotDetailPage() {
     createdAt: raw?.createdAt || createdDate,
     expiryDate: raw?.expiryDate,
     brands: brandNames,
+    note: brandAssetNote,
   };
 
   // Handlers using the utility functions
@@ -183,7 +194,8 @@ function DepotDetailPage() {
     if (!path) return null;
     if (path.startsWith("http")) return path;
     const cleanPath = path.replace(/^[/\\]+/, "").replace(/\\/g, "/");
-    return `http://localhost:5000/${cleanPath}`;
+    const base = (import.meta.env.VITE_API_BASE_URL || "http://localhost:5000").replace(/\/$/, "");
+    return `${base}/${cleanPath}`;
   };
   console.log("Final URL:", getImageUrl(owner.images));
   return (
@@ -200,14 +212,28 @@ function DepotDetailPage() {
           <h1 className="text-sm font-medium">Report: {depotCode}</h1>
         </div>
         <div className="flex items-center gap-2">
-          <Button
+        <Button
             variant="outline"
             size="sm"
             className="gap-2 h-8"
-            onClick={() => toast.info("Edit mode not implemented")}
+            onClick={() => setEditDialogOpen(true)}
           >
             <Edit className="h-3.5 w-3.5" /> Edit
           </Button>
+          <DepotEditDialog
+            open={editDialogOpen}
+            onOpenChange={setEditDialogOpen}
+            depotId={id}
+            onSuccess={() => {
+              setEditDialogOpen(false);
+            }}
+          />
+          <ManageStaffDialog
+            open={staffDialogOpen}
+            onOpenChange={setStaffDialogOpen}
+            depotId={id}
+            depotName={depotName}
+          />
           <div className="h-4 w-px bg-border mx-1" />
           <Button
             variant="outline"
@@ -284,15 +310,19 @@ function DepotDetailPage() {
               <span className="text-xs font-medium text-muted-foreground mb-1 uppercase tracking-wider">
                 Total Products
               </span>
-              <span className="text-2xl font-bold text-foreground">1,432</span>
+              <span className="text-2xl font-bold text-foreground tabular-nums">
+                {productCount.toLocaleString()}
+              </span>
             </CardContent>
           </Card>
           <Card className="shadow-sm border-border/50">
             <CardContent className="p-4 flex flex-col justify-center">
               <span className="text-xs font-medium text-muted-foreground mb-1 uppercase tracking-wider">
-                Employees
+                Staff
               </span>
-              <span className="text-2xl font-bold text-foreground">4</span>
+              <span className="text-2xl font-bold text-foreground tabular-nums">
+                {staffCount.toLocaleString()}
+              </span>
             </CardContent>
           </Card>
           <Card className="shadow-sm border-border/50">
@@ -357,7 +387,7 @@ function DepotDetailPage() {
                 <div className="h-1 w-full bg-purple-500" />
                 <CardHeader className="pb-3">
                   <CardTitle className="text-sm flex items-center gap-2">
-                    <User className="h-4 w-4 text-muted-foreground" /> Owner Details
+                    <User className="h-4 w-4 text-muted-foreground" /> Sale Supervisor Details
                   </CardTitle>
                 </CardHeader>
                 <CardContent className="text-sm flex items-start gap-4">
@@ -459,24 +489,15 @@ function DepotDetailPage() {
 
                 <div>
                   <p className="text-xs font-medium text-muted-foreground mb-3 uppercase tracking-wider">
-                    Key Asset Summary
+                    Brand Asset Notes
                   </p>
-                  <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
-                    <div className="border border-border/50 rounded-md p-3 text-sm">
-                      <div className="text-muted-foreground mb-1">Coolers</div>
-                      <div className="font-bold text-lg">12</div>
-                    </div>
-                    <div className="border border-border/50 rounded-md p-3 text-sm">
-                      <div className="text-muted-foreground mb-1">Display Racks</div>
-                      <div className="font-bold text-lg">45</div>
-                    </div>
-                    <div className="border border-destructive/30 bg-destructive/5 rounded-md p-3 text-sm">
-                      <div className="text-destructive mb-1 flex items-center gap-1">
-                        <AlertTriangle className="h-3 w-3" /> POS Material
-                      </div>
-                      <div className="font-bold text-lg text-destructive">Low</div>
-                    </div>
-                  </div>
+                  {brandAssetNote ? (
+                    <p className="text-sm text-foreground leading-relaxed whitespace-pre-wrap rounded-md border border-border/50 bg-muted/20 p-4">
+                      {brandAssetNote}
+                    </p>
+                  ) : (
+                    <p className="text-sm text-muted-foreground">No brand asset notes recorded</p>
+                  )}
                 </div>
               </CardContent>
             </Card>
@@ -484,7 +505,7 @@ function DepotDetailPage() {
 
           {/* Right Column (Narrower) */}
           <div className="flex flex-col gap-6">
-            {/* Employee Assignments */}
+            {/* Staff Assignments */}
             <Card className="shadow-sm border-border/60">
               <CardHeader className="pb-3 border-b border-border/40">
                 <CardTitle className="text-sm flex items-center gap-2">
@@ -493,9 +514,9 @@ function DepotDetailPage() {
               </CardHeader>
               <CardContent className="p-0">
                 <div className="divide-y divide-border/40">
-                  {employeesList.length > 0 ? (
-                    employeesList.map((emp: any) => {
-                      const initials = (emp.name || "?")
+                  {staffsList.length > 0 ? (
+                    staffsList.map((staff: any, index: number) => {
+                      const initials = (staff.name || "?")
                         .split(" ")
                         .map((n: string) => n[0])
                         .join("")
@@ -507,10 +528,10 @@ function DepotDetailPage() {
                         "bg-green-100 text-green-600",
                         "bg-purple-100 text-purple-600",
                       ];
-                      const colorClass = colors[employeesList.indexOf(emp) % colors.length];
+                      const colorClass = colors[index % colors.length];
                       return (
                         <div
-                          key={emp.id}
+                          key={staff.id}
                           className="p-4 flex items-center gap-3 hover:bg-muted/30 transition-colors"
                         >
                           <div
@@ -520,22 +541,23 @@ function DepotDetailPage() {
                           </div>
                           <div className="flex-1 min-w-0">
                             <p className="text-sm font-medium text-foreground truncate">
-                              {emp.name}
+                              {staff.name}
                             </p>
-                            <p className="text-xs text-muted-foreground">
-                              {emp.position || emp.assignmentType || "Staff"}
+                            <p className="text-xs text-muted-foreground truncate">
+                              {staff.email}
+                              {staff.phone ? ` · ${staff.phone}` : ""}
                             </p>
                           </div>
                         </div>
                       );
                     })
                   ) : (
-                    <div className="p-4 flex items-center gap-3 hover:bg-muted/30 transition-colors">
+                    <div className="p-4 flex items-center gap-3">
                       <div className="h-8 w-8 rounded bg-muted flex items-center justify-center text-muted-foreground text-xs">
                         ?
                       </div>
                       <div className="flex-1 min-w-0">
-                        <p className="text-sm text-muted-foreground">No employees assigned</p>
+                        <p className="text-sm text-muted-foreground">No staff assigned</p>
                       </div>
                     </div>
                   )}
@@ -545,6 +567,7 @@ function DepotDetailPage() {
                     variant="ghost"
                     size="sm"
                     className="w-full text-xs text-primary print:hidden"
+                    onClick={() => setStaffDialogOpen(true)}
                   >
                     Manage Staff
                   </Button>

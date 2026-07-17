@@ -16,6 +16,10 @@ const env = {
     isProduction: process.env.NODE_ENV === 'production',
 
     isTest: process.env.NODE_ENV === 'test',
+
+  enableRateLimit: process.env.ENABLE_RATE_LIMIT === 'true',
+
+  enableArcjet: process.env.ENABLE_ARCJET === 'true',
 }
 
 export default env;

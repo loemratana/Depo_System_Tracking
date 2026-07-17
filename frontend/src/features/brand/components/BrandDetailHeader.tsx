@@ -32,7 +32,7 @@ export function BrandDetailHeader({ brand, onBack, onEdit, onDelete }: BrandDeta
               <img
                 src={brand.logoUrl}
                 alt={brand.name}
-                className="h-11 w-11 rounded-lg object-contain border border-border/60 bg-white p-1 shadow-sm"
+                className="h-11 w-11 rounded-lg object-contain border border-border/60 bg-white p-1 "
                 onError={(e) => {
                   e.currentTarget.style.display = "none";
                   const fallback = e.currentTarget.nextElementSibling as HTMLElement;
@@ -42,7 +42,7 @@ export function BrandDetailHeader({ brand, onBack, onEdit, onDelete }: BrandDeta
             ) : null}
             <span
               style={{ display: brand.logoUrl ? "none" : "flex" }}
-              className="h-11 w-11 items-center justify-center rounded-lg bg-primary/10 border border-primary/20 text-sm font-bold text-primary uppercase shadow-sm"
+              className="h-11 w-11 items-center justify-center rounded-lg bg-primary/10 border border-primary/20 text-sm font-bold text-primary uppercase "
             >
               {brand.name.split(" ").map((n: string) => n[0]).join("").substring(0, 2)}
             </span>

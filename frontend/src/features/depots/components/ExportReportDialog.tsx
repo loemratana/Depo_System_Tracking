@@ -10,7 +10,6 @@ import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Skeleton } from "@/components/ui/skeleton";
 import { depotService } from "../services/depot-service";
-import { exportToExcel, exportToPDF } from "@/utils/exportUtils";
 import { toast } from "sonner";
 
 interface ExportReportDialogProps {
@@ -28,54 +27,46 @@ export function ExportReportDialog({ open, onOpenChange }: ExportReportDialogPro
   if (toDate) params.toDate = format(toDate, "yyyy-MM-dd");
   if (groupBy === "province") params.groupBy = "province";
 
-  const { refetch, isLoading, isFetching } = useQuery({
-    queryKey: ["depotReportExport", params],
-    queryFn: () => depotService.getDepotReport(params),
-    enabled: false,
-  });
+  const [isExporting, setIsExporting] = useState(false);
 
   const handleExport = async (type: "excel" | "pdf") => {
     if (!fromDate && !toDate && groupBy === "none") {
       if (!confirm("Exporting all depots. Continue?")) return;
     }
+    
+    setIsExporting(true);
     try {
-      const result = await refetch();
-      if (result.error) throw new Error(result.error.message);
-      const response = result.data;
-      if (!response || !response.success) {
-        throw new Error(response?.message || "Failed to fetch report data");
+      const response = await depotService.exportDepotReport(type, params);
+      
+      // Create a blob URL and trigger download
+      const blob = new Blob([response.data as any], { 
+        type: type === 'pdf' ? 'application/pdf' : 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' 
+      });
+      
+      const url = window.URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      
+      // Use filename from Content-Disposition if available, else generate one
+      let fileName = `depots_report_${format(new Date(), "yyyy-MM-dd")}.${type === 'excel' ? 'xlsx' : 'pdf'}`;
+      const contentDisposition = response.headers?.['content-disposition'];
+      if (contentDisposition) {
+        const match = contentDisposition.match(/filename="?([^"]+)"?/);
+        if (match && match[1]) fileName = match[1];
       }
-
-      let depotsArray: any[] = [];
-      if (groupBy === "province" && response.grouped) {
-        // Flatten grouped data
-        depotsArray = Object.values(response.grouped).flat();
-      } else if (response.data) {
-        depotsArray = response.data;
-      } else {
-        toast.error("No data to export");
-        return;
-      }
-
-      if (depotsArray.length === 0) {
-        toast.error("No depots found for the selected filters");
-        return;
-      }
-
-      const fileName = `depots_report_${format(new Date(), "yyyy-MM-dd")}`;
-      const title = "Depots Report";
-      const shouldGroup = groupBy === "province";
-
-      if (type === "excel") {
-        exportToExcel(depotsArray, fileName, shouldGroup);
-      } else {
-        exportToPDF(depotsArray, title, shouldGroup);
-      }
+      
+      link.setAttribute("download", fileName);
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      window.URL.revokeObjectURL(url);
 
       onOpenChange(false);
       toast.success(`${type.toUpperCase()} exported successfully`);
     } catch (err: any) {
       toast.error(err.message || "Failed to export report");
+    } finally {
+      setIsExporting(false);
     }
   };
 
@@ -140,17 +131,17 @@ export function ExportReportDialog({ open, onOpenChange }: ExportReportDialogPro
 
         <DialogFooter className="gap-2">
           <Button variant="outline" onClick={() => onOpenChange(false)}>Cancel</Button>
-          <Button onClick={() => handleExport("excel")} disabled={isLoading || isFetching} className="gap-2">
+          <Button onClick={() => handleExport("excel")} disabled={isExporting} className="gap-2 bg-green-600">
             <FileSpreadsheet className="h-4 w-4" /> Excel
           </Button>
-          <Button onClick={() => handleExport("pdf")} disabled={isLoading || isFetching} className="gap-2">
-            <FileText className="h-4 w-4" /> PDF
+          <Button onClick={() => handleExport("pdf")} disabled={isExporting} className="gap-2 bg-blue-600">
+            <FileText className="h-4 w-4 " /> PDF
           </Button>
         </DialogFooter>
-        {(isLoading || isFetching) && (
+        {isExporting && (
           <div className="mt-4">
             <Skeleton className="h-8 w-full" />
-            <p className="text-center text-xs text-muted-foreground mt-2">Fetching data...</p>
+            <p className="text-center text-xs text-muted-foreground mt-2">Generating export, please wait...</p>
           </div>
         )}
       </DialogContent>

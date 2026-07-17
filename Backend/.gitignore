@@ -1,6 +1,27 @@
+# Dependencies
+node_modules/
+
+# Environment — keep secrets local; commit only .env.example
+.env
+.env.local
+.env.*.local
+!.env.example
+
+# IDE
 .idea/
 Backend/.idea/
-Backend/node_modules/
-# Environment
-.env
-.env.*
+
+# Logs
+logs/
+*.log
+npm-debug.log*
+yarn-debug.log*
+pnpm-debug.log*
+
+# Uploads (user-generated)
+uploads/**
+!uploads/.gitkeep
+
+# Misc
+*.local
+coverage/

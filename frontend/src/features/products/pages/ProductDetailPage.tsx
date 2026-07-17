@@ -9,7 +9,6 @@ import {
   Box,
   Building2,
   MapPin,
-  Tag,
   TrendingUp,
   History,
   User,
@@ -18,7 +17,7 @@ import {
 } from "lucide-react";
 import { ProductStockIndicator } from "../components/ProductStockIndicator";
 import { AdjustStockDialog } from "../components/AdjustStockDialog";
-import { useProduct, useProductPerformance, useUpdateStock } from "../hooks/useProducts";
+import { useProduct, useProductPerformance, useUpdateStock, useRecordSale } from "../hooks/useProducts";
 import type { ProductStatus } from "../types/product.types";
 
 // ── Status → badge mapping ───────────────────────────────────────
@@ -45,9 +44,10 @@ export const ProductDetailPage: React.FC = () => {
   const { data: performance, isLoading: perfLoading } = useProductPerformance(
     productId,
     perfYear,
-    perfMonth
+    perfMonth,
   );
   const updateStock = useUpdateStock();
+  const recordSale = useRecordSale();
 
   // ── Loading ────────────────────────────────────────────────────
   if (isLoading) {
@@ -72,28 +72,48 @@ export const ProductDetailPage: React.FC = () => {
     );
   }
 
-  const { label: statusLabel, tone: statusTone } =
-    STATUS_MAP[product.status as ProductStatus] ?? {
-      label: product.status,
-      tone: "neutral" as const,
-    };
+  const { label: statusLabel, tone: statusTone } = STATUS_MAP[product.status as ProductStatus] ?? {
+    label: product.status,
+    tone: "neutral" as const,
+  };
 
   const handleAdjustStock = (
     _productId: number,
     type: "ADD" | "REMOVE",
-    amount: number
+    amount: number,
+    reason: "manual" | "sale" | "restock" | "damage" | "adjustment",
+    employeeId?: number,
+    revenue?: number,
   ) => {
-    const newQuantity =
-      type === "ADD"
-        ? product.quantity + amount
-        : Math.max(0, product.quantity - amount);
-    updateStock.mutate({ id: product.id, quantity: newQuantity, reason: "manual" });
+    if (type === "REMOVE" && reason === "sale") {
+      recordSale.mutate({
+        productId: product.id,
+        employeeId,
+        quantitySold: amount,
+        saleDate: new Date().toISOString(),
+        revenue,
+      });
+    } else {
+      const newQuantity =
+        type === "ADD" ? product.quantity + amount : Math.max(0, product.quantity - amount);
+      updateStock.mutate({ id: product.id, quantity: newQuantity, reason, employeeId });
+    }
   };
 
   // Month selector options
   const MONTHS = [
-    "January", "February", "March", "April", "May", "June",
-    "July", "August", "September", "October", "November", "December",
+    "January",
+    "February",
+    "March",
+    "April",
+    "May",
+    "June",
+    "July",
+    "August",
+    "September",
+    "October",
+    "November",
+    "December",
   ];
 
   return (
@@ -149,15 +169,6 @@ export const ProductDetailPage: React.FC = () => {
                 </div>
                 <span className="font-medium">{product.depot?.name ?? "—"}</span>
               </div>
-              <div className="flex justify-between items-center pb-4 border-b border-border/50">
-                <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                  <Tag className="h-4 w-4" />
-                  Price
-                </div>
-                <span className="font-medium tabular-nums">
-                  ${product.price.toFixed(2)}
-                </span>
-              </div>
               <div className="flex justify-between items-center">
                 <div className="flex items-center gap-2 text-sm text-muted-foreground">
                   <Box className="h-4 w-4" />
@@ -209,22 +220,20 @@ export const ProductDetailPage: React.FC = () => {
                 <Card className="bg-surface border-border/60">
                   <CardContent className="p-6">
                     <p className="text-sm font-medium text-muted-foreground mb-2">
-                      Total Inventory Value
+                      Units on Hand
                     </p>
                     <p className="text-3xl font-semibold tabular-nums text-foreground">
-                      ${(product.quantity * product.price).toLocaleString()}
+                      {product.quantity.toLocaleString()}
                     </p>
                     <p className="text-xs text-muted-foreground mt-2">
-                      Based on current price of ${product.price.toFixed(2)}
+                      Current quantity available in this depot
                     </p>
                   </CardContent>
                 </Card>
                 {/* Created / Updated */}
                 <Card className="bg-surface border-border/60 col-span-2">
                   <CardContent className="p-6">
-                    <p className="text-sm font-medium text-muted-foreground mb-3">
-                      Timestamps
-                    </p>
+                    <p className="text-sm font-medium text-muted-foreground mb-3">Timestamps</p>
                     <div className="grid grid-cols-2 gap-4 text-sm">
                       <div>
                         <p className="text-xs text-muted-foreground">Created</p>
@@ -256,7 +265,9 @@ export const ProductDetailPage: React.FC = () => {
                   onChange={(e) => setPerfMonth(Number(e.target.value))}
                 >
                   {MONTHS.map((m, i) => (
-                    <option key={m} value={i + 1}>{m}</option>
+                    <option key={m} value={i + 1}>
+                      {m}
+                    </option>
                   ))}
                 </select>
                 <select
@@ -265,7 +276,9 @@ export const ProductDetailPage: React.FC = () => {
                   onChange={(e) => setPerfYear(Number(e.target.value))}
                 >
                   {[2024, 2025, 2026].map((y) => (
-                    <option key={y} value={y}>{y}</option>
+                    <option key={y} value={y}>
+                      {y}
+                    </option>
                   ))}
                 </select>
               </div>
@@ -281,7 +294,10 @@ export const ProductDetailPage: React.FC = () => {
                     {[
                       { label: "Qty Sold", value: performance.sales.quantitySold.toLocaleString() },
                       { label: "Revenue", value: `$${performance.sales.revenue.toLocaleString()}` },
-                      { label: "Avg Price", value: `$${performance.sales.averagePrice.toFixed(2)}` },
+                      {
+                        label: "Avg Price",
+                        value: `$${performance.sales.averagePrice.toFixed(2)}`,
+                      },
                     ].map(({ label, value }) => (
                       <Card key={label} className="bg-surface border-border/60">
                         <CardContent className="p-5">
@@ -303,7 +319,9 @@ export const ProductDetailPage: React.FC = () => {
                       <div className="grid grid-cols-3 gap-4 text-sm text-center">
                         <div>
                           <p className="text-xs text-muted-foreground">Start of Month</p>
-                          <p className="text-lg font-bold tabular-nums">{performance.stock.startOfMonth}</p>
+                          <p className="text-lg font-bold tabular-nums">
+                            {performance.stock.startOfMonth}
+                          </p>
                         </div>
                         <div>
                           <p className="text-xs text-muted-foreground">Sold</p>
@@ -313,7 +331,9 @@ export const ProductDetailPage: React.FC = () => {
                         </div>
                         <div>
                           <p className="text-xs text-muted-foreground">End of Month</p>
-                          <p className="text-lg font-bold tabular-nums">{performance.stock.endOfMonth}</p>
+                          <p className="text-lg font-bold tabular-nums">
+                            {performance.stock.endOfMonth}
+                          </p>
                         </div>
                       </div>
                     </CardContent>
@@ -335,7 +355,9 @@ export const ProductDetailPage: React.FC = () => {
                             {performance.sales.byEmployee.map((emp) => (
                               <tr key={emp.employeeId} className="hover:bg-muted/20">
                                 <td className="px-4 py-3 font-medium">{emp.employeeName}</td>
-                                <td className="px-4 py-3 text-right tabular-nums">{emp.quantitySold}</td>
+                                <td className="px-4 py-3 text-right tabular-nums">
+                                  {emp.quantitySold}
+                                </td>
                                 <td className="px-4 py-3 text-right tabular-nums">
                                   ${emp.revenue.toLocaleString()}
                                 </td>
@@ -361,9 +383,7 @@ export const ProductDetailPage: React.FC = () => {
                   <div className="flex justify-between items-center pb-4 border-b border-border/50">
                     <div>
                       <p className="text-sm font-medium text-foreground">Depot</p>
-                      <p className="text-xs text-muted-foreground">
-                        Assigned warehouse location
-                      </p>
+                      <p className="text-xs text-muted-foreground">Assigned warehouse location</p>
                     </div>
                     <div className="text-right">
                       <p className="font-medium text-primary">{product.depot?.name ?? "—"}</p>
@@ -375,9 +395,7 @@ export const ProductDetailPage: React.FC = () => {
                   <div className="flex justify-between items-center">
                     <div>
                       <p className="text-sm font-medium text-foreground">Brand</p>
-                      <p className="text-xs text-muted-foreground">
-                        Product brand association
-                      </p>
+                      <p className="text-xs text-muted-foreground">Product brand association</p>
                     </div>
                     <div className="text-right">
                       <p className="font-medium">{product.brand?.name ?? "—"}</p>
@@ -399,6 +417,7 @@ export const ProductDetailPage: React.FC = () => {
         onOpenChange={setAdjustOpen}
         product={product as any}
         onSave={handleAdjustStock}
+        isSaving={updateStock.isPending || recordSale.isPending}
       />
     </>
   );

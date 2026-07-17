@@ -19,24 +19,24 @@ interface KpiMatrixProps {
 }
 
 const getCellColor = (percent: number) => {
-  if (percent >= 100) return "bg-emerald-100/50 text-emerald-700 dark:bg-emerald-950/30 dark:text-emerald-400";
-  if (percent >= 80) return "bg-amber-100/50 text-amber-700 dark:bg-amber-950/30 dark:text-amber-400";
-  return "bg-rose-100/50 text-rose-700 dark:bg-rose-950/30 dark:text-rose-400";
+  if (percent >= 100) return "bg-emerald-600 text-white";
+  if (percent >= 80) return "bg-amber-500 text-white";
+  return "bg-rose-600 text-white";
 };
 
 export const KpiMatrix: React.FC<KpiMatrixProps> = ({ data, productNames }) => {
   return (
-    <div className="rounded-none border border-border bg-surface overflow-x-auto">
+    <div className="overflow-x-auto overflow-hidden rounded-xl border border-border/70 bg-card">
       <Table>
-        <TableHeader className="bg-muted/50 border-b border-border/80">
-          <TableRow className="hover:bg-transparent border-0">
-            <TableHead className="font-bold text-muted-foreground border-r border-border/40 w-[200px] min-w-[200px] bg-muted/20 sticky left-0 z-20">
+        <TableHeader className="border-b border-border/80 bg-muted/40">
+          <TableRow className="border-0 hover:bg-transparent">
+            <TableHead className="sticky left-0 z-20 min-w-[200px] w-[200px] border-r border-border/40 bg-muted/60 font-semibold text-muted-foreground">
               Depot
             </TableHead>
             {productNames.map((name) => (
               <TableHead
                 key={name}
-                className="text-xs uppercase tracking-wider h-10 font-bold text-muted-foreground border-r border-border/40 last:border-0 bg-muted/20 text-center min-w-[120px]"
+                className="h-10 min-w-[120px] border-r border-border/40 bg-transparent text-center text-xs font-semibold uppercase tracking-wider text-muted-foreground last:border-0"
               >
                 {name}
               </TableHead>
@@ -48,9 +48,9 @@ export const KpiMatrix: React.FC<KpiMatrixProps> = ({ data, productNames }) => {
             data.map((row, index) => (
               <TableRow
                 key={index}
-                className="hover:bg-muted/40 transition-colors border-b border-border/40 last:border-0"
+                className="border-b border-border/40 last:border-0"
               >
-                <TableCell className="font-medium text-foreground py-2.5 border-r border-border/40 sticky left-0 bg-surface z-10 shadow-[1px_0_0_0_var(--color-border)]">
+                <TableCell className="sticky left-0 z-10 border-r border-border/40 bg-card py-2.5 font-medium text-foreground">
                   {row.depotName}
                 </TableCell>
                 {productNames.map((name) => {
@@ -59,10 +59,10 @@ export const KpiMatrix: React.FC<KpiMatrixProps> = ({ data, productNames }) => {
                   return (
                     <TableCell 
                       key={name} 
-                      className={`py-2 border-r border-border/40 last:border-0 text-center ${hasData ? getCellColor(percent) : 'bg-transparent'}`}
+                      className={`border-r border-border/40 py-2 text-center last:border-0 ${hasData ? getCellColor(percent) : "bg-transparent"}`}
                     >
                       {hasData ? (
-                        <span className="font-semibold tabular-nums text-sm">
+                        <span className="text-sm font-semibold tabular-nums">
                           {percent.toFixed(1)}%
                         </span>
                       ) : (

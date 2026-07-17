@@ -13,7 +13,7 @@ export function BrandInfoCard({ brand, logs, className }: BrandInfoCardProps) {
   return (
     <div className="space-y-6 select-none">
       {/* Property Sheet Card */}
-      <div className="border border-border rounded-lg bg-card/15 overflow-hidden shadow-sm">
+      <div className="border border-border rounded-lg bg-card/15 overflow-hidden ">
         <div className="border-b border-border/60 px-4 py-3 bg-card/35 flex items-center gap-2">
           <FileText className="h-4 w-4 text-primary shrink-0" />
           <h3 className="text-[12px] font-semibold text-foreground tracking-tight">Core Registration Metadata</h3>
@@ -64,7 +64,7 @@ export function BrandInfoCard({ brand, logs, className }: BrandInfoCardProps) {
       </div>
 
       {/* SOC2 System Audit Log Stream */}
-      <div className="border border-border rounded-lg bg-card/15 overflow-hidden shadow-sm">
+      <div className="border border-border rounded-lg bg-card/15 overflow-hidden ">
         <div className="border-b border-border/60 px-4 py-3 bg-card/35 flex items-center justify-between">
           <div className="flex items-center gap-2">
             <Activity className="h-4 w-4 text-primary shrink-0" />

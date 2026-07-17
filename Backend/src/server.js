@@ -4,6 +4,7 @@ import app from './app.js';
 import { connectDB } from './config/db.js';
 import logger from './config/logger.js';
 import environment from './config/env.js';
+import { startTelegramBot } from './services/telegram/index.js';
 
 
 class Server {
@@ -33,7 +34,11 @@ class Server {
                     `Server running on http://${this.host}:${this.port}`
                 );
 
+
+
                 logger.info(`Environment: ${environment.nodeEnv}`);
+
+                startTelegramBot();
             });
 
             // 4. Handle server errors
@@ -48,7 +53,7 @@ class Server {
 
         }
         catch (error) {
-            logger.error('❌ Failed to start server');
+            logger.error('Failed to start server');
             logger.error(error);
             process.exit(1);
         }

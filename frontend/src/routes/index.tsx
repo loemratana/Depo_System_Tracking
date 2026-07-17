@@ -1,78 +1,69 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { motion } from "framer-motion";
-import { KpiCard } from "../features/dasbhaordKpi/ui/KpiCard";        // <-- existing KpiCard
+import { KpiCard } from "../features/dasbhaordKpi/ui/KpiCard"; // <-- existing KpiCard
 import { useDashboard } from "../features/dasbhaordKpi/hook/useDashboard"; // adjust path
 import { Skeleton } from "@/components/ui/skeleton";
-import { DateRangePicker } from "../components/ui/DateRangePicker";
+import { DateRangePicker, type MonthFilterValue } from "../components/ui/DateRangePicker";
+import { MonthlyAssignmentChart } from "../components/charts/MonthlyAssignmentChart";
+
 import {
   Warehouse,
   Users,
   MapPin,
   Package,
   Clock,
-  Globe2,
   ArrowUpRight,
-  Filter,
   Download,
 } from "lucide-react";
-import {
-  Area,
-  AreaChart,
-  Bar,
-  BarChart,
-  CartesianGrid,
-  Line,
-  LineChart,
-  ResponsiveContainer,
-  Tooltip,
-  XAxis,
-  YAxis,
-} from "recharts";
-import { PageHeader, Surface, SectionTitle, StatusBadge, FilterChip } from "@/components/ui-kit";
-import { activity, regionalCoverage, visitTrend, productCoverage, visits } from "@/features/_data/mock";
+import { PageHeader, Surface, SectionTitle, StatusBadge } from "@/components/ui-kit";
+import { visits } from "@/features/_data/mock";
 import { useState, useEffect } from "react";
-import { fetchAssignmentTrend } from "@/features/dasbhaordKpi/services/dashboardService";
+import {
+  fetchAssignmentTrend,
+  fetchBrandDistribution,
+} from "@/features/dasbhaordKpi/services/dashboardService";
+import { BrandPieChart } from "@/components/charts/BrandPieChart";
+import type { BrandDistributionItem } from "@/features/dasbhaordKpi/types/dashboard";
 
 export const Route = createFileRoute("/")({
   head: () => ({
     meta: [
       { title: "Dashboard — Brand Depot" },
-      { name: "description", content: "Real-time overview of depots, handlers, and field visits across regions." },
+      {
+        name: "description",
+        content: "Real-time overview of depots, handlers, and field visits across regions.",
+      },
     ],
   }),
   component: DashboardPage,
 });
 
-const tooltipStyle = {
-  background: "var(--color-popover)",
-  border: "1px solid var(--color-border)",
-  borderRadius: 6,
-  padding: "8px 10px",
-  boxShadow: "0 4px 12px -4px rgba(0,0,0,.12)",
-  fontSize: 11.5,
-  color: "var(--color-popover-foreground)",
-};
-
 function DashboardPage() {
   const { data, loading, error, refetch } = useDashboard();
   const formatNumber = (num: number) => num.toLocaleString();
 
+  const now = new Date();
+  const [monthFilter, setMonthFilter] = useState<MonthFilterValue>({
+    year: now.getFullYear(),
+    month: now.getMonth() + 1,
+  });
+  const [brandRows, setBrandRows] = useState<BrandDistributionItem[]>([]);
+  const [brandLoading, setBrandLoading] = useState(true);
+  const [brandError, setBrandError] = useState<string | null>(null);
 
   // State for assignment trend
-  const [assignmentTrend, setAssignmentTrend] = useState([]);
   const [trendLoading, setTrendLoading] = useState(true);
-  const [trendError, setTrendError] = useState(null);
+  const [trendError, setTrendError] = useState<unknown>(null);
 
   // Fetch assignment trend on mount
   useEffect(() => {
     const loadTrend = async () => {
       try {
         setTrendLoading(true);
-        const trendData = await fetchAssignmentTrend();
-        setAssignmentTrend(trendData);
+        await fetchAssignmentTrend();
         setTrendError(null);
       } catch (err) {
-        console.error('Failed to load assignment trend:', err);
+        console.error("Failed to load assignment trend:", err);
         setTrendError(err);
       } finally {
         setTrendLoading(false);
@@ -81,16 +72,52 @@ function DashboardPage() {
     loadTrend();
   }, []);
 
-  // Transform for chart
-  const chartData = assignmentTrend.map(item => ({
-    day: item.month,
-    assignment: item.count,
-    completed: 0,
+  // Brand distribution — refetch when monthly filter changes
+  useEffect(() => {
+    let cancelled = false;
+    const loadBrands = async () => {
+      try {
+        setBrandLoading(true);
+        setBrandError(null);
+        const result = await fetchBrandDistribution(monthFilter.year, monthFilter.month);
+        if (!cancelled) setBrandRows(result.brands);
+      } catch (err) {
+        console.error("Failed to load brand distribution:", err);
+        if (!cancelled) {
+          setBrandError(err instanceof Error ? err.message : "Failed to load brand distribution");
+          setBrandRows([]);
+        }
+      } finally {
+        if (!cancelled) setBrandLoading(false);
+      }
+    };
+    loadBrands();
+    return () => {
+      cancelled = true;
+    };
+  }, [monthFilter.year, monthFilter.month]);
+
+  const brandPieData = brandRows.map((b) => ({
+    name: b.name,
+    depotCount: b.depotCount,
+    productQuantity: b.productQuantity,
+    stockQuantity: b.stockQuantity,
   }));
 
+  // Transform for chart
+  const chartData = [
+    { name: "Jan", assignments: 4000, completed: 2400 },
+    { name: "Feb", assignments: 3000, completed: 1398 },
+    { name: "Mar", assignments: 2000, completed: 9800 },
+    { name: "Apr", assignments: 2780, completed: 3908 },
+    { name: "May", assignments: 1890, completed: 4800 },
+    { name: "Jun", assignments: 2390, completed: 3800 },
+  ];
 
-
-
+  const monthMeta = new Date(monthFilter.year, monthFilter.month - 1).toLocaleString("en-US", {
+    month: "short",
+    year: "numeric",
+  });
 
   return (
     <>
@@ -100,7 +127,7 @@ function DashboardPage() {
         description="Live signal across depots, handlers, and field visits — updated 2 minutes ago."
         actions={
           <>
-            <DateRangePicker />
+            <DateRangePicker value={monthFilter} onChange={setMonthFilter} />
             <button className="inline-flex items-center gap-1.5 rounded-md border border-border bg-surface px-2.5 py-1.5 text-[12px] font-medium text-foreground hover:border-border-strong">
               <Download className="h-3 w-3" /> Export
             </button>
@@ -108,14 +135,14 @@ function DashboardPage() {
         }
       />
 
-      <div className="grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-5 pr-4 pl-4">
+      <div className="grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-5 ">
         {/* 1. Brand Depots */}
         {loading ? (
           <Skeleton className="h-28 w-full rounded-lg" />
         ) : (
           <KpiCard
             label="Brand Depots"
-            value={data ? formatNumber(data.brandDepots) : '—'}
+            value={data ? formatNumber(data.brandDepots) : "—"}
             delta="this month"
             trend="up"
             icon={Warehouse}
@@ -128,7 +155,7 @@ function DashboardPage() {
         ) : (
           <KpiCard
             label="Handlers"
-            value={data ? formatNumber(data.handlers) : '—'}
+            value={data ? formatNumber(data.handlers) : "—"}
             delta="this month"
             trend="up"
             icon={Users}
@@ -141,7 +168,7 @@ function DashboardPage() {
         ) : (
           <KpiCard
             label="Total Brands"
-            value={data ? formatNumber(data.expiredDepots) : '—'}
+            value={data ? formatNumber(data.expiredDepots) : "—"}
             delta="this month"
             trend="up"
             icon={MapPin}
@@ -159,12 +186,12 @@ function DashboardPage() {
 
         {/* 5. Pending Assign (mock) */}
         <KpiCard
-          label="Pending Assign"
+          label="Vacancy"
           value="47"
           delta="-12"
           trend="down"
           icon={Clock}
-          hint="below threshold"
+          hint="vacancy"
         />
       </div>
 
@@ -179,122 +206,109 @@ function DashboardPage() {
       )}
 
       {/* Rest of your dashboard (charts, tables, etc.) remains unchanged */}
-      <div className="mt-3 grid grid-cols-1 gap-3 lg:grid-cols-3">
-        {/* ... */}
-      </div>
+      <div className="mt-3 grid grid-cols-1 gap-3 lg:grid-cols-3">{/* ... */}</div>
 
       {/* Charts */}
-      <div className="mt-3 grid grid-cols-1 gap-3 lg:grid-cols-3 pr-4 pl-4">
+      <div className="mt-3 grid grid-cols-1 gap-3 lg:grid-cols-3 ">
         <Surface className="lg:col-span-2 dark:bg-gray-900">
           <SectionTitle
             title="Monthly Assignment"
-            meta="last 6 months"   // ← changed from "last 7 days"
+            meta="last 6 months"
             action={
-              <div className="flex items-center gap-3 text-[11px] text-muted-foreground ">
+              <div className="flex items-center gap-4 text-[11px] text-muted-foreground">
                 <span className="flex items-center gap-1.5">
-                  <span className="h-1.5 w-3 rounded-sm bg-primary" /> Total assignments
+                  <span
+                    className="h-1.5 w-3 rounded-sm"
+                    style={{ background: "var(--color-primary)" }}
+                  />
+                  Assignments
                 </span>
-                {/* Remove Completed legend if not available */}
+                <span className="flex items-center gap-1.5">
+                  <span
+                    className="h-1.5 w-3 rounded-sm"
+                    style={{ background: "var(--color-chart-2)" }}
+                  />
+                  Completed
+                </span>
               </div>
             }
           />
           <div className="h-[230px]">
-            {trendLoading ? (
-              <div className="flex h-full items-center justify-center">
-                <Skeleton className="h-32 w-full" />
-              </div>
-            ) : trendError ? (
-              <div className="flex h-full items-center justify-center text-xs text-red-500">
-                Failed to load trend data.
-              </div>
-            ) : (
-              <ResponsiveContainer width="100%" height="100%">
-                <AreaChart data={chartData} margin={{ top: 10, right: 8, left: -16, bottom: 0 }}>
-                  <defs>
-                    <linearGradient id="g1" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="0%" stopColor="var(--color-primary)" stopOpacity={0.22} />
-                      <stop offset="100%" stopColor="var(--color-primary)" stopOpacity={0} />
-                    </linearGradient>
-                  </defs>
-                  <CartesianGrid stroke="var(--color-border)" strokeDasharray="3 3" vertical={false} />
-                  <XAxis dataKey="day" stroke="var(--color-muted-foreground)" tick={{ fontSize: 11 }} tickLine={false} axisLine={false} />
-                  <YAxis stroke="var(--color-muted-foreground)" tick={{ fontSize: 11 }} tickLine={false} axisLine={false} width={40} />
-                  <Tooltip contentStyle={tooltipStyle} cursor={{ stroke: "var(--color-border-strong)" }} />
-                  <Area type="monotone" dataKey="assignment" stroke="var(--color-primary)" strokeWidth={1.5} fill="url(#g1)" />
-                </AreaChart>
-              </ResponsiveContainer>
-            )}
+            <MonthlyAssignmentChart
+              data={chartData}
+              loading={trendLoading}
+              error={trendError ? "Failed to load trend data." : null}
+            />
           </div>
         </Surface>
 
         <Surface className="dark:bg-gray-900">
-          <SectionTitle title="Regional coverage" meta="this quarter" />
-          <div className="h-[230px]">
-            <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={regionalCoverage} margin={{ top: 10, right: 8, left: -20, bottom: 0 }}>
-                <CartesianGrid stroke="var(--color-border)" strokeDasharray="3 3" vertical={false} />
-                <XAxis dataKey="region" stroke="var(--color-muted-foreground)" tick={{ fontSize: 11 }} tickLine={false} axisLine={false} />
-                <YAxis stroke="var(--color-muted-foreground)" tick={{ fontSize: 11 }} tickLine={false} axisLine={false} width={36} />
-                <Tooltip contentStyle={tooltipStyle} cursor={{ fill: "var(--color-muted)" }} />
-                <Bar dataKey="coverage" fill="var(--color-primary)" radius={[3, 3, 0, 0]} barSize={22} />
-              </BarChart>
-            </ResponsiveContainer>
-          </div>
+          <SectionTitle
+            title="Brand Distribution"
+            meta={monthMeta}
+            action={
+              <a className="text-[11px] text-primary hover:underline" href="/brands">
+                View all <ArrowUpRight className="inline h-3 w-3" />
+              </a>
+            }
+          />
+          {brandError ? (
+            <p className="px-1 py-8 text-center text-[12px] text-red-600">{brandError}</p>
+          ) : (
+            <BrandPieChart
+              data={brandPieData}
+              loading={brandLoading}
+            />
+          )}
         </Surface>
+
+        
       </div>
 
-      <div className="mt-3 grid grid-cols-1 gap-3 lg:grid-cols-3 pr-4 pl-4">
+      {/* <div className="mt-3 grid grid-cols-1 gap-3 lg:grid-cols-3 ">
         <Surface className="lg:col-span-2 dark:bg-gray-900">
           <SectionTitle title="Product coverage trend" meta="6 weeks" />
           <div className="h-[220px]">
             <ResponsiveContainer width="100%" height="100%">
-              <LineChart data={productCoverage} margin={{ top: 10, right: 8, left: -16, bottom: 0 }}>
-                <CartesianGrid stroke="var(--color-border)" strokeDasharray="3 3" vertical={false} />
-                <XAxis dataKey="week" stroke="var(--color-muted-foreground)" tick={{ fontSize: 11 }} tickLine={false} axisLine={false} />
-                <YAxis stroke="var(--color-muted-foreground)" tick={{ fontSize: 11 }} tickLine={false} axisLine={false} width={36} />
-                <Tooltip contentStyle={tooltipStyle} cursor={{ stroke: "var(--color-border-strong)" }} />
-                <Line type="monotone" dataKey="core" stroke="var(--color-primary)" strokeWidth={1.5} dot={false} />
-                <Line type="monotone" dataKey="premium" stroke="var(--color-chart-2)" strokeWidth={1.5} dot={false} />
-                <Line type="monotone" dataKey="seasonal" stroke="var(--color-chart-3)" strokeWidth={1.5} dot={false} />
-              </LineChart>
+
+              <ProductSalesChart
+                data={dailySales}
+                loading={dailyLoading}
+                title="Sales by Day"
+              />
+
             </ResponsiveContainer>
           </div>
           <div className="mt-2 flex items-center gap-4 text-[11px] text-muted-foreground">
-            <span className="flex items-center gap-1.5"><span className="h-1.5 w-3 rounded-sm bg-primary" /> Core</span>
-            <span className="flex items-center gap-1.5"><span className="h-1.5 w-3 rounded-sm bg-chart-2" /> Premium</span>
-            <span className="flex items-center gap-1.5"><span className="h-1.5 w-3 rounded-sm bg-chart-3" /> Seasonal</span>
+            <span className="flex items-center gap-1.5">
+              <span className="h-1.5 w-3 rounded-sm bg-primary" /> Core
+            </span>
+            <span className="flex items-center gap-1.5">
+              <span className="h-1.5 w-3 rounded-sm bg-chart-2" /> Premium
+            </span>
+            <span className="flex items-center gap-1.5">
+              <span className="h-1.5 w-3 rounded-sm bg-chart-3" /> Seasonal
+            </span>
           </div>
         </Surface>
-
-        <Surface className="dark:bg-gray-900">
-          <SectionTitle title="Live activity" action={<a className="text-[11px] text-primary hover:underline" href="/activity">View all <ArrowUpRight className="inline h-3 w-3" /></a>} />
-          <ul className="-mx-1 max-h-[260px] space-y-px overflow-y-auto pr-1">
-            {activity.slice(0, 6).map((e) => (
-              <li
-                key={e.id}
-                className="rounded-md px-2 py-2 text-[12px] hover:bg-muted/60"
-              >
-                <div className="flex items-center justify-between">
-                  <span className="font-medium text-foreground">{e.actor}</span>
-                  <span className="text-[10.5px] text-muted-foreground">{e.ts}</span>
-                </div>
-                <div className="text-muted-foreground">
-                  {e.action} <span className="text-foreground/80">{e.target}</span>
-                </div>
-              </li>
-            ))}
-          </ul>
-        </Surface>
-      </div>
+      </div> */}
 
       {/* Active visits */}
-      <motion.div
+      {/* <motion.div
         initial={{ opacity: 0, y: 6 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.2, delay: 0.05 }}
       >
         <Surface className="mt-3 dark:bg-gray-900">
-          <SectionTitle title="Active field visits" meta="updated just now" action={<a className="text-[11px] text-primary hover:underline" href="/visits">Open visits</a>} />
+          <SectionTitle
+            title="Active field visits"
+            meta="updated just now"
+            action={
+              <a className="text-[11px] text-primary hover:underline" href="/visits">
+                Open visits
+              </a>
+            }
+          />
           <div className="overflow-hidden rounded-md border border-border">
             <table className="w-full text-[12px]">
               <thead className="bg-muted/50 text-muted-foreground">
@@ -308,29 +322,42 @@ function DashboardPage() {
                 </tr>
               </thead>
               <tbody>
-                {visits.filter((v) => v.status === "active" || v.status === "scheduled").map((v) => (
-                  <tr key={v.id} className="border-b border-border last:border-0 hover:bg-muted/30">
-                    <td className="px-3 py-2 text-foreground">{v.depo}</td>
-                    <td className="px-3 py-2 text-foreground/80">{v.handler}</td>
-                    <td className="px-3 py-2 text-muted-foreground">{v.region}</td>
-                    <td className="px-3 py-2 text-muted-foreground">{v.startedAt}</td>
-                    <td className="px-3 py-2">
-                      {v.gps ? <StatusBadge tone="success" dot>verified</StatusBadge> : <StatusBadge tone="muted">pending</StatusBadge>}
-                    </td>
-                    <td className="px-3 py-2">
-                      {v.status === "active" ? (
-                        <StatusBadge tone="info" dot>active</StatusBadge>
-                      ) : (
-                        <StatusBadge tone="default">scheduled</StatusBadge>
-                      )}
-                    </td>
-                  </tr>
-                ))}
+                {visits
+                  .filter((v) => v.status === "active" || v.status === "scheduled")
+                  .map((v) => (
+                    <tr
+                      key={v.id}
+                      className="border-b border-border last:border-0 hover:bg-muted/30"
+                    >
+                      <td className="px-3 py-2 text-foreground">{v.depo}</td>
+                      <td className="px-3 py-2 text-foreground/80">{v.handler}</td>
+                      <td className="px-3 py-2 text-muted-foreground">{v.region}</td>
+                      <td className="px-3 py-2 text-muted-foreground">{v.startedAt}</td>
+                      <td className="px-3 py-2">
+                        {v.gps ? (
+                          <StatusBadge tone="success" dot>
+                            verified
+                          </StatusBadge>
+                        ) : (
+                          <StatusBadge tone="muted">pending</StatusBadge>
+                        )}
+                      </td>
+                      <td className="px-3 py-2">
+                        {v.status === "active" ? (
+                          <StatusBadge tone="info" dot>
+                            active
+                          </StatusBadge>
+                        ) : (
+                          <StatusBadge tone="default">scheduled</StatusBadge>
+                        )}
+                      </td>
+                    </tr>
+                  ))}
               </tbody>
             </table>
           </div>
         </Surface>
-      </motion.div>
+      </motion.div> */}
     </>
   );
 }

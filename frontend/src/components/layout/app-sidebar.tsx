@@ -26,22 +26,23 @@ type NavItem = { to: string; label: string; icon: React.ComponentType<{ classNam
 const PRIMARY: NavItem[] = [
   { to: "/", label: "Dashboard", icon: LayoutDashboard },
   { to: "/brands", label: "Brands", icon: Tags },
-  { to: "/depos", label: "Brand Depos", icon: Warehouse },
-  { to: "/geography", label: "Geography", icon: MapPin },
-
+  { to: "/depos", label: "Depot Management", icon: Warehouse },
+  
   { to: "/products", label: "Products", icon: Package },
 
   // { to: "/handlers", label: "Handlers", icon: Users },
-  { to: "/employees", label: "Employees", icon: Users },
-  // { to: "/visits", label: "Visits", icon: MapPin},
+  { to: "/employees", label: "Sale Supervisor", icon: Users },
+  
+  { to: "/geography", label: "Geography", icon: MapPin },
+// { to: "/visits", label: "Visits", icon: MapPin},
 ];
 
 const INSIGHTS: NavItem[] = [
   { to: "/product-analytics", label: "Product Analytics", icon: BarChart },
   { to: "/kpi-system", label: "KPI System", icon: Target },
 
-  { to: "/reports", label: "Reports", icon: FileBarChart2 },
-  { to: "/analytics", label: "Analytics", icon: LineChart },
+  // { to: "/reports", label: "Reports", icon: FileBarChart2 },
+  // { to: "/analytics", label: "Analytics", icon: LineChart },
   
 ];
 // SYSTEM holds administrative or diagnostic operations like Bulk Import/Export, settings, etc.

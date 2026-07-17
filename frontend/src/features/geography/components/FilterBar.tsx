@@ -36,7 +36,7 @@ export const FilterBar: React.FC<FilterBarProps> = ({
 
       <div className="flex items-center gap-2 w-full sm:w-auto">
         {showStatusFilter && onStatusFilterChange && (
-          <div className="flex items-center gap-0.5 bg-muted/30 border border-border/50 rounded-lg p-1 shadow-sm">
+          <div className="flex items-center gap-0.5 bg-muted/30 border border-border/50 rounded-lg p-1 ">
             {(["all", "active", "inactive"] as const).map((filter) => (
               <button
                 key={filter}
@@ -44,7 +44,7 @@ export const FilterBar: React.FC<FilterBarProps> = ({
                 className={cn(
                   "px-3 py-1.5 text-xs font-medium rounded-md transition-all",
                   statusFilter === filter
-                    ? "bg-background text-foreground shadow-sm"
+                    ? "bg-background text-foreground "
                     : "text-muted-foreground hover:text-foreground hover:bg-muted/50",
                 )}
               >

@@ -44,7 +44,7 @@ export function BrandDrawer({
             transition={{ type: "spring", damping: 26, stiffness: 220 }}
             className="
               relative z-10 w-full max-w-md h-full bg-white dark:bg-zinc-950
-              border-l border-zinc-200 dark:border-zinc-800 shadow-2xl
+              border-l border-zinc-200 dark:border-zinc-800 -2xl
               flex flex-col justify-between overflow-hidden
             "
           >

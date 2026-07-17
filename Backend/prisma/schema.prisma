@@ -30,63 +30,82 @@ model District {
 }
 
 model Employee {
-  id           Int            @id @default(autoincrement())
-  employeeCode String?        @unique @map("employee_code") @db.VarChar(50)
-  position     String?        @db.VarChar(100)
-  phone        String?        @db.VarChar(20)
-  email        String?        @db.VarChar(100)
-  hireDate     DateTime?      @map("hire_date") @db.Date
-  status       EmployeeStatus @default(active)
-  createdAt    DateTime       @default(now()) @map("created_at")
-  address      String?
-  dateOfBirth  DateTime?      @map("date_of_birth") @db.Date
-  department   String?        @db.VarChar(100)
-  englishName  String?        @map("english_name") @db.VarChar(100)
-  gender       String?
-  images       String?
-  khmerName    String?        @map("khmer_name") @db.VarChar(100)
-  salary       Float?         @db.Real
-  updatedAt    DateTime?      @updatedAt @map("updated_at")
-  remarks      String?        @db.Text
-  depots       Depot[]
-  user         User?
-  kpis         EmployeeKPI[]
+  id                  Int                  @id @default(autoincrement())
+  employeeCode        String?              @unique @map("employee_code") @db.VarChar(50)
+  position            String?              @db.VarChar(100)
+  phone               String?              @db.VarChar(20)
+  email               String?              @db.VarChar(100)
+  hireDate            DateTime?            @map("hire_date") @db.Date
+  status              EmployeeStatus       @default(active)
+  createdAt           DateTime             @default(now()) @map("created_at")
+  address             String?
+  dateOfBirth         DateTime?            @map("date_of_birth") @db.Date
+  department          String?              @db.VarChar(100)
+  englishName         String?              @map("english_name") @db.VarChar(100)
+  gender              String?
+  images              String?
+  khmerName           String?              @map("khmer_name") @db.VarChar(100)
+  salary              Float?               @db.Real
+  updatedAt           DateTime?            @updatedAt @map("updated_at")
+  remarks             String?
+  depots              Depot[]
+  documents           EmployeeDocument[]
+  kpis                EmployeeKPI[]
   productPerformances ProductPerformance[]
-  documents    EmployeeDocument[]
+  user                User?
 
+  @@index([khmerName, englishName], map: "idx_employees_names")
   @@map("employees")
 }
 
 model Depot {
-  id          Int         @id @default(autoincrement())
-  districtId  Int         @map("district_id")
-  name        String      @db.VarChar(100)
-  khmerName   String?       @db.VarChar(100) @map("khmer_name")
-  code        String?     @unique @db.VarChar(50)
-  address     String?
-  phone       String?     @db.VarChar(20)
-  status      DepotStatus @default(active)
-  createdAt   DateTime    @default(now()) @map("created_at")
-  commune     String?     @db.VarChar(100)
-  employeeId  Int?        @map("employee_id")
-  expiryDate  DateTime?   @map("expiry_date") @db.Timestamptz(6)
-  houseNumber String?     @map("house_number") @db.VarChar(50)
-  provinceId  Int?        @map("province_id")
-  street      String?     @db.VarChar(100)
-  village     String?     @db.VarChar(100)
-  brandId     Int?        @map("brand_id")
-  assignedAt  DateTime?   @map("assigned_at")
-  district    District    @relation(fields: [districtId], references: [id])
-  employee    Employee?   @relation(fields: [employeeId], references: [id])
-  brand       Brand?      @relation(fields: [brandId], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_brand")
-  province    Province?   @relation(fields: [provinceId], references: [id], map: "fk_depot_province")
-  products    Product[]
-  kpis        EmployeeKPI[]
+  id            Int           @id @default(autoincrement())
+  districtId    Int           @map("district_id")
+  name          String        @db.VarChar(100)
+  code          String?       @unique @db.VarChar(50)
+  address       String?
+  phone         String?       @db.VarChar(20)
+  status        DepotStatus   @default(active)
+  createdAt     DateTime      @default(now()) @map("created_at")
+  commune       String?       @db.VarChar(100)
+  employeeId    Int?          @map("employee_id")
+  expiryDate    DateTime?     @map("expiry_date") @db.Timestamptz(6)
+  houseNumber   String?       @map("house_number") @db.VarChar(50)
+  provinceId    Int?          @map("province_id")
+  street        String?       @db.VarChar(100)
+  village       String?       @db.VarChar(100)
+  brandId       Int?          @map("brand_id")
+  assignedAt    DateTime?     @map("assigned_at")
+  khmerName     String?       @map("khmer_name") @db.VarChar(100)
+  dateOfBirth   DateTime?     @map("date_of_birth") @db.Date
+  sex           Sex?          @default(male)
+  DepotIdNumber String?       @map("Depot_id_number") @db.VarChar(20)
+  note          String?
+  district      District      @relation(fields: [districtId], references: [id])
+  employee      Employee?     @relation(fields: [employeeId], references: [id])
+  brand         Brand?        @relation(fields: [brandId], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_brand")
+  province      Province?     @relation(fields: [provinceId], references: [id], map: "fk_depot_province")
+  kpis          EmployeeKPI[]
+  products      Product[]
+  staffs        Staff[]
 
   @@index([createdAt], map: "idx_depots_created_at")
   @@index([districtId], map: "idx_depots_district_id")
+  @@index([provinceId], map: "idx_depots_province_id")
+  @@index([employeeId], map: "idx_depots_employee_id")
   @@index([name], map: "idx_name_depot")
   @@map("depots")
+}
+
+model Staff {
+  id      Int     @id @default(autoincrement())
+  depotId Int     @map("depot_id")
+  name    String
+  email   String  @unique
+  phone   String? @db.VarChar(20)
+  depot   Depot   @relation(fields: [depotId], references: [id])
+
+  @@map("staffs")
 }
 
 model Brand {
@@ -103,19 +122,18 @@ model Brand {
 }
 
 model Product {
-  id        Int           @id @default(autoincrement())
-  brandId   Int           @map("brand_id")
-  depotId   Int           @map("depot_id")
-  name      String        @db.VarChar(200)
-  sku       String?       @unique @db.VarChar(100)
-  price     Decimal?      @db.Decimal(10, 2)
-  quantity  Int           @default(0)
-  minStock  Int           @default(0) @map("min_stock")
-  status    ProductStatus @default(OK)
-  createdAt DateTime      @default(now()) @map("created_at")
-  brand     Brand         @relation(fields: [brandId], references: [id])
-  depot     Depot         @relation(fields: [depotId], references: [id])
+  id           Int                  @id @default(autoincrement())
+  brandId      Int                  @map("brand_id")
+  depotId      Int                  @map("depot_id")
+  name         String               @db.VarChar(200)
+  sku          String?              @unique @db.VarChar(100)
+  quantity     Int                  @default(0)
+  minStock     Int                  @default(0) @map("min_stock")
+  status       ProductStatus        @default(OK)
+  createdAt    DateTime             @default(now()) @map("created_at")
   performances ProductPerformance[]
+  brand        Brand                @relation(fields: [brandId], references: [id])
+  depot        Depot                @relation(fields: [depotId], references: [id])
 
   @@map("products")
 }
@@ -161,9 +179,59 @@ model RefreshToken {
   @@map("refresh_tokens")
 }
 
+model EmployeeKPI {
+  id          Int      @id @default(autoincrement())
+  employeeId  Int      @map("employee_id")
+  depotId     Int      @map("depot_id")
+  month       DateTime @db.Date
+  targetValue Float    @map("target_value")
+  actualValue Float    @default(0) @map("actual_value")
+  performance Float?
+  remarks     String?
+  createdAt   DateTime @default(now()) @map("created_at")
+  depot       Depot    @relation(fields: [depotId], references: [id])
+  employee    Employee @relation(fields: [employeeId], references: [id])
+
+  @@unique([employeeId, depotId, month])
+  @@map("employee_kpis")
+}
+
+model ProductPerformance {
+  id           Int      @id @default(autoincrement())
+  productId    Int      @map("product_id")
+  employeeId   Int      @map("employee_id")
+  month        DateTime @db.Date
+  quantitySold Int      @default(0) @map("quantity_sold")
+  revenue      Decimal  @default(0) @db.Decimal(10, 2)
+  createdAt    DateTime @default(now()) @map("created_at")
+  employee     Employee @relation(fields: [employeeId], references: [id])
+  product      Product  @relation(fields: [productId], references: [id])
+
+  @@map("product_performances")
+}
+
+model EmployeeDocument {
+  id         Int      @id @default(autoincrement())
+  employeeId Int      @map("employee_id")
+  fileName   String   @map("file_name") @db.VarChar(200)
+  fileUrl    String   @map("file_url")
+  fileType   String?  @map("file_type")
+  uploadedAt DateTime @default(now()) @map("uploaded_at")
+  employee   Employee @relation(fields: [employeeId], references: [id])
+
+  @@map("employee_documents")
+}
+
+enum Sex {
+  male
+  female
+  other
+}
+
 enum DepotStatus {
   active
   inactive
+  vacancy
 }
 
 enum BrandStatus {
@@ -204,51 +272,4 @@ enum ReportType {
 enum DepotBrandStatus {
   active
   inactive
-}
-
-
-model EmployeeKPI {
-  id          Int      @id @default(autoincrement())
-  employeeId  Int      @map("employee_id")
-  depotId     Int      @map("depot_id")
-  month       DateTime @db.Date 
-  targetValue Float    @map("target_value")
-  actualValue Float    @default(0) @map("actual_value")
-  performance Float?
-  remarks     String?  @db.Text
-  createdAt   DateTime @default(now()) @map("created_at")
-
-  employee    Employee @relation(fields: [employeeId], references: [id])
-  depot       Depot    @relation(fields: [depotId], references: [id])
-
-  @@unique([employeeId, depotId, month]) 
-  @@map("employee_kpis")
-}
-
-model ProductPerformance {
-  id           Int      @id @default(autoincrement())
-  productId    Int      @map("product_id")
-  employeeId   Int      @map("employee_id") 
-  month        DateTime @db.Date
-  quantitySold Int      @default(0) @map("quantity_sold")
-  revenue      Decimal  @default(0) @db.Decimal(10, 2)
-  createdAt    DateTime @default(now()) @map("created_at")
-
-  product      Product  @relation(fields: [productId], references: [id])
-  employee     Employee @relation(fields: [employeeId], references: [id])
-
-  @@map("product_performances")
-}
-
-model EmployeeDocument {
-  id          Int      @id @default(autoincrement())
-  employeeId  Int      @map("employee_id")
-  fileName    String   @map("file_name") @db.VarChar(200)
-  fileUrl     String   @map("file_url")  
-  fileType    String?  @map("file_type")
-  uploadedAt  DateTime @default(now()) @map("uploaded_at")
-
-  employee    Employee @relation(fields: [employeeId], references: [id])
-
-  @@map("employee_documents")
 }

@@ -1,5 +1,11 @@
 import { prisma } from "../config/db.js";
 import logger from "../config/logger.js";
+import {
+  parseImportDate,
+  normalizeSex,
+  normalizeImportRow,
+} from "../utils/importUtils.js";
+
 
 class DepotService {
   async createDepot(data) {
@@ -101,6 +107,7 @@ class DepotService {
             employeeId: employeeId,
             assignedAt: employeeId ? new Date() : null,
             brandId: data.brandId || null,
+            note: data.note?.trim() || null,
           },
           include: {
             district: { include: { province: true } },
@@ -260,6 +267,9 @@ class DepotService {
           updateData.brandId = brandId;
         }
       }
+      if (data.note !== undefined) {
+        updateData.note = data.note?.trim() || null;
+      }
 
 
       console.log("brand updated", updateData);
@@ -318,7 +328,7 @@ class DepotService {
       const numericId = Number(id);
       if (isNaN(numericId)) throw new Error("Invalid depot ID");
 
-      // Fetch depot with its direct employee and brands
+      // Fetch depot with its direct employee, brands, and staff
       const depot = await prisma.depot.findUnique({
         where: { id: numericId },
         select: {
@@ -329,6 +339,8 @@ class DepotService {
           phone: true,
           address: true,
           createdAt: true,
+          expiryDate: true,
+          note: true,
           employee: {
             //direct relation (singular)
             select: {
@@ -342,11 +354,26 @@ class DepotService {
               images: true,
             },
           },
+          staffs: {
+            select: {
+              id: true,
+              name: true,
+              email: true,
+              phone: true,
+            },
+            orderBy: { name: "asc" },
+          },
+          _count: {
+            select: { products: true, staffs: true },
+          },
           district: {
             select: {
               name: true,
               province: { select: { name: true } },
             },
+          },
+          brand: {
+            select: { id: true, name: true },
           },
         },
       });
@@ -369,14 +396,22 @@ class DepotService {
         }
         : null;
 
-      // Since there's no assignment history, employees list only contains the current owner
+      // Staff from staffs table
+      const staffs = (depot.staffs || []).map((s) => ({
+        id: s.id,
+        name: s.name,
+        email: s.email,
+        phone: s.phone,
+      }));
+
+      // Keep employees as supervisor for backward compatibility
       const employeesFormatted = owner
         ? [
           {
             id: owner.id,
             name: owner.englishName || owner.khmerName,
-            position: owner.position,
-            assignmentType: "permanent", // default, no history
+            position: owner.position || "Sale Supervisor",
+            assignmentType: "permanent",
           },
         ]
         : [];
@@ -405,11 +440,16 @@ class DepotService {
           province: depot.district?.province?.name,
         },
         owner,
-        // brands: depot.depotBrands.map((b) => ({
-        //   id: b.brand.id,
-        //   name: b.brand.name,
-        // })),
+        brands: depot.brand
+          ? [{ id: depot.brand.id, name: depot.brand.name }]
+          : [],
+        note: depot.note,
         employees: employeesFormatted,
+        staffs,
+        counts: {
+          products: depot._count.products,
+          staffs: depot._count.staffs,
+        },
         timeline,
       };
     } catch (error) {
@@ -417,6 +457,49 @@ class DepotService {
       throw error;
     }
   }
+
+  /**
+   * Get depot counts, optionally filtered by brand(s).
+   * @param {Object} filters
+   * @param {number} [filters.brandId]
+   * @param {number[]} [filters.brandIds]
+   */
+  async getDepotSummary(filters = {}) {
+    const { brandId, brandIds } = filters;
+    const now = new Date();
+    const thirtyDaysLater = new Date(now);
+    thirtyDaysLater.setDate(now.getDate() + 30);
+
+    const where = {};
+    if (brandId) {
+      where.brandId = parseInt(brandId, 10);
+    } else if (brandIds?.length) {
+      where.brandId = { in: brandIds.map((id) => parseInt(id, 10)) };
+    }
+
+    const [total, vacancy, active, expired, expiringSoon] = await Promise.all([
+      prisma.depot.count({ where }),
+      prisma.depot.count({ where: { ...where, status: "vacancy" } }),
+      prisma.depot.count({ where: { ...where, status: "active" } }),
+      prisma.depot.count({ where: { ...where, expiryDate: { lt: now } } }),
+      prisma.depot.count({
+        where: {
+          ...where,
+          expiryDate: { gte: now, lte: thirtyDaysLater },
+        },
+      }),
+    ]);
+
+    return { total, vacancy, active, expired, expiringSoon };
+  }
+
+  /**
+   * Get all depot counts (global).
+   */
+  async getDepotCounts() {
+    return this.getDepotSummary();
+  }
+
 
   async getDepotsGroupByProvince(filters) {
     try {
@@ -494,7 +577,6 @@ class DepotService {
    * @param {Object} filters - { fromDate, toDate, groupBy }
    * @returns {Promise<Object>}
    */
-
   async getDepotReport(filters = {}) {
     const { fromDate, toDate, groupBy } = filters;
     const where = {};
@@ -595,7 +677,6 @@ class DepotService {
    * @param {Date|string} options.filters.toDate - Created at end date
    * @returns {Promise<Object>} { data: [], pagination: {}, filtersApplied: {} }
    */
-
   async getAllDepot({
     page = 1,
     pageSize = 20,
@@ -605,16 +686,24 @@ class DepotService {
     includeAddress = false,
     filters = {},
   }) {
-    const skip = (page - 1) * pageSize;
+    const safePage = Math.max(1, Number(page) || 1);
+    const safePageSize = Math.min(100, Math.max(1, Number(pageSize) || 20));
+    const skip = (safePage - 1) * safePageSize;
     const orderBy = sortBy === "id"
       ? { id: sortOrder }
       : [{ [sortBy]: sortOrder }, { id: sortOrder }];
 
-    const where = {};
+    const parseList = (value) => {
+      if (!value) return [];
+      if (Array.isArray(value)) return value.flatMap(parseList).filter(Boolean);
+      return String(value)
+        .split(",")
+        .map((s) => s.trim())
+        .filter(Boolean);
+    };
 
-    if (filters.status && filters.status !== "all") {
-      where.status = filters.status;
-    }
+    const where = {};
+    const and = [];
 
     if (groupBy === "province") {
       const grouped = await this.getDepotsGroupByProvince(filters);
@@ -631,35 +720,116 @@ class DepotService {
       if (filters.toDate) where.createdAt.lte = new Date(filters.toDate);
     }
 
-    if (filters.province) {
-      where.district = {
-        province: { name: { equals: filters.province, mode: "insensitive" } },
-      };
+    const provinces = parseList(
+      filters.province || filters.city || filters.provinceName,
+    );
+    const districts = parseList(filters.district || filters.districtName);
+    if (provinces.length || districts.length) {
+      const districtFilter = {};
+      if (districts.length) {
+        districtFilter.OR = districts.map((name) => ({
+          name: { equals: name, mode: "insensitive" },
+        }));
+      }
+      if (provinces.length) {
+        districtFilter.province = {
+          OR: provinces.map((name) => ({
+            name: { equals: name, mode: "insensitive" },
+          })),
+        };
+      }
+      and.push({ district: districtFilter });
     }
 
-    if (filters.district) {
-      where.district = {
-        name: { equals: filters.district, mode: "insensitive" },
-      };
-    }
-
-    if (filters.search) {
-      where.OR = [
-        { code: { contains: filters.search, mode: "insensitive" } },
-        { name: { contains: filters.search, mode: "insensitive" } },
-        // Search by employee name (direct relation, not through assignments)
-        {
-          employee: {
-            OR: [
-              { khmerName: { contains: filters.search, mode: "insensitive" } },
-              {
-                englishName: { contains: filters.search, mode: "insensitive" },
-              },
-            ],
-          },
+    const brandIds = parseList(filters.brandId || filters.brandIds)
+      .map(Number)
+      .filter((id) => !Number.isNaN(id));
+    const brandNames = parseList(filters.brand || filters.brandName);
+    if (brandIds.length) {
+      and.push({ brandId: { in: brandIds } });
+    } else if (brandNames.length) {
+      and.push({
+        brand: {
+          OR: brandNames.map((name) => ({
+            name: { equals: name, mode: "insensitive" },
+          })),
         },
-      ];
+      });
     }
+
+    const owners = parseList(filters.owner || filters.ownerName);
+    if (owners.length) {
+      and.push({
+        employee: {
+          OR: owners.flatMap((name) => [
+            { khmerName: { contains: name, mode: "insensitive" } },
+            { englishName: { contains: name, mode: "insensitive" } },
+          ]),
+        },
+      });
+    }
+
+    const statuses = parseList(filters.status);
+    if (statuses.length) {
+      const now = new Date();
+      const in30 = new Date(now);
+      in30.setDate(now.getDate() + 30);
+      const statusOr = [];
+      for (const status of statuses) {
+        if (status === "expired") {
+          statusOr.push({ expiryDate: { lt: now } });
+        } else if (status === "expiring_soon") {
+          statusOr.push({
+            AND: [
+              { expiryDate: { gte: now, lte: in30 } },
+              { status: { not: "vacancy" } },
+            ],
+          });
+        } else if (status !== "all") {
+          statusOr.push({ status });
+        }
+      }
+      if (statusOr.length) and.push({ OR: statusOr });
+    }
+
+    if (filters.search?.trim()) {
+      const term = filters.search.trim();
+      and.push({
+        OR: [
+          { code: { contains: term, mode: "insensitive" } },
+          { name: { contains: term, mode: "insensitive" } },
+          { khmerName: { contains: term, mode: "insensitive" } },
+          { address: { contains: term, mode: "insensitive" } },
+          {
+            district: {
+              OR: [
+                { name: { contains: term, mode: "insensitive" } },
+                {
+                  province: {
+                    name: { contains: term, mode: "insensitive" },
+                  },
+                },
+              ],
+            },
+          },
+          {
+            employee: {
+              OR: [
+                { khmerName: { contains: term, mode: "insensitive" } },
+                { englishName: { contains: term, mode: "insensitive" } },
+              ],
+            },
+          },
+          {
+            brand: {
+              name: { contains: term, mode: "insensitive" },
+            },
+          },
+        ],
+      });
+    }
+
+    if (and.length) where.AND = and;
 
     // Determine which fields to select
     const selectFields = {
@@ -671,11 +841,12 @@ class DepotService {
       status: true,
       createdAt: true,
       expiryDate: true,
-      houseNumber: includeAddress, // conditionally include address fields
+      houseNumber: includeAddress,
       street: includeAddress,
       village: includeAddress,
       commune: includeAddress,
       address: true,
+      note: true,
       district: {
         select: {
           id: true,
@@ -684,7 +855,6 @@ class DepotService {
         },
       },
       employee: {
-        // direct relation, not assignments
         select: {
           id: true,
           khmerName: true,
@@ -702,14 +872,16 @@ class DepotService {
           name: true,
         },
       },
+      _count: {
+        select: { staffs: true },
+      },
     };
 
-    // Use transaction for parallel queries
-    const [depots, totalCount] = await prisma.$transaction([
+    const [depots, totalCount] = await Promise.all([
       prisma.depot.findMany({
         where,
         skip,
-        take: pageSize,
+        take: safePageSize,
         orderBy,
         select: selectFields,
       }),
@@ -718,7 +890,7 @@ class DepotService {
 
     // Format the response
     const formattedData = depots.map((depot) => {
-      const owner = depot.employee; // direct employee reference
+      const owner = depot.employee;
       const result = {
         id: depot.id,
         code: depot.code,
@@ -730,7 +902,8 @@ class DepotService {
         createdAt: depot.createdAt,
         district: depot.district?.name,
         city: depot.district?.province?.name,
-        address:depot.address,
+        address: depot.address,
+        note: depot.note,
         owner: owner
           ? {
             id: owner.id,
@@ -743,6 +916,7 @@ class DepotService {
           }
           : null,
         brand: depot.brand ? { id: depot.brand.id, name: depot.brand.name } : null,
+        staffCount: depot._count?.staffs ?? 0,
       };
       if (includeAddress) {
         result.address = {
@@ -758,202 +932,128 @@ class DepotService {
     return {
       data: formattedData,
       pagination: {
-        page,
-        pageSize,
+        page: safePage,
+        pageSize: safePageSize,
         total: totalCount,
-        totalPages: Math.ceil(totalCount / pageSize),
-        hasNext: page * pageSize < totalCount,
-        hasPrev: page > 1,
+        totalPages: Math.max(1, Math.ceil(totalCount / safePageSize)),
+        hasNext: safePage * safePageSize < totalCount,
+        hasPrev: safePage > 1,
       },
       filtersApplied: filters,
     };
   }
 
-  /**
-   * Parse and validate a single CSV row into a depot payload
-   */
-  /**
-   * Parse and validate a single CSV row into a depot payload
-   */
-  _validateRow(data, rowIndex) {
-    const errors = [];
-    if (!data.name?.trim()) errors.push("name is required");
-    if (!data.provinceName?.trim()) errors.push("provinceName is required");
-    if (!data.districtName?.trim()) errors.push("districtName is required");
 
-    const validStatuses = ["active", "inactive"];
-    if (data.status && !validStatuses.includes(data.status.toLowerCase())) {
-      errors.push(`status must be one of: ${validStatuses.join(", ")}`);
+
+
+  // ─── Validate a single row ──────────────────────────────
+  _validateRow(record, rowNumber) {
+    const errors = [];
+    const warnings = [];
+
+    // ── Auto‑fill missing or empty required fields ──
+    if (!record.name?.trim()) {
+      record.name = "Unnamed Depot";
+      warnings.push("Depot name missing – defaulted to 'Unnamed Depot'");
+    } else if (record.name.trim().toLowerCase() === "vacancy") {
+      warnings.push("Depot name is 'Vacancy' – inserted as‑is");
     }
 
+    if (!record.provinceName?.trim()) {
+      record.provinceName = "Phnom Penh"; // or your default province
+      warnings.push("Province missing – defaulted to 'Phnom Penh'");
+    } else if (record.provinceName.trim().toLowerCase() === "vacancy") {
+      warnings.push("Province is 'Vacancy' – will be created/used as‑is");
+    }
+
+    if (!record.districtName?.trim()) {
+      record.districtName = "Daun Penh"; // your default district
+      warnings.push("District missing – defaulted to 'Daun Penh'");
+    } else if (record.districtName.trim().toLowerCase() === "vacancy") {
+      warnings.push("District is 'Vacancy' – will be created/used as‑is");
+    }
+
+    // ── Status (optional) ──
+    const validStatuses = ["active", "inactive"];
+    if (record.status && !validStatuses.includes(record.status.toLowerCase())) {
+      errors.push(`status must be one of: ${validStatuses.join(", ")}`);
+    } else if (!record.status) {
+      record.status = "active"; // default
+      warnings.push("Status missing – defaulted to 'active'");
+    }
+
+    // ── Depot Number (optional) ──
+    if (record.depotNumber && typeof record.depotNumber !== "string") {
+      errors.push("Depot Number must be a string");
+    }
+
+    // ── DOB (optional) ──
+    if (record.dob && record.dob.toString().trim()) {
+      try {
+        record.dobParsed = parseImportDate(record.dob, rowNumber);
+      } catch (err) {
+        errors.push(`DOB: ${err.message}`);
+      }
+    } else {
+      record.dobParsed = null;
+    }
+
+    // ── Expiry Date (optional) ──
+    if (record.expiryDate && record.expiryDate.toString().trim()) {
+      try {
+        record.expiryDateParsed = parseImportDate(record.expiryDate, rowNumber);
+      } catch (err) {
+        errors.push(`ExpiryDate: ${err.message}`);
+      }
+    } else {
+      record.expiryDateParsed = null;
+    }
+
+    // ── Sex (optional) ──
+    if (record.sex) {
+      const normalised = normalizeSex(record.sex);
+      if (!normalised) {
+        errors.push(`Sex must be one of: male, female, M, F, other`);
+      } else {
+        record.sex = normalised;
+      }
+    } else {
+      record.sex = null;
+    }
+
+    // ── Throw if any errors ──
     if (errors.length > 0) {
-      throw new Error(`Row ${rowIndex}: ${errors.join("; ")}`);
-    }
-  }
-
-  /**
-   * Upsert province using cache
-   */
-  async _getOrCreateProvince(name, cache) {
-    const key = name.trim().toLowerCase();
-    if (cache.provinces.has(key)) return cache.provinces.get(key);
-
-    let province = await prisma.province.findFirst({
-      where: { name: { equals: name.trim(), mode: "insensitive" } },
-    });
-
-    if (!province) {
-      province = await prisma.province.create({ data: { name: name.trim() } });
+      throw new Error(`Row ${rowNumber}: ${errors.join("; ")}`);
     }
 
-    cache.provinces.set(key, province);
-    return province;
+    // ── Store warnings on the record for UI ──
+    record._warnings = warnings;
   }
 
-  /**
-   * Upsert district using cache
-   */
-  async _getOrCreateDistrict(districtName, provinceId, cache) {
-    const key = `${provinceId}:${districtName.trim().toLowerCase()}`;
-    if (cache.districts.has(key)) return cache.districts.get(key);
-
-    let district = await prisma.district.findFirst({
-      where: {
-        name: { equals: districtName.trim(), mode: "insensitive" },
-        provinceId,
-      },
-    });
-
-    if (!district) {
-      district = await prisma.district.create({
-        data: { name: districtName.trim(), provinceId },
-      });
-    }
-
-    cache.districts.set(key, district);
-    return district;
+  // ─── Employee cache key ──────────────────────────────────
+  _employeeCacheKey(record) {
+    const name = (record.employeeName || "").trim().toLowerCase();
+    const email = (record.employeeEmail || "").trim().toLowerCase();
+    return `${name}|${email}`;
   }
 
-  /**
-   * Upsert employee using cache (returns employee object)
-   */
-  async _getOrCreateEmployee(data, cache) {
-    if (!data.employeeName?.trim()) return null;
-
-    const key = `${data.employeeName.trim().toLowerCase()}|${(data.employeeEmail || "").trim().toLowerCase()}`;
-    if (cache.employees.has(key)) return cache.employees.get(key);
-
-    let employee = await prisma.employee.findFirst({
-      where: {
-        englishName: { equals: data.employeeName.trim(), mode: "insensitive" },
-        ...(data.employeeEmail?.trim() && { email: data.employeeEmail.trim() }),
-      },
-    });
-
-    if (!employee) {
-      employee = await prisma.employee.create({
-        data: {
-          englishName: data.employeeName.trim(),
-          khmerName: data.employeeKhmerName?.trim() || data.employeeName.trim(),
-          email: data.employeeEmail?.trim() || null,
-          phone: data.employeePhone?.trim() || null,
-          position: "Owner",
-        },
-      });
-    }
-
-    cache.employees.set(key, employee);
-    return employee;
-  }
-
-  /**
-   * Create a single depot from a CSV row (used inside bulk loop)
-   */
-  async createDepotBulk(data, cache, rowIndex) {
-    this._validateRow(data, rowIndex);
-
-    if (data.code?.trim()) {
-      const existing = await prisma.depot.findUnique({
-        where: { code: data.code.trim() },
-      });
-      if (existing)
-        throw new Error(`Depot code "${data.code.trim()}" already exists`);
-    }
-
-    const province = await this._getOrCreateProvince(data.provinceName, cache);
-    const district = await this._getOrCreateDistrict(
-      data.districtName,
-      province.id,
-      cache,
-    );
-    const employee = await this._getOrCreateEmployee(data, cache);
-
-    // Directly set employeeId (no assignment table)
-    const depot = await prisma.depot.create({
-      data: {
-        name: data.name.trim(),
-        khmerName: data.khmerName?.trim() || null,
-        code: data.code?.trim() || null,
-        address: data.address?.trim() || null,
-        phone: data.phone?.trim() || null,
-        status: data.status?.trim().toLowerCase() || "active",
-        provinceId: province.id,
-        districtId: district.id,
-        employeeId: employee?.id || null, // ← direct foreign key
-        assignedAt: employee?.id ? new Date() : null,
-      },
-      include: {
-        province: true,
-        district: true,
-      },
-    });
-
-    return depot;
-  }
-
-  _employeeCacheKey(data) {
-    if (!data.employeeName?.trim()) return null;
-    return `${data.employeeName.trim().toLowerCase()}|${(data.employeeEmail || "").trim().toLowerCase()}`;
-  }
-
-  /**
-   * Prefetch / batch-create provinces, districts, and employees for bulk import.
-   */
-  // ==================== Helper: validate row (already present) ====================
-  _validateRow(data, rowIndex) {
-    const errors = [];
-    if (!data.name?.trim()) errors.push("name is required");
-    if (!data.provinceName?.trim()) errors.push("provinceName is required");
-    if (!data.districtName?.trim()) errors.push("districtName is required");
-    const validStatuses = ["active", "inactive"];
-    if (data.status && !validStatuses.includes(data.status.toLowerCase())) {
-      errors.push(`status must be one of: ${validStatuses.join(", ")}`);
-    }
-    if (errors.length > 0) throw new Error(`Row ${rowIndex}: ${errors.join("; ")}`);
-  }
-
-  // ==================== Helper: employee cache key ====================
-  _employeeCacheKey(data) {
-    if (!data.employeeName?.trim()) return null;
-    return `${data.employeeName.trim().toLowerCase()}|${(data.employeeEmail || "").trim().toLowerCase()}`;
-  }
-
-  // ==================== 1. Warm caches (provinces, districts, employees, brands) ====================
+  // ─── Warm reference caches (provinces, districts, employees, brands) ──────
   async _warmBulkImportCaches(tx, records) {
     const cache = {
       provinces: new Map(),
       districts: new Map(),
       employees: new Map(),
-      brands: new Map(),                     // store brand by code (lowercase) and name (lowercase)
-      existingDepotCodes: new Set(),
+      brands: new Map(),
     };
 
-    // ---------- Provinces ----------
-    const allProvinces = await tx.province.findMany();
-    for (const p of allProvinces) {
+    // ─── 1. Ensure all provinces exist ──────────────────────
+    const provinceNames = [...new Set(records.map(r => r.provinceName?.trim()).filter(Boolean))];
+    const existingProvinces = await tx.province.findMany({
+      where: { name: { in: provinceNames } },
+    });
+    for (const p of existingProvinces) {
       cache.provinces.set(p.name.trim().toLowerCase(), p);
     }
-    const provinceNames = [...new Set(records.map(r => r.provinceName?.trim()).filter(Boolean))];
     const missingProvinces = provinceNames.filter(name => !cache.provinces.has(name.toLowerCase()));
     if (missingProvinces.length) {
       await tx.province.createMany({
@@ -964,37 +1064,56 @@ class DepotService {
       for (const p of created) cache.provinces.set(p.name.trim().toLowerCase(), p);
     }
 
-    // ---------- Districts ----------
-    const provinceIds = [...new Set(provinceNames.map(n => cache.provinces.get(n.toLowerCase())?.id).filter(Boolean))];
-    if (provinceIds.length) {
-      const districts = await tx.district.findMany({ where: { provinceId: { in: provinceIds } } });
-      for (const d of districts) {
-        cache.districts.set(`${d.provinceId}:${d.name.trim().toLowerCase()}`, d);
-      }
-    }
-    const districtsToCreate = [];
-    const districtKeys = new Set();
+    // ─── 2. Ensure all districts exist ──────────────────────
+    const provinceIdMap = new Map();
+    for (const [key, prov] of cache.provinces) provinceIdMap.set(key, prov.id);
+
+    const districtPairs = [];
     for (const record of records) {
       const pName = record.provinceName?.trim();
       const dName = record.districtName?.trim();
       if (!pName || !dName) continue;
-      const province = cache.provinces.get(pName.toLowerCase());
-      if (!province) continue;
-      const key = `${province.id}:${dName.toLowerCase()}`;
-      if (!cache.districts.has(key) && !districtKeys.has(key)) {
-        districtKeys.add(key);
-        districtsToCreate.push({ name: dName, provinceId: province.id });
+      const provId = provinceIdMap.get(pName.toLowerCase());
+      if (!provId) continue;
+      districtPairs.push({ provinceId: provId, name: dName });
+    }
+
+    // Deduplicate district pairs
+    const uniquePairs = [];
+    const seen = new Set();
+    for (const dp of districtPairs) {
+      const key = `${dp.provinceId}:${dp.name.toLowerCase()}`;
+      if (!seen.has(key)) {
+        seen.add(key);
+        uniquePairs.push(dp);
       }
     }
-    if (districtsToCreate.length) {
-      await tx.district.createMany({ data: districtsToCreate, skipDuplicates: true });
-      const refreshed = await tx.district.findMany({ where: { provinceId: { in: provinceIds } } });
-      for (const d of refreshed) {
+
+    const existingDistricts = await tx.district.findMany({
+      where: { OR: uniquePairs.map(dp => ({ provinceId: dp.provinceId, name: dp.name })) },
+    });
+    for (const d of existingDistricts) {
+      cache.districts.set(`${d.provinceId}:${d.name.trim().toLowerCase()}`, d);
+    }
+
+    const missingDistricts = uniquePairs.filter(dp => {
+      const key = `${dp.provinceId}:${dp.name.toLowerCase()}`;
+      return !cache.districts.has(key);
+    });
+    if (missingDistricts.length) {
+      await tx.district.createMany({
+        data: missingDistricts.map(dp => ({ provinceId: dp.provinceId, name: dp.name })),
+        skipDuplicates: true,
+      });
+      const created = await tx.district.findMany({
+        where: { OR: missingDistricts.map(dp => ({ provinceId: dp.provinceId, name: dp.name })) },
+      });
+      for (const d of created) {
         cache.districts.set(`${d.provinceId}:${d.name.trim().toLowerCase()}`, d);
       }
     }
 
-    // ---------- Employees ----------
+    // ─── 3. Employees ─────────────────────────────────────────
     const employeeNames = [...new Set(records.map(r => r.employeeName?.trim()).filter(Boolean))];
     const employeeEmails = [...new Set(records.map(r => r.employeeEmail?.trim()).filter(Boolean))];
     const employeeOr = [];
@@ -1003,10 +1122,9 @@ class DepotService {
     if (employeeOr.length) {
       const existingEmployees = await tx.employee.findMany({ where: { OR: employeeOr } });
       for (const emp of existingEmployees) {
-        const nameKey = (emp.englishName || "").trim().toLowerCase();
-        const emailKey = (emp.email || "").trim().toLowerCase();
-        cache.employees.set(`${nameKey}|${emailKey}`, emp);
-        cache.employees.set(`${nameKey}|`, emp);
+        const key = `${(emp.englishName || "").trim().toLowerCase()}|${(emp.email || "").trim().toLowerCase()}`;
+        cache.employees.set(key, emp);
+        cache.employees.set(`${(emp.englishName || "").trim().toLowerCase()}|`, emp);
       }
     }
     const employeesToCreate = [];
@@ -1031,7 +1149,7 @@ class DepotService {
       }
     }
 
-    // ---------- Brands (new) ----------
+    // ─── 4. Brands ────────────────────────────────────────────
     const brandCodes = [...new Set(records.map(r => r.brandCode?.trim()).filter(Boolean))];
     const brandNames = [...new Set(records.map(r => r.brandName?.trim()).filter(Boolean))];
     const brandWhere = [];
@@ -1045,39 +1163,38 @@ class DepotService {
       }
     }
 
-    // ---------- Existing depot codes ----------
-    const codes = records.map(r => r.code?.trim()).filter(Boolean);
-    if (codes.length) {
-      const existing = await tx.depot.findMany({ where: { code: { in: codes } }, select: { code: true } });
-      for (const d of existing) if (d.code) cache.existingDepotCodes.add(d.code);
-    }
-
     return cache;
   }
 
-  // ==================== 2. Resolve a single bulk row (province, district, employee, brand) ====================
+  // ─── Resolve a single bulk row (returns depotData) ──────────
   _resolveBulkRow(record, cache, rowNumber) {
-    this._validateRow(record, rowNumber);
+    // Normalize the record first (cleans placeholders, aliases)
+    const normalized = normalizeImportRow(record);
+    // Validate and auto‑fill missing fields (adds warnings)
+    this._validateRow(normalized, rowNumber);
 
-    const code = record.code?.trim() || null;
-    if (code) {
-      if (cache.existingDepotCodes.has(code)) throw new Error(`Depot code "${code}" already exists`);
-      cache.existingDepotCodes.add(code);
+    // ── Resolve province ──
+    const province = cache.provinces.get(normalized.provinceName.trim().toLowerCase());
+    if (!province) {
+      // This should never happen because we created it in _warmBulkImportCaches
+      throw new Error(`Province "${normalized.provinceName}" not found`);
     }
 
-    const province = cache.provinces.get(record.provinceName.trim().toLowerCase());
-    if (!province) throw new Error(`Province "${record.provinceName}" not found`);
+    // ── Resolve district ──
+    const districtKey = `${province.id}:${normalized.districtName.trim().toLowerCase()}`;
+    const district = cache.districts.get(districtKey);
+    if (!district) {
+      throw new Error(`District "${normalized.districtName}" not found for province "${normalized.provinceName}"`);
+    }
 
-    const district = cache.districts.get(`${province.id}:${record.districtName.trim().toLowerCase()}`);
-    if (!district) throw new Error(`District "${record.districtName}" not found for province "${record.provinceName}"`);
-
-    const empKey = this._employeeCacheKey(record);
+    // ── Resolve employee ──
+    const empKey = this._employeeCacheKey(normalized);
     const employee = empKey ? cache.employees.get(empKey) : null;
 
-    // ---------- Brand lookup ----------
+    // ── Resolve brand ──
     let brandId = null;
-    const brandCode = record.brandCode?.trim();
-    const brandName = record.brandName?.trim();
+    const brandCode = normalized.brandCode?.trim();
+    const brandName = normalized.brandName?.trim();
     if (brandCode) {
       const brand = cache.brands.get(brandCode.toLowerCase());
       if (!brand) throw new Error(`Brand code "${brandCode}" not found`);
@@ -1088,38 +1205,62 @@ class DepotService {
       brandId = brand.id;
     }
 
-    return {
-      depotData: {
-        name: record.name.trim(),
-        khmerName: record.khmerName?.trim() || null,
-        code,
-        address: record.address?.trim() || null,
-        phone: record.phone?.trim() || null,
-        status: record.status?.trim().toLowerCase() || "active",
-        provinceId: province.id,
-        districtId: district.id,
-        employeeId: employee?.id ?? null,
-        assignedAt: employee?.id ? new Date() : null,
-        brandId: brandId,
-      },
+    // ── Build depot data ──
+    const depotData = {
+      name: normalized.name.trim(),
+      khmerName: normalized.khmerName?.trim() || null,
+      code: normalized.code?.trim() || null,
+      address: normalized.address?.trim() || null,
+      phone: normalized.phone?.trim() || null,
+      status: normalized.status?.trim().toLowerCase() || "active",
+      provinceId: province.id,
+      districtId: district.id,
+      employeeId: employee?.id ?? null,
+      assignedAt: employee?.id ? new Date() : null,
+      brandId: brandId,
+      expiryDate: normalized.expiryDateParsed || null,
+      dateOfBirth: normalized.dobParsed || null,
+      sex: normalized.sex || null,
+      DepotIdNumber: normalized.depotNumber?.trim() || null,
+      note: normalized.note?.trim() || null,
     };
+
+
+    return { depotData };
   }
 
-  // ==================== 3. Main bulk import function ====================
+  // ─── Main bulk import (UPSERT per row) ──────────────────
   async bulkCreateDepots(records) {
     const results = [];
     const errors = [];
-    const DEPOT_CHUNK = 100;
+    const BATCH_SIZE = 200; // increased from 150
+    const PARALLEL_LIMIT = 20; // limit parallel upserts to avoid connection pool exhaustion
 
-    // First pass: validate rows and collect valid candidates
+    const depotSelect = {
+      id: true,
+      name: true,
+      code: true,
+      provinceId: true,
+      districtId: true,
+      status: true,
+      employeeId: true,
+      brandId: true,
+      expiryDate: true,
+      dateOfBirth: true,
+      sex: true,
+      DepotIdNumber: true,
+    };
+
+    // ── Normalize & validate ──
     const candidates = [];
-    for (const [index, record] of records.entries()) {
+    for (const [index, rawRecord] of records.entries()) {
       const rowNumber = index + 1;
       try {
-        this._validateRow(record, rowNumber);
-        candidates.push({ rowNumber, record });
+        const normalized = normalizeImportRow(rawRecord);
+        this._validateRow(normalized, rowNumber);
+        candidates.push({ rowNumber, record: normalized });
       } catch (err) {
-        errors.push({ row: rowNumber, data: record, error: err.message });
+        errors.push({ row: rowNumber, data: rawRecord, error: err.message });
       }
     }
 
@@ -1129,61 +1270,143 @@ class DepotService {
 
     const startedAt = Date.now();
 
-    // Transaction: all operations succeed or none
-    await prisma.$transaction(
-      async (tx) => {
-        // Build caches (provinces, districts, employees, brands)
-        const cache = await this._warmBulkImportCaches(tx, candidates.map(c => c.record));
+    // ── Process in batches ──
+    for (let batchStart = 0; batchStart < candidates.length; batchStart += BATCH_SIZE) {
+      const batchCandidates = candidates.slice(batchStart, batchStart + BATCH_SIZE);
 
-        // Resolve each candidate into depotData + brandId
-        const prepared = [];
-        for (const { rowNumber, record } of candidates) {
-          try {
-            const resolved = this._resolveBulkRow(record, cache, rowNumber);
-            prepared.push({ rowNumber, record, ...resolved });
-          } catch (err) {
-            errors.push({ row: rowNumber, data: record, error: err.message });
-          }
-        }
+      await prisma.$transaction(
+          async (tx) => {
+            const cache = await this._warmBulkImportCaches(tx, batchCandidates.map(c => c.record));
 
-        // Chunked depot creation
-        for (let i = 0; i < prepared.length; i += DEPOT_CHUNK) {
-          const chunk = prepared.slice(i, i + DEPOT_CHUNK);
-          const created = await tx.depot.createManyAndReturn({
-            data: chunk.map(c => c.depotData),
-            select: {
-              id: true,
-              name: true,
-              code: true,
-              provinceId: true,
-              districtId: true,
-              status: true,
-              employeeId: true,
-              brandId: true,
-            },
-          });
+            // ── Resolve all rows in parallel ──
+            const resolved = await Promise.all(
+                batchCandidates.map(async ({ rowNumber, record }) => {
+                  try {
+                    const { depotData } = this._resolveBulkRow(record, cache, rowNumber);
+                    return { rowNumber, depotData, success: true };
+                  } catch (err) {
+                    return { rowNumber, error: err.message, success: false };
+                  }
+                })
+            );
 
-          // Record results
-          for (let j = 0; j < created.length; j++) {
-            results.push({
-              row: chunk[j].rowNumber,
-              depot: created[j],
+            // Filter out failed resolves (they are added to errors)
+            const toProcess = resolved.filter(r => r.success);
+            const failedResolves = resolved.filter(r => !r.success);
+            for (const fail of failedResolves) {
+              errors.push({ row: fail.rowNumber, data: null, error: fail.error });
+            }
+
+            // ── Prepare upsert operations ──
+            const upsertPromises = toProcess.map(async ({ rowNumber, depotData }) => {
+              // Build where clause for uniqueness
+              let where = {};
+              if (depotData.code) {
+                where.code = depotData.code;
+              } else if (depotData.DepotIdNumber) {
+                where.DepotIdNumber = depotData.DepotIdNumber;
+              } else {
+                where = {};
+              }
+
+              // Check existence (for action tracking)
+              let existing = null;
+              if (where.code) {
+                existing = await tx.depot.findUnique({ where: { code: where.code }, select: { id: true } });
+              } else if (where.DepotIdNumber) {
+                existing = await tx.depot.findUnique({ where: { DepotIdNumber: where.DepotIdNumber }, select: { id: true } });
+              }
+
+              const upsertResult = await tx.depot.upsert({
+                where: existing ? { id: existing.id } : where,
+                update: depotData,
+                create: depotData,
+                select: depotSelect,
+              });
+
+              return {
+                row: rowNumber,
+                depot: upsertResult,
+                action: existing ? "updated" : "created",
+              };
             });
-          }
-        }
-      },
-      { timeout: 120000, maxWait: 15000 },
-    );
 
+            // ── Execute upserts in parallel (with limit) ──
+            const resultsChunk = [];
+            for (let i = 0; i < upsertPromises.length; i += PARALLEL_LIMIT) {
+              const chunk = upsertPromises.slice(i, i + PARALLEL_LIMIT);
+              const chunkResults = await Promise.all(chunk);
+              resultsChunk.push(...chunkResults);
+            }
+
+            // Add to main results
+            results.push(...resultsChunk);
+          },
+          { timeout: 300000, maxWait: 30000 }
+      );
+    }
+
+    const createdCount = results.filter(r => r.action === "created").length;
+    const updatedCount = results.filter(r => r.action === "updated").length;
     logger.info(
-      `Bulk depot import: ${results.length} created, ${errors.length} failed in ${Date.now() - startedAt}ms`
+        `Bulk depot import: ${createdCount} created, ${updatedCount} updated, ${errors.length} failed in ${Date.now() - startedAt}ms`
     );
 
     return {
-      results: results.map(({ row, depot }) => ({ row, depot })),
+      results: results.map(({ row, depot, action }) => ({ row, depot, action })),
       errors,
     };
   }
+
+  // export block function
+
+  async buildReportData(filters) {
+    const {fromDate, toDate, status} = filters;
+
+    const where = {};
+    if (fromDate) where.createdAt = {gte: new Date(fromDate)};
+    if (toDate) where.createdAt = {lte: new Date(toDate)};
+    if (status) where.status = status;
+
+    const depots = await prisma.depot.findMany({
+      where,
+      include: {
+        province: true,
+        district: true,
+        brand: true,
+      },
+      orderBy: {createdAt: 'desc'},
+    });
+
+    const mapped = depots.map((d) => ({
+      code: d.code || '—',
+      name: d.name,
+      provinceName: d.province?.name || '—',
+      districtName: d.district?.name || '—',
+      status: d.status,
+      expiryDate: d.expiryDate ? new Date(d.expiryDate).toLocaleDateString('en-GB') : '—',
+    }));
+
+    const total = mapped.length;
+    const active = mapped.filter((d) => d.status === 'active').length;
+    const expiringSoon = mapped.filter((d) => {
+      if (!d.expiryDate || d.expiryDate === '—') return false;
+      const diff = (new Date(d.expiryDate) - new Date()) / (1000 * 60 * 60 * 24);
+      return diff > 0 && diff <= 30;
+    }).length;
+
+    return {
+      generatedAt: new Date().toISOString().replace('T', ' ').slice(0, 19),
+      totalDepots: total,
+      activeDepots: active,
+      expiringSoon,
+      depots: mapped,
+      companyLogo: process.env.COMPANY_LOGO_URL || '',
+    };
+  }
+
+
+
 }
 
 export default new DepotService();

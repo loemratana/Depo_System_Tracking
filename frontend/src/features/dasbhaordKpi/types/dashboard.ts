@@ -13,3 +13,25 @@ export interface ApiResponse<T> {
     success: boolean;
     data: T;
 }
+
+export interface BrandStat {
+    name: string;
+    value: number;
+}
+
+export interface BrandDistributionItem {
+    brandId: number;
+    name: string;
+    depotCount: number;
+    newDepotsMonth: number;
+    productQuantity: number;
+    stockQuantity: number;
+}
+
+export interface BrandDistributionData {
+    year: number;
+    month: number;
+    from: string;
+    to: string;
+    brands: BrandDistributionItem[];
+}

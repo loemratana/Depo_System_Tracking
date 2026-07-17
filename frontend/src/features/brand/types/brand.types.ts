@@ -31,7 +31,6 @@ export interface AssignedProduct {
   id: number;
   name: string;
   sku: string;
-  price: number;
   quantity: number;
   status: "available" | "out_of_stock" | "discontinued";
 }

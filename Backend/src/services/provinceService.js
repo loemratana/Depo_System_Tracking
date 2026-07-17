@@ -5,11 +5,13 @@ import Excel from 'exceljs';
 class ProvinceService {
     cache = new Map();
 
-    // Get all provinces with pagination and filters
     async getAllProvinces(query) {
         try {
-            const cacheKey = JSON.stringify(query);
-            if (this.cache.has(cacheKey)) {
+            // ── Support 'fresh=true' to bypass cache ──
+            const { fresh = false, ...rest } = query;
+            const cacheKey = JSON.stringify(rest);
+
+            if (!fresh && this.cache.has(cacheKey)) {
                 return this.cache.get(cacheKey);
             }
 
@@ -21,13 +23,12 @@ class ProvinceService {
                 isActive,
                 sortBy = 'createdAt',
                 sortOrder = 'desc'
-            } = query;
+            } = rest;
 
             const skip = (page - 1) * limit;
 
-            // Build where clause
+            // ── Build where clause ──
             const where = {};
-
             if (search) {
                 where.OR = [
                     { name: { contains: search, mode: 'insensitive' } },
@@ -35,8 +36,7 @@ class ProvinceService {
                 ];
             }
 
-
-            // Get provinces with count
+            // ── Query provinces with district counts ──
             const [provinces, total] = await Promise.all([
                 prisma.province.findMany({
                     where,
@@ -48,7 +48,7 @@ class ProvinceService {
                             include: {
                                 _count: {
                                     select: {
-                                        depots: true
+                                        depots: true // ✅ must match the relation name on District
                                     }
                                 }
                             }
@@ -57,6 +57,8 @@ class ProvinceService {
                 }),
                 prisma.province.count({ where })
             ]);
+
+            // ── Sum depot counts per province ──
             const formattedProvinces = provinces.map(province => {
                 const depotCount = province.districts.reduce(
                     (total, district) => total + district._count.depots,
@@ -69,7 +71,7 @@ class ProvinceService {
                     name: province.name,
                     createdAt: province.createdAt,
                     updatedAt: province.updatedAt,
-                    depotCount
+                    depotCount: depotCount // ✅ now correctly calculated
                 };
             });
 
@@ -83,6 +85,7 @@ class ProvinceService {
                 }
             };
 
+            // ── Store in cache ──
             this.cache.set(cacheKey, result);
             return result;
         } catch (error) {
