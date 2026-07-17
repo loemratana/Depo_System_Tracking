@@ -164,9 +164,14 @@ export const useRecordSale = () => {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: productService.recordSale,
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["products"] });
-      // queryClient.invalidateQueries({ queryKey: ["low-stock-products"] });
+    onSuccess: (_data, variables) => {
+      queryClient.invalidateQueries({ queryKey: productKeys.all });
+      // A sale changes KPI actuals and analytics, refresh those too
+      queryClient.invalidateQueries({ queryKey: ["kpi-system"] });
+      queryClient.invalidateQueries({ queryKey: ["analytics"] });
+      toast.success(`Sale recorded — ${variables.quantitySold} units`);
     },
+    onError: (err: any) =>
+      toast.error(err?.response?.data?.message || "Failed to record sale"),
   });
 };

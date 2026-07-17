@@ -38,7 +38,12 @@ export interface KpiMatrixData {
 }
 
 export interface KpiFilterOptions {
-  depots: { id: number; name: string }[];
+  depots: {
+    id: number;
+    name: string;
+    districtName?: string | null;
+    provinceName?: string | null;
+  }[];
   products: { id: number; name: string; sku?: string | null }[];
 }
 

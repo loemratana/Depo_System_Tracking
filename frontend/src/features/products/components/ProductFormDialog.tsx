@@ -13,6 +13,7 @@ import { Button } from "@/components/ui/button";
 import { SearchableSelect } from "@/components/ui/searchable-select";
 import type { Product, CreateProductInput } from "../types/product.types";
 import { useAllDepots } from "../../depots/hooks/useAllDepots";
+import { formatDepotLabel } from "../../depots/utils/depot-label";
 
 interface ProductFormDialogProps {
   open: boolean;
@@ -62,9 +63,9 @@ export const ProductFormDialog: React.FC<ProductFormDialogProps> = ({
 
   const depotOptions = useMemo(
     () =>
-      depots.map((depot: { id: number; name: string }) => ({
+      depots.map((depot: { id: number; name: string; district?: string; city?: string }) => ({
         value: depot.id.toString(),
-        label: depot.name,
+        label: formatDepotLabel(depot.name, depot.district, depot.city),
       })),
     [depots],
   );

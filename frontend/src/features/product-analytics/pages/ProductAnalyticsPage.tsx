@@ -4,10 +4,11 @@ import { KpiSummaryGrid } from "@/features/kpi/components/KpiSummaryGrid";
 import { ProductPerformanceTable } from "../components/ProductPerformanceTable";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Input } from "@/components/ui/input";
-import { Search, RotateCcw, DollarSign, Package, TrendingUp, BarChart3 } from "lucide-react";
+import { Search, RotateCcw, Package, TrendingUp, BarChart3 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
 import { useAnalyticsOptions, useAnalyticsPerformance } from "../hook/useAnalyticsOptions";
+import { formatDepotLabel } from "@/features/depots/utils/depot-label";
 
 export const ProductAnalyticsPage: React.FC<{ brandId?: string }> = ({ brandId }) => {
   const [fromDate, setFromDate] = useState(() => {
@@ -55,35 +56,33 @@ export const ProductAnalyticsPage: React.FC<{ brandId?: string }> = ({ brandId }
   const isLoading = optionsLoading || performanceLoading;
 
   const analyticsKpiCards = useMemo(() => {
-    const totalRevenue = data.reduce((sum, row) => sum + row.revenue, 0);
     const totalUnits = data.reduce((sum, row) => sum + row.quantitySold, 0);
-    const avgGrowth =
-      data.length > 0 ? data.reduce((sum, row) => sum + row.growth, 0) / data.length : 0;
+    const previousUnits = data.reduce((sum, row) => sum + (row.previousQuantity ?? 0), 0);
+    // Overall trend from total units vs the previous period (more accurate
+    // than averaging per-row growth, which over-weights small rows)
+    const overallGrowth =
+      previousUnits > 0
+        ? ((totalUnits - previousUnits) / previousUnits) * 100
+        : totalUnits > 0
+          ? 100
+          : 0;
 
     return [
-      {
-        id: "revenue",
-        label: "Total Revenue",
-        value: `$${totalRevenue.toLocaleString(undefined, { maximumFractionDigits: 0 })}`,
-        icon: DollarSign,
-        hint: "For selected period",
-        accent: "primary" as const,
-      },
       {
         id: "units",
         label: "Units Sold",
         value: totalUnits.toLocaleString(),
         icon: Package,
-        hint: `${data.length} records`,
-        accent: "info" as const,
+        hint: "For selected period",
+        accent: "primary" as const,
       },
       {
         id: "growth",
-        label: "Avg Growth",
-        value: `${avgGrowth >= 0 ? "+" : ""}${avgGrowth.toFixed(1)}%`,
+        label: "Trend vs Previous Period",
+        value: `${overallGrowth >= 0 ? "+" : ""}${overallGrowth.toFixed(1)}%`,
         icon: TrendingUp,
-        hint: "Month over month",
-        accent: avgGrowth >= 0 ? ("info" as const) : ("warning" as const),
+        hint: `${previousUnits.toLocaleString()} units in previous period`,
+        accent: overallGrowth >= 0 ? ("info" as const) : ("warning" as const),
       },
       {
         id: "records",
@@ -103,11 +102,11 @@ export const ProductAnalyticsPage: React.FC<{ brandId?: string }> = ({ brandId }
         description={
           brandId
             ? "Performance analytics filtered by brand."
-            : "Monthly product performance analytics tracking sales, revenue, and growth trends."
+            : "Monthly product performance analytics tracking sales quantities and growth trends."
         }
       />
 
-      <KpiSummaryGrid cards={analyticsKpiCards} columns={4} isLoading={isLoading} />
+      <KpiSummaryGrid cards={analyticsKpiCards} columns={3} isLoading={isLoading} />
 
       <Surface padded={false} className="overflow-hidden">
         <div className="border-b border-border/70 bg-muted/20 p-4 backdrop-blur-sm">
@@ -124,14 +123,14 @@ export const ProductAnalyticsPage: React.FC<{ brandId?: string }> = ({ brandId }
               </div>
 
               <Select value={selectedDepot} onValueChange={setSelectedDepot}>
-                <SelectTrigger className="h-9 w-[160px] rounded-lg">
+                <SelectTrigger className="h-9 w-[220px] rounded-lg">
                   <SelectValue placeholder="All Depots" />
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="all-depots">All Depots</SelectItem>
                   {depotOptions.map((depot) => (
                     <SelectItem key={depot.id} value={depot.id.toString()}>
-                      {depot.name}
+                      {formatDepotLabel(depot.name, depot.districtName, depot.provinceName)}
                     </SelectItem>
                   ))}
                 </SelectContent>

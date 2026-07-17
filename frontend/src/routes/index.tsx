@@ -294,7 +294,7 @@ function DashboardPage() {
       </div> */}
 
       {/* Active visits */}
-      <motion.div
+      {/* <motion.div
         initial={{ opacity: 0, y: 6 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.2, delay: 0.05 }}
@@ -357,7 +357,7 @@ function DashboardPage() {
             </table>
           </div>
         </Surface>
-      </motion.div>
+      </motion.div> */}
     </>
   );
 }

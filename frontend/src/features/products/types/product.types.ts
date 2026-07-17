@@ -140,7 +140,8 @@ export interface CreateProductInput {
 export interface UpdateStockInput {
   id: number;
   quantity: number;
-  reason?: "manual" | "sale" | "return" | "adjustment";
+  // Must match the backend validator: sale | restock | damage | adjustment | manual
+  reason?: "manual" | "sale" | "restock" | "damage" | "adjustment";
   employeeId?: number;
 }
 
@@ -152,9 +153,10 @@ export interface UpdateMinStockInput {
 
 export interface RecordSaleInput {
   productId: number;
-  employeeId: number;
+  employeeId?: number; // omitted → backend assigns the depot owner
   quantitySold: number;
   saleDate?: string; // ISO date string
+  revenue?: number; // total sale amount for KPI revenue tracking
 }
 
 export interface RecordSaleResponse {

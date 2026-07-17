@@ -3,6 +3,8 @@
 export interface OptionItem {
     id: number;
     name: string;
+    districtName?: string | null;
+    provinceName?: string | null;
   }
   
   export interface AnalyticsRow {
@@ -12,6 +14,7 @@ export interface OptionItem {
     employeeName: string;
     depotName: string;
     quantitySold: number;
-    revenue: number;
+    previousQuantity?: number;
+    revenue?: number;
     growth: number;
   }

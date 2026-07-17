@@ -75,12 +75,13 @@ export class ProductController {
      */
     async recordSale(req, res, next) {
         try {
-            const { productId, employeeId, quantitySold, saleDate } = req.body;
+            const { productId, employeeId, quantitySold, saleDate, revenue } = req.body;
             const result = await productService.recordSale(
                 productId,
                 employeeId,
                 quantitySold,
-                saleDate ? new Date(saleDate) : new Date()
+                saleDate ? new Date(saleDate) : new Date(),
+                revenue
             );
             res.status(201).json({
                 success: true,

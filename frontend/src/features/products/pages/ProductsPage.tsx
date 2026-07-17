@@ -114,8 +114,9 @@ export const ProductsPage: React.FC = () => {
     productId: number,
     type: "ADD" | "REMOVE",
     amount: number,
-    reason: string,
+    reason: "manual" | "sale" | "restock" | "damage" | "adjustment",
     employeeId?: number,
+    revenue?: number,
   ) => {
     const product = products.find((p) => p.id === productId);
     if (!product) return;
@@ -127,12 +128,13 @@ export const ProductsPage: React.FC = () => {
         employeeId, // may be undefined
         quantitySold: amount,
         saleDate: new Date().toISOString(),
+        revenue, // optional total sale amount for KPI revenue
       });
     } else {
       // Generic stock update (restock, damage, adjustment, etc.)
       const newQuantity =
         type === "ADD" ? product.quantity + amount : Math.max(0, product.quantity - amount);
-      updateStock.mutate({ id: productId, quantity: newQuantity, employeeId });
+      updateStock.mutate({ id: productId, quantity: newQuantity, reason, employeeId });
     }
   };
 

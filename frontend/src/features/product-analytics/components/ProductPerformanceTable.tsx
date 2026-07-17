@@ -51,7 +51,7 @@ export interface AnalyticsRow {
   employeeName: string;
   depotName: string;
   quantitySold: number;
-  revenue: number;
+  previousQuantity?: number;
   growth: number;
 }
 
@@ -252,81 +252,43 @@ export const ProductPerformanceTable: React.FC<ProductPerformanceTableProps> = (
       ),
     },
     {
-      accessorKey: "revenue",
-      header: ({ column }) => (
-        <div className="flex items-center justify-end gap-1">
-          <span className="text-muted-foreground">Revenue</span>
-          <ColumnFilterPopover
-            columnId="revenue"
-            value={columnFilters.revenue || ""}
-            onChange={(val) => handleColumnFilterChange("revenue", val)}
-            placeholder="e.g. 50"
-          />
-        </div>
-      ),
-      cell: ({ row }) => (
-        <div className="text-right tabular-nums font-medium text-foreground">
-          ${row.original.revenue.toLocaleString(undefined, {
-            minimumFractionDigits: 2,
-            maximumFractionDigits: 2,
-          })}
-        </div>
-      ),
-    },
-    {
       accessorKey: "growth",
-      header: ({ column }) => (
-        <div className="flex items-center justify-end gap-1">
-          <span className="text-muted-foreground">Growth %</span>
-          <ColumnFilterPopover
-            columnId="growth"
-            value={columnFilters.growth || ""}
-            onChange={(val) => handleColumnFilterChange("growth", val)}
-            placeholder="e.g. 10"
-          />
-        </div>
+      header: () => (
+        <div className="text-right text-muted-foreground">Trend</div>
       ),
       cell: ({ row }) => {
         const g = row.original.growth;
+        const prev = row.original.previousQuantity;
+        const isNew = (prev ?? 0) === 0 && row.original.quantitySold > 0;
         const isPos = g > 0;
         const isNeg = g < 0;
+        const Icon = isPos ? TrendingUp : isNeg ? TrendingDown : Minus;
         return (
-          <div className="text-right">
-            <span
-              className={cn(
-                "inline-flex rounded-full px-2 py-0.5 text-xs font-semibold tabular-nums text-white",
-                isPos && "bg-emerald-600",
-                isNeg && "bg-rose-600",
-                !isPos && !isNeg && "bg-slate-500",
-              )}
-            >
-              {isPos ? "+" : ""}
-              {g}%
-            </span>
-          </div>
-        );
-      },
-    },
-    {
-      id: "trend",
-      header: () => <div className="text-center text-muted-foreground">Trend</div>,
-      cell: ({ row }) => {
-        const g = row.original.growth;
-        if (g > 0)
-          return (
-            <div className="flex justify-center">
-              <TrendingUp className="h-4 w-4 text-emerald-600 dark:text-emerald-400" />
-            </div>
-          );
-        if (g < 0)
-          return (
-            <div className="flex justify-center">
-              <TrendingDown className="h-4 w-4 text-rose-600 dark:text-rose-400" />
-            </div>
-          );
-        return (
-          <div className="flex justify-center">
-            <Minus className="h-4 w-4 text-muted-foreground" />
+          <div className="flex flex-col items-end gap-0.5">
+            {isNew ? (
+              <span className="inline-flex items-center gap-1 rounded-full bg-sky-600 px-2 py-0.5 text-xs font-semibold text-white">
+                <TrendingUp className="h-3.5 w-3.5" />
+                New
+              </span>
+            ) : (
+              <span
+                className={cn(
+                  "inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-semibold tabular-nums text-white",
+                  isPos && "bg-emerald-600",
+                  isNeg && "bg-rose-600",
+                  !isPos && !isNeg && "bg-slate-500",
+                )}
+              >
+                <Icon className="h-3.5 w-3.5" />
+                {isPos ? "+" : ""}
+                {g}%
+              </span>
+            )}
+            {prev !== undefined && !isNew && (
+              <span className="text-[10px] tabular-nums text-muted-foreground">
+                prev {prev.toLocaleString()} → now {row.original.quantitySold.toLocaleString()}
+              </span>
+            )}
           </div>
         );
       },

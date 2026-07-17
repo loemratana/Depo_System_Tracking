@@ -1,6 +1,6 @@
 import {prisma} from "../config/db.js";
 import logger from "../config/logger.js";
-import {startOfMonth} from "date-fns";
+import {utcMonthStart} from "../helpers/date.helper.js";
 import {ProductStatus} from "@prisma/client";
 
 function normalizeProductStatus(status) {
@@ -313,9 +313,10 @@ class ProductService {
      * @param {number} employeeId
      * @param {number} quantitySold
      * @param {Date} [saleDate] - defaults to now
+     * @param {number} [revenue] - total sale amount (products no longer carry a price)
      * @returns {Promise<Object>} updated product, performance record, KPI update
      */
-    async recordSale(productId, employeeId = null, quantitySold, saleDate = new Date()) {
+    async recordSale(productId, employeeId = null, quantitySold, saleDate = new Date(), revenue = 0) {
         const product = await this.findById(productId);
         if (product.quantity < quantitySold) {
             throw new Error(`Insufficient stock. Available: ${product.quantity}, requested: ${quantitySold}`);
@@ -335,8 +336,8 @@ class ProductService {
             }
         }
 
-        const monthStart = new Date(saleDate.getFullYear(), saleDate.getMonth(), 1);
-        const revenue = 0;
+        const monthStart = utcMonthStart(saleDate);
+        revenue = Number(revenue) || 0;
 
         return await prisma.$transaction(async (tx) => {
             // 1. Update product stock
@@ -405,8 +406,7 @@ class ProductService {
      */
     async getProductPerformance(id, year, month) {
         const product = await this.findById(id);
-        const monthStart = new Date(year, month - 1, 1);
-        const monthEnd = new Date(year, month, 0);
+        const monthStart = utcMonthStart(new Date(year, month - 1, 1));
 
         // Get monthly sales from ProductPerformance
         const performances = await prisma.productPerformance.findMany({
@@ -479,29 +479,33 @@ class ProductService {
      * Helper: Update ProductPerformance when stock decreases due to sale
      */
     async updateProductPerformance(productId, employeeId, quantitySold) {
-        const monthStart = startOfMonth(new Date());
+        const monthStart = utcMonthStart(new Date());
         const revenue = 0;
 
-        await prisma.productPerformance.upsert({
-            where: {
-                productId_employeeId_month: {
-                    productId: productId,
-                    employeeId: employeeId,
-                    month: monthStart
-                }
-            },
-            update: {
-                quantitySold: {increment: quantitySold},
-                revenue: {increment: revenue}
-            },
-            create: {
-                productId: productId,
-                employeeId: employeeId,
-                month: monthStart,
-                quantitySold: quantitySold,
-                revenue: revenue
-            }
+        // ProductPerformance has no unique constraint on (productId, employeeId,
+        // month), so upsert with a compound key is not possible here.
+        const existing = await prisma.productPerformance.findFirst({
+            where: {productId, employeeId, month: monthStart}
         });
+        if (existing) {
+            await prisma.productPerformance.update({
+                where: {id: existing.id},
+                data: {
+                    quantitySold: {increment: quantitySold},
+                    revenue: {increment: revenue}
+                }
+            });
+        } else {
+            await prisma.productPerformance.create({
+                data: {
+                    productId,
+                    employeeId,
+                    month: monthStart,
+                    quantitySold,
+                    revenue
+                }
+            });
+        }
 
         // Also update EmployeeKPI actualValue
         await this.updateEmployeeKPI(employeeId, monthStart, quantitySold, revenue);

@@ -145,6 +145,7 @@ class ProductAnalyticsService {
                 employeeName: employee.englishName || employee.khmerName || 'Unknown',
                 depotName: depot.name,
                 quantitySold: currentQty,
+                previousQuantity: prevQty,
                 revenue: currentRevenue,
                 growth: parseFloat(growth.toFixed(1)),
             });
@@ -189,10 +190,24 @@ class ProductAnalyticsService {
      * Get list of depots for filter dropdown
      */
     async getDepotOptions() {
-        return prisma.depot.findMany({
-            select: { id: true, name: true },
+        const depots = await prisma.depot.findMany({
+            select: {
+                id: true,
+                name: true,
+                district: {
+                    select: { name: true, province: { select: { name: true } } }
+                }
+            },
             orderBy: { name: 'asc' }
         });
+
+        // Flatten geography so the UI can distinguish depots that share a name.
+        return depots.map((d) => ({
+            id: d.id,
+            name: d.name,
+            districtName: d.district?.name || null,
+            provinceName: d.district?.province?.name || null,
+        }));
     }
 
     async getMonthlySales(filters) {

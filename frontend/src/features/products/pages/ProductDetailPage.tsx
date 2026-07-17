@@ -17,7 +17,7 @@ import {
 } from "lucide-react";
 import { ProductStockIndicator } from "../components/ProductStockIndicator";
 import { AdjustStockDialog } from "../components/AdjustStockDialog";
-import { useProduct, useProductPerformance, useUpdateStock } from "../hooks/useProducts";
+import { useProduct, useProductPerformance, useUpdateStock, useRecordSale } from "../hooks/useProducts";
 import type { ProductStatus } from "../types/product.types";
 
 // ── Status → badge mapping ───────────────────────────────────────
@@ -47,6 +47,7 @@ export const ProductDetailPage: React.FC = () => {
     perfMonth,
   );
   const updateStock = useUpdateStock();
+  const recordSale = useRecordSale();
 
   // ── Loading ────────────────────────────────────────────────────
   if (isLoading) {
@@ -76,10 +77,27 @@ export const ProductDetailPage: React.FC = () => {
     tone: "neutral" as const,
   };
 
-  const handleAdjustStock = (_productId: number, type: "ADD" | "REMOVE", amount: number) => {
-    const newQuantity =
-      type === "ADD" ? product.quantity + amount : Math.max(0, product.quantity - amount);
-    updateStock.mutate({ id: product.id, quantity: newQuantity, reason: "manual" });
+  const handleAdjustStock = (
+    _productId: number,
+    type: "ADD" | "REMOVE",
+    amount: number,
+    reason: "manual" | "sale" | "restock" | "damage" | "adjustment",
+    employeeId?: number,
+    revenue?: number,
+  ) => {
+    if (type === "REMOVE" && reason === "sale") {
+      recordSale.mutate({
+        productId: product.id,
+        employeeId,
+        quantitySold: amount,
+        saleDate: new Date().toISOString(),
+        revenue,
+      });
+    } else {
+      const newQuantity =
+        type === "ADD" ? product.quantity + amount : Math.max(0, product.quantity - amount);
+      updateStock.mutate({ id: product.id, quantity: newQuantity, reason, employeeId });
+    }
   };
 
   // Month selector options
@@ -399,6 +417,7 @@ export const ProductDetailPage: React.FC = () => {
         onOpenChange={setAdjustOpen}
         product={product as any}
         onSave={handleAdjustStock}
+        isSaving={updateStock.isPending || recordSale.isPending}
       />
     </>
   );

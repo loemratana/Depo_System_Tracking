@@ -53,12 +53,7 @@ export const productService = {
   // ─────────────────────────────────────────────
   // services/productService.ts
 
-recordSale: (data: { 
-  productId: number; 
-  employeeId?: number;  // ← make optional
-  quantitySold: number; 
-  saleDate?: string 
-}): Promise<{ product: Product; performance: any }> =>
+recordSale: (data: RecordSaleInput): Promise<{ product: Product; performance: any }> =>
   api.post("/products/sales", data).then((res) => res.data.data ?? res.data),
 
   // ─────────────────────────────────────────────

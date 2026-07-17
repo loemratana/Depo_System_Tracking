@@ -11,6 +11,7 @@ import { Search, Target, LayoutGrid, List, Star, Users, RotateCcw } from "lucide
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { Route } from "@/routes/kpi-system";
+import { formatDepotLabel } from "@/features/depots/utils/depot-label";
 import type { KpiSystemSearch } from "../types/kpi-system.types";
 import {
   useKpiFilterOptions,
@@ -144,14 +145,14 @@ export function KpiSystemPage() {
                 value={search.depotId}
                 onValueChange={(value) => updateSearch({ depotId: value })}
               >
-                <SelectTrigger className="h-9 w-[160px] rounded-lg">
+                <SelectTrigger className="h-9 w-[220px] rounded-lg">
                   <SelectValue placeholder="All Depots" />
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="all">All Depots</SelectItem>
                   {options?.depots.map((depot) => (
                     <SelectItem key={depot.id} value={String(depot.id)}>
-                      {depot.name}
+                      {formatDepotLabel(depot.name, depot.districtName, depot.provinceName)}
                     </SelectItem>
                   ))}
                 </SelectContent>

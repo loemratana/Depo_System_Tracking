@@ -1,12 +1,13 @@
 import { prisma } from "../config/db.js";
-import { startOfMonth, endOfMonth, parseISO } from "date-fns";
+import { parseISO } from "date-fns";
+import { utcMonthStart, utcMonthEnd } from "../helpers/date.helper.js";
 
 function parseMonthRange(fromDate, toDate) {
-  const from = fromDate ? parseISO(fromDate) : startOfMonth(new Date());
-  const to = toDate ? parseISO(toDate) : endOfMonth(new Date());
+  const from = fromDate ? parseISO(fromDate) : new Date();
+  const to = toDate ? parseISO(toDate) : new Date();
   return {
-    gte: startOfMonth(from),
-    lte: endOfMonth(to),
+    gte: utcMonthStart(from),
+    lte: utcMonthEnd(to),
   };
 }
 
@@ -15,8 +16,9 @@ function employeeDisplayName(employee) {
 }
 
 function calcKpiPercent(targetQty, actualQty) {
-  if (targetQty > 0) return (actualQty / targetQty) * 100;
-  return actualQty > 0 ? 100 : 0;
+  // No target set means the KPI cannot be assessed; report 0 instead of a
+  // fake 100% so averages and rankings are not inflated.
+  return targetQty > 0 ? (actualQty / targetQty) * 100 : 0;
 }
 
 class KpiSystemService {
@@ -112,7 +114,7 @@ class KpiSystemService {
           depotNames: Array.from(row.depots),
         };
       })
-      .sort((a, b) => b.kpiPercent - a.kpiPercent)
+      .sort((a, b) => b.kpiPercent - a.kpiPercent || b.actualQty - a.actualQty)
       .map((row, index) => ({ ...row, rank: index + 1 }));
 
     return rows;
@@ -120,17 +122,20 @@ class KpiSystemService {
 
   async getSummary(params = {}) {
     const rows = await this.getRankings(params);
+    // Only employees with a target can be assessed; including no-target rows
+    // (always 0%) would drag the average down artificially.
+    const assessed = rows.filter((r) => r.targetQty > 0);
     const avgKpi =
-      rows.length > 0
-        ? rows.reduce((sum, row) => sum + row.kpiPercent, 0) / rows.length
+      assessed.length > 0
+        ? assessed.reduce((sum, row) => sum + row.kpiPercent, 0) / assessed.length
         : 0;
 
     return {
       averageKpi: Number(avgKpi.toFixed(1)),
       topPerformer: rows[0]?.employeeName || "N/A",
       employeesAssessed: rows.length,
-      aboveTarget: rows.filter((r) => r.kpiPercent >= 100).length,
-      belowThreshold: rows.filter((r) => r.kpiPercent < 80 && r.targetQty > 0).length,
+      aboveTarget: assessed.filter((r) => r.kpiPercent >= 100).length,
+      belowThreshold: assessed.filter((r) => r.kpiPercent < 80).length,
     };
   }
 
@@ -219,7 +224,9 @@ class KpiSystemService {
 
       const depotTarget = targetByDepot.get(cell.depotId) || 0;
       const productCount = productsPerDepot.get(cell.depotId) || 1;
-      const targetPerProduct = depotTarget > 0 ? depotTarget / productCount : Math.max(cell.quantitySold, 1);
+      // Without a depot target the cell cannot be scored; show 0 rather than
+      // pretending sales exactly met a made-up target.
+      const targetPerProduct = depotTarget > 0 ? depotTarget / productCount : 0;
       const kpiPercent = targetPerProduct > 0 ? (cell.quantitySold / targetPerProduct) * 100 : 0;
 
       depotMap.get(cell.depotName).products[cell.productName] = Number(
@@ -234,7 +241,7 @@ class KpiSystemService {
   }
 
   async setTarget({ employeeId, depotId, month, targetQty }) {
-    const monthDate = startOfMonth(parseISO(`${month}-01`));
+    const monthDate = utcMonthStart(parseISO(`${month}-01`));
 
     const record = await prisma.employeeKPI.upsert({
       where: {
@@ -269,7 +276,13 @@ class KpiSystemService {
   async getFilterOptions() {
     const [depots, products] = await Promise.all([
       prisma.depot.findMany({
-        select: { id: true, name: true },
+        select: {
+          id: true,
+          name: true,
+          district: {
+            select: { name: true, province: { select: { name: true } } },
+          },
+        },
         orderBy: { name: "asc" },
       }),
       prisma.product.findMany({
@@ -279,7 +292,16 @@ class KpiSystemService {
       }),
     ]);
 
-    return { depots, products };
+    return {
+      // Flatten geography so the UI can distinguish depots that share a name.
+      depots: depots.map((d) => ({
+        id: d.id,
+        name: d.name,
+        districtName: d.district?.name || null,
+        provinceName: d.district?.province?.name || null,
+      })),
+      products,
+    };
   }
 }
 
