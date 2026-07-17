@@ -47,7 +47,8 @@
     "supertest": "^7.2.2"
   },
   "scripts": {
-    "dev": "nodemon src/server.js",
-    "postinstall": "prisma generate"
-  }
+  "dev": "nodemon src/server.js",
+  "start": "node src/server.js",
+  "postinstall": "prisma generate"
+}
 }
