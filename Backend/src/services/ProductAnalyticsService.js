@@ -306,4 +306,4 @@ class ProductAnalyticsService {
     }
 }
 
-export const productAnalyticsService = new ProductAnalyticsService();
+export default new ProductAnalyticsService();
