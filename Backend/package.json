@@ -46,8 +46,9 @@
     "prettier": "^3.8.3",
     "supertest": "^7.2.2"
   },
-  "scripts": {
-    "dev": "nodemon src/server.js",
-    "postinstall": "prisma generate"
-  }
+  ""scripts": {
+  "dev": "nodemon src/server.js",
+  "start": "node src/server.js",
+  "postinstall": "prisma generate"
+}
 }
