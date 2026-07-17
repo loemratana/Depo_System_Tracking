@@ -170,7 +170,7 @@ export function BrandManagementPage() {
             <Button
               onClick={triggerCreate}
               size="sm"
-              className="text-[11px] h-8 gap-1.5 bg-primary text-primary-foreground hover:bg-primary/95 font-semibold"
+              className="text-[11px] h-8 gap-1.5 bg-blue-600 text-white hover:bg-blue-700 dark:text-white font-semibold"
             >
               <Plus className="h-3.5 w-3.5" />
               <span>Add Brand</span>
@@ -213,7 +213,7 @@ export function BrandManagementPage() {
             />
 
             {/* Pagination */}
-            <div className="flex items-center justify-between select-none text-[11px] text-muted-foreground border border-border rounded-lg bg-card/15 px-4 py-2.5 shadow-sm">
+            <div className="flex items-center justify-between select-none text-[11px] text-muted-foreground border border-border rounded-lg bg-card/15 px-4 py-2.5 ">
               <div>
                 Showing{" "}
                 <span className="font-semibold text-foreground">

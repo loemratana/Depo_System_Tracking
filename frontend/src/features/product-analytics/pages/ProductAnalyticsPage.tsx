@@ -1,165 +1,193 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useMemo } from "react";
 import { PageHeader, Surface, SectionTitle } from "@/components/ui-kit";
-import { ProductPerformanceTable, AnalyticsRow } from "../components/ProductPerformanceTable";
+import { KpiSummaryGrid } from "@/features/kpi/components/KpiSummaryGrid";
+import { ProductPerformanceTable } from "../components/ProductPerformanceTable";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Input } from "@/components/ui/input";
-import { Search, Filter, Loader2 } from "lucide-react";
+import { Search, RotateCcw, DollarSign, Package, TrendingUp, BarChart3 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
+import { useAnalyticsOptions, useAnalyticsPerformance } from "../hook/useAnalyticsOptions";
 
-export const ProductAnalyticsPage: React.FC = () => {
-  // Date states
+export const ProductAnalyticsPage: React.FC<{ brandId?: string }> = ({ brandId }) => {
   const [fromDate, setFromDate] = useState(() => {
     const today = new Date();
-    return new Date(today.getFullYear(), today.getMonth(), 1).toISOString().split('T')[0];
+    return new Date(today.getFullYear(), today.getMonth(), 1).toISOString().split("T")[0];
   });
   const [toDate, setToDate] = useState(() => {
     const today = new Date();
-    return new Date(today.getFullYear(), today.getMonth() + 1, 0).toISOString().split('T')[0];
+    return new Date(today.getFullYear(), today.getMonth() + 1, 0).toISOString().split("T")[0];
   });
 
-  // Filter states
   const [search, setSearch] = useState("");
   const [selectedDepot, setSelectedDepot] = useState("all-depots");
   const [selectedEmployee, setSelectedEmployee] = useState("all-employees");
 
-  // Data states
-  const [data, setData] = useState<AnalyticsRow[]>([]);
-  const [loading, setLoading] = useState(false);
-  const [depotOptions, setDepotOptions] = useState<{ id: number; name: string }[]>([]);
-  const [employeeOptions, setEmployeeOptions] = useState<{ id: number; name: string }[]>([]);
+  const { depotOptions, employeeOptions, isLoading: optionsLoading } = useAnalyticsOptions();
 
-  // Fetch filter options on mount
-  useEffect(() => {
-    const fetchOptions = async () => {
-      try {
-        const [depotsRes, employeesRes] = await Promise.all([
-          fetch("/api/v1/analytics/depots"),
-          fetch("/api/v1/analytics/employees"),
-        ]);
-        const depotsJson = await depotsRes.json();
-        const employeesJson = await employeesRes.json();
-        if (depotsJson.success) setDepotOptions(depotsJson.data);
-        if (employeesJson.success) setEmployeeOptions(employeesJson.data);
-      } catch (error) {
-        console.error("Failed to load filter options", error);
-      }
-    };
-    fetchOptions();
-  }, []);
+  const {
+    data = [],
+    isLoading: performanceLoading,
+    isError: performanceError,
+    error,
+  } = useAnalyticsPerformance({
+    fromDate,
+    toDate,
+    depotId: selectedDepot === "all-depots" ? undefined : selectedDepot,
+    brandId: brandId || undefined,
+    employeeId: selectedEmployee === "all-employees" ? undefined : selectedEmployee,
+    search: search || undefined,
+  });
 
-  // Fetch performance data when filters change
-  useEffect(() => {
-    const fetchData = async () => {
-      setLoading(true);
-      try {
-        const params = new URLSearchParams({
-          fromDate,
-          toDate,
-          depotId: selectedDepot === "all-depots" ? "" : selectedDepot,
-          employeeId: selectedEmployee === "all-employees" ? "" : selectedEmployee,
-          search,
-        });
-        const res = await fetch(`/api/v1/analytics/performance?${params}`);
-        const json = await res.json();
-        if (json.success) {
-          setData(json.data);
-        } else {
-          toast.error("Failed to load performance data");
-        }
-      } catch (error) {
-        console.error("Error fetching performance:", error);
-        toast.error("Network error");
-      } finally {
-        setLoading(false);
-      }
-    };
-    fetchData();
-  }, [fromDate, toDate, selectedDepot, selectedEmployee, search]);
+  const handleReset = () => {
+    setSearch("");
+    setSelectedDepot("all-depots");
+    setSelectedEmployee("all-employees");
+    const today = new Date();
+    setFromDate(new Date(today.getFullYear(), today.getMonth(), 1).toISOString().split("T")[0]);
+    setToDate(new Date(today.getFullYear(), today.getMonth() + 1, 0).toISOString().split("T")[0]);
+  };
+
+  if (performanceError) {
+    toast.error(error?.message || "Failed to load performance data");
+  }
+
+  const isLoading = optionsLoading || performanceLoading;
+
+  const analyticsKpiCards = useMemo(() => {
+    const totalRevenue = data.reduce((sum, row) => sum + row.revenue, 0);
+    const totalUnits = data.reduce((sum, row) => sum + row.quantitySold, 0);
+    const avgGrowth =
+      data.length > 0 ? data.reduce((sum, row) => sum + row.growth, 0) / data.length : 0;
+
+    return [
+      {
+        id: "revenue",
+        label: "Total Revenue",
+        value: `$${totalRevenue.toLocaleString(undefined, { maximumFractionDigits: 0 })}`,
+        icon: DollarSign,
+        hint: "For selected period",
+        accent: "primary" as const,
+      },
+      {
+        id: "units",
+        label: "Units Sold",
+        value: totalUnits.toLocaleString(),
+        icon: Package,
+        hint: `${data.length} records`,
+        accent: "info" as const,
+      },
+      {
+        id: "growth",
+        label: "Avg Growth",
+        value: `${avgGrowth >= 0 ? "+" : ""}${avgGrowth.toFixed(1)}%`,
+        icon: TrendingUp,
+        hint: "Month over month",
+        accent: avgGrowth >= 0 ? ("info" as const) : ("warning" as const),
+      },
+      {
+        id: "records",
+        label: "Performance Rows",
+        value: data.length,
+        icon: BarChart3,
+        hint: "Filtered results",
+        accent: "muted" as const,
+      },
+    ];
+  }, [data]);
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-5">
       <PageHeader
         title="Product Performance"
-        description="Monthly product performance analytics tracking sales, revenue, and growth trends."
+        description={
+          brandId
+            ? "Performance analytics filtered by brand."
+            : "Monthly product performance analytics tracking sales, revenue, and growth trends."
+        }
       />
 
-      <Surface padded className="space-y-4">
-        {/* Filters Bar */}
-        <div className="flex flex-col sm:flex-row gap-4 items-end justify-between">
-          <div className="flex flex-1 gap-3 items-center w-full flex-wrap">
-            <div className="relative max-w-sm w-full">
-              <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
-              <Input
-                placeholder="Search products or employees..."
-                className="pl-9 bg-background/50"
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-              />
+      <KpiSummaryGrid cards={analyticsKpiCards} columns={4} isLoading={isLoading} />
+
+      <Surface padded={false} className="overflow-hidden">
+        <div className="border-b border-border/70 bg-muted/20 p-4 backdrop-blur-sm">
+          <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+            <div className="flex flex-1 flex-wrap items-center gap-2">
+              <div className="relative w-full max-w-xs">
+                <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                <Input
+                  placeholder="Search products or employees..."
+                  className="h-9 rounded-lg border-border/70 bg-background pl-9 shadow-sm"
+                  value={search}
+                  onChange={(e) => setSearch(e.target.value)}
+                />
+              </div>
+
+              <Select value={selectedDepot} onValueChange={setSelectedDepot}>
+                <SelectTrigger className="h-9 w-[160px] rounded-lg">
+                  <SelectValue placeholder="All Depots" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all-depots">All Depots</SelectItem>
+                  {depotOptions.map((depot) => (
+                    <SelectItem key={depot.id} value={depot.id.toString()}>
+                      {depot.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+
+              <Select value={selectedEmployee} onValueChange={setSelectedEmployee}>
+                <SelectTrigger className="h-9 w-[160px] rounded-lg">
+                  <SelectValue placeholder="All Employees" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all-employees">All Employees</SelectItem>
+                  {employeeOptions.map((emp) => (
+                    <SelectItem key={emp.id} value={emp.id.toString()}>
+                      {emp.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
 
-            <Select value={selectedDepot} onValueChange={setSelectedDepot}>
-              <SelectTrigger className="w-[180px] bg-background/50">
-                <SelectValue placeholder="All Depots" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all-depots">All Depots</SelectItem>
-                {depotOptions.map((depot) => (
-                  <SelectItem key={depot.id} value={depot.id.toString()}>
-                    {depot.name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-
-            <Select value={selectedEmployee} onValueChange={setSelectedEmployee}>
-              <SelectTrigger className="w-[180px] bg-background/50">
-                <SelectValue placeholder="All Employees" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all-employees">All Employees</SelectItem>
-                {employeeOptions.map((emp) => (
-                  <SelectItem key={emp.id} value={emp.id.toString()}>
-                    {emp.name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-
-          <div className="flex gap-3">
-            <div className="flex items-center gap-2 bg-background/50 p-1 rounded-md border border-border/50">
-              <span className="text-xs font-medium text-muted-foreground ml-2">From:</span>
-              <Input
-                type="date"
-                value={fromDate}
-                onChange={(e) => setFromDate(e.target.value)}
-                className="w-32 h-8 text-xs border-0 bg-transparent focus-visible:ring-0 focus-visible:ring-offset-0 px-1"
-              />
-              <span className="text-xs font-medium text-muted-foreground">To:</span>
-              <Input
-                type="date"
-                value={toDate}
-                onChange={(e) => setToDate(e.target.value)}
-                className="w-32 h-8 text-xs border-0 bg-transparent focus-visible:ring-0 focus-visible:ring-offset-0 px-1"
-              />
+            <div className="flex flex-wrap items-center gap-2">
+              <div className="flex items-center gap-2 rounded-lg border border-border/70 bg-background px-3 py-1.5 shadow-sm">
+                <span className="text-xs font-medium text-muted-foreground">From</span>
+                <Input
+                  type="date"
+                  value={fromDate}
+                  onChange={(e) => setFromDate(e.target.value)}
+                  className="h-7 w-32 border-0 bg-transparent p-0 text-xs focus-visible:ring-0"
+                />
+                <span className="text-xs font-medium text-muted-foreground">To</span>
+                <Input
+                  type="date"
+                  value={toDate}
+                  onChange={(e) => setToDate(e.target.value)}
+                  className="h-7 w-32 border-0 bg-transparent p-0 text-xs focus-visible:ring-0"
+                />
+              </div>
+              <Button variant="outline" size="sm" className="h-9 gap-1.5 rounded-lg" onClick={handleReset}>
+                <RotateCcw className="h-3.5 w-3.5" />
+                Reset
+              </Button>
             </div>
-            <Button variant="outline" size="icon" title="More Filters">
-              <Filter className="h-4 w-4" />
-            </Button>
           </div>
         </div>
 
-        {/* Analytical Table */}
-        <div className="pt-4 border-t border-border/50">
+        <div className="p-4">
           <SectionTitle
             title="Performance Breakdown"
-            meta={`Date Range: ${new Date(fromDate).toLocaleDateString()} to ${new Date(toDate).toLocaleDateString()}`}
+            meta={`${new Date(fromDate).toLocaleDateString()} – ${new Date(toDate).toLocaleDateString()}`}
           />
           <div className="mt-4">
-            {loading ? (
-              <div className="flex justify-center py-12">
-                <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+            {isLoading ? (
+              <div className="space-y-2 py-4">
+                {Array.from({ length: 6 }).map((_, i) => (
+                  <div key={i} className="h-12 animate-pulse rounded-lg bg-muted/50" />
+                ))}
               </div>
             ) : (
               <ProductPerformanceTable data={data} />

@@ -3,6 +3,7 @@ import express from "express";
 import multer from 'multer';
 
 import depotController from "../controllers/depotController.js";
+import staffController from "../controllers/staffController.js";
 import authMiddleware from "../middleware/auth.js";
 import {
   createDepotValidator,
@@ -47,18 +48,16 @@ router.post('/bulk-import', (req, res, next) => {
     next();
   });
 }, depotController.bulkImport);
-
+router.post('/export', depotController.exportDepotReport);
+router.get('/export', depotController.exportDepotReport);
 // JSON-body bulk import (no file upload needed — frontend sends already-mapped rows)
-router.post(
-  '/bulk-import-json',
-  authMiddleware.authenticate,
-  depotController.bulkImportJson,
-);
+router.post('/bulk-import-json', authMiddleware.authenticate, depotController.bulkImportJson);
 
 
 
 //Report route – must be BEFORE /:id
 router.get("/report", authMiddleware.authenticate, depotController.getDepotReport);
+router.post("/report", authMiddleware.authenticate, depotController.getDepotReport);
 
 // Protected routes (require authentication)
 router.post(
@@ -69,6 +68,8 @@ router.post(
 );
 
 router.get("/", authMiddleware.authenticate, depotController.getAllDepots);
+router.get("/counts", authMiddleware.authenticate, depotController.getCounts);
+router.get("/summary", authMiddleware.authenticate, depotController.getSummary);
 
 // Parameterized route should be LAST
 router.get(
@@ -79,6 +80,12 @@ router.get(
 router.get("/:id", authMiddleware.authenticate, depotController.getDepotById);
 router.delete("/:id", authMiddleware.authenticate, depotController.deleteDepot);
 router.patch("/:id", authMiddleware.authenticate, depotController.updateDepot);
+
+// Staff for a depot
+router.get("/:id/staffs", authMiddleware.authenticate, staffController.listByDepot);
+router.post("/:id/staffs", authMiddleware.authenticate, staffController.create);
+router.patch("/:id/staffs/:staffId", authMiddleware.authenticate, staffController.update);
+router.delete("/:id/staffs/:staffId", authMiddleware.authenticate, staffController.remove);
 
 //report route
 

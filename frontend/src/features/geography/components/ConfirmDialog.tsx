@@ -37,7 +37,7 @@ export const ConfirmDialog: React.FC<ConfirmDialogProps> = ({
           animate={{ opacity: 1, scale: 1 }}
           exit={{ opacity: 0, scale: 0.96 }}
           transition={{ duration: 0.15, ease: "easeOut" }}
-          className="relative bg-white rounded-lg shadow-lg w-full max-w-md p-6"
+          className="relative bg-white rounded-lg -lg w-full max-w-md p-6"
         >
           <div className="flex items-start gap-3">
             <div className="w-9 h-9 rounded-full bg-amber-50 flex items-center justify-center flex-shrink-0">

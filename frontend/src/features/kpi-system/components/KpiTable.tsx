@@ -21,7 +21,6 @@ export interface KpiRow {
   employeeName: string;
   targetQty: number;
   actualQty: number;
-  targetRevenue: number;
   actualRevenue: number;
   kpiPercent: number;
   rank: number;
@@ -45,11 +44,23 @@ export const KpiTable: React.FC<KpiTableProps> = ({ data }) => {
       cell: ({ row }) => {
         const rank = row.original.rank;
         return (
-          <div className="flex justify-center items-center gap-1 font-mono text-xs font-semibold text-muted-foreground w-12">
-            {rank === 1 && <Trophy className="h-3.5 w-3.5 text-amber-500" />}
-            {rank === 2 && <Trophy className="h-3.5 w-3.5 text-slate-400" />}
-            {rank === 3 && <Trophy className="h-3.5 w-3.5 text-amber-700" />}
-            {rank > 3 && <span>#{rank}</span>}
+          <div className="flex w-12 items-center justify-center">
+            {rank === 1 && (
+              <span className="flex h-6 w-6 items-center justify-center rounded-full bg-amber-500">
+                <Trophy className="h-3.5 w-3.5 text-white" />
+              </span>
+            )}
+            {rank === 2 && (
+              <span className="flex h-6 w-6 items-center justify-center rounded-full bg-slate-400">
+                <Trophy className="h-3.5 w-3.5 text-white" />
+              </span>
+            )}
+            {rank === 3 && (
+              <span className="flex h-6 w-6 items-center justify-center rounded-full bg-amber-700">
+                <Trophy className="h-3.5 w-3.5 text-white" />
+              </span>
+            )}
+            {rank > 3 && <span className="font-mono text-xs font-semibold text-muted-foreground">#{rank}</span>}
           </div>
         );
       },
@@ -76,15 +87,6 @@ export const KpiTable: React.FC<KpiTableProps> = ({ data }) => {
       cell: ({ row }) => (
         <div className="text-right tabular-nums text-sm font-semibold text-foreground">
           {row.original.actualQty.toLocaleString()}
-        </div>
-      ),
-    },
-    {
-      accessorKey: "targetRevenue",
-      header: () => <div className="text-right">Target Rev ($)</div>,
-      cell: ({ row }) => (
-        <div className="text-right tabular-nums text-sm font-medium text-muted-foreground">
-          {row.original.targetRevenue.toLocaleString()}
         </div>
       ),
     },
@@ -137,15 +139,15 @@ export const KpiTable: React.FC<KpiTableProps> = ({ data }) => {
   });
 
   return (
-    <div className="rounded-none border border-border bg-surface">
+    <div className="overflow-hidden rounded-xl border border-border/70 bg-card">
       <Table>
-        <TableHeader className="bg-muted/50 sticky top-0 z-10 backdrop-blur supports-[backdrop-filter]:bg-muted/50 border-b border-border/80">
+        <TableHeader className="sticky top-0 z-10 border-b border-border/80 bg-muted/40 backdrop-blur">
           {table.getHeaderGroups().map((headerGroup) => (
-            <TableRow key={headerGroup.id} className="hover:bg-transparent border-0">
+            <TableRow key={headerGroup.id} className="border-0 hover:bg-transparent">
               {headerGroup.headers.map((header) => (
                 <TableHead
                   key={header.id}
-                  className="text-xs uppercase tracking-wider h-10 font-bold text-muted-foreground border-r border-border/40 last:border-0 bg-muted/20"
+                  className="h-10 border-r border-border/40 bg-transparent text-xs font-semibold uppercase tracking-wider text-muted-foreground last:border-0"
                 >
                   {header.isPlaceholder
                     ? null
@@ -164,10 +166,10 @@ export const KpiTable: React.FC<KpiTableProps> = ({ data }) => {
               <TableRow
                 key={row.id}
                 data-state={row.getIsSelected() && "selected"}
-                className="hover:bg-muted/40 transition-colors border-b border-border/40 last:border-0"
+                className="border-b border-border/40 last:border-0"
               >
                 {row.getVisibleCells().map((cell) => (
-                  <TableCell key={cell.id} className="py-2.5 border-r border-border/40 last:border-0 bg-transparent">
+                  <TableCell key={cell.id} className="border-r border-border/40 bg-transparent py-2.5 last:border-0">
                     {flexRender(cell.column.columnDef.cell, cell.getContext())}
                   </TableCell>
                 ))}

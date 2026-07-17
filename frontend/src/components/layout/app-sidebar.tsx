@@ -26,14 +26,15 @@ type NavItem = { to: string; label: string; icon: React.ComponentType<{ classNam
 const PRIMARY: NavItem[] = [
   { to: "/", label: "Dashboard", icon: LayoutDashboard },
   { to: "/brands", label: "Brands", icon: Tags },
-  { to: "/depos", label: "Brand Depos", icon: Warehouse },
-  { to: "/geography", label: "Geography", icon: MapPin },
-
+  { to: "/depos", label: "Depot Management", icon: Warehouse },
+  
   { to: "/products", label: "Products", icon: Package },
 
   // { to: "/handlers", label: "Handlers", icon: Users },
   { to: "/employees", label: "Employees", icon: Users },
-  // { to: "/visits", label: "Visits", icon: MapPin},
+  
+  { to: "/geography", label: "Geography", icon: MapPin },
+// { to: "/visits", label: "Visits", icon: MapPin},
 ];
 
 const INSIGHTS: NavItem[] = [

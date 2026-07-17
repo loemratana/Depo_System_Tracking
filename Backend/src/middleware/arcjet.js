@@ -1,6 +1,11 @@
 import aj from "../lib/arcjet.js";
+import environment from "../config/env.js";
 
 export async function arcjetMiddleware(req, res, next) {
+  if (!environment.enableArcjet) {
+    return next();
+  }
+
   const decision = await aj.protect(req);
 
   // Log the decision for observability

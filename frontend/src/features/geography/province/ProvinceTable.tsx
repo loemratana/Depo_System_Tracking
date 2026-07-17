@@ -1,7 +1,7 @@
 // src/features/geography/province/ProvinceTable.tsx
-import React from 'react';
-import { MapPin, Building2, Calendar, ChevronLeft, ChevronRight } from 'lucide-react';
-import { ActionMenu } from '../components/ActionMenu';
+import React from "react";
+import { MapPin, Building2, Calendar, ChevronLeft, ChevronRight } from "lucide-react";
+import { ActionMenu } from "../components/ActionMenu";
 import {
   Table,
   TableBody,
@@ -19,7 +19,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import type { Province } from './province.types';
+import type { Province } from "./province.types";
 import { cn } from "@/lib/utils";
 
 interface ProvinceTableProps {
@@ -27,6 +27,7 @@ interface ProvinceTableProps {
   isLoading: boolean;
   selectedProvinceId: string | null;
   onSelectProvince: (id: string) => void;
+  onDepotClick?: (province: Province) => void;
   onEditProvince: (province: Province) => void;
   onDeleteProvince: (province: Province) => void;
   // Pagination props
@@ -48,9 +49,15 @@ const SkeletonRow: React.FC = () => (
         <Skeleton className="h-4 w-28" />
       </div>
     </TableCell>
-    <TableCell className="py-3 px-4"><Skeleton className="h-5 w-14 rounded" /></TableCell>
-    <TableCell className="py-3 px-4 text-right pr-8"><Skeleton className="h-4 w-8 ml-auto" /></TableCell>
-    <TableCell className="py-3 px-4"><Skeleton className="h-4 w-20" /></TableCell>
+    <TableCell className="py-3 px-4">
+      <Skeleton className="h-5 w-14 rounded" />
+    </TableCell>
+    <TableCell className="py-3 px-4 text-right pr-8">
+      <Skeleton className="h-4 w-8 ml-auto" />
+    </TableCell>
+    <TableCell className="py-3 px-4">
+      <Skeleton className="h-4 w-20" />
+    </TableCell>
     <TableCell className="py-3 px-4 w-[50px]" />
   </TableRow>
 );
@@ -78,6 +85,7 @@ export const ProvinceTable: React.FC<ProvinceTableProps> = ({
   isLoading,
   selectedProvinceId,
   onSelectProvince,
+  onDepotClick,
   onEditProvince,
   onDeleteProvince,
   pageIndex,
@@ -98,7 +106,9 @@ export const ProvinceTable: React.FC<ProvinceTableProps> = ({
             <TableHeadRow />
           </TableHeader>
           <TableBody>
-            {[...Array(pageSize)].map((_, i) => <SkeletonRow key={i} />)}
+            {[...Array(pageSize)].map((_, i) => (
+              <SkeletonRow key={i} />
+            ))}
           </TableBody>
         </Table>
       </div>
@@ -109,7 +119,7 @@ export const ProvinceTable: React.FC<ProvinceTableProps> = ({
   if (provinces.length === 0 && totalCount === 0) {
     return (
       <div className="flex flex-col items-center justify-center py-24 text-center">
-        <div className="w-16 h-16 rounded-2xl bg-muted/30 flex items-center justify-center mb-5 border border-border/50 shadow-sm">
+        <div className="w-16 h-16 rounded-2xl bg-muted/30 flex items-center justify-center mb-5 border border-border/50 ">
           <MapPin className="w-8 h-8 text-muted-foreground/40" />
         </div>
         <h3 className="text-base font-semibold text-foreground">No provinces found</h3>
@@ -136,40 +146,54 @@ export const ProvinceTable: React.FC<ProvinceTableProps> = ({
                   onClick={() => onSelectProvince(province.id)}
                   className={cn(
                     "group cursor-pointer transition-all border-b border-border/40",
-                    isSelected
-                      ? "bg-primary/5"
-                      : "hover:bg-muted/30"
+                    isSelected ? "bg-primary/5" : "hover:bg-muted/30",
                   )}
                 >
                   {/* Province name */}
                   <TableCell className="py-2.5 px-4">
-                    <div className="flex items-center gap-2.5">
-                      <div className={cn(
-                        "p-2 rounded-lg transition-colors shrink-0",
-                        isSelected
-                          ? "bg-primary/10 text-primary"
-                          : "bg-muted/50 text-muted-foreground group-hover:bg-muted"
-                      )}>
-                        <MapPin className="w-3.5 h-3.5" />
+                    <div className="flex items-center gap-3">
+                      <div
+                        className={cn(
+                          "flex h-9 w-9 items-center justify-center rounded-xl shrink-0",
+                          isSelected
+                            ? "bg-primary/15 text-primary"
+                            : "bg-emerald-500/10 text-emerald-500",
+                        )}
+                      >
+                        <MapPin className="h-4 w-4" />
                       </div>
-                      <span className="text-[13px] font-semibold text-foreground tracking-tight">
-                        {province.name}
-                      </span>
+
+                      <div className="flex flex-col min-w-0">
+                        <span className="text-sm font-semibold text-foreground truncate">
+                          {province.name}
+                        </span>
+                        <span className="text-[10px] uppercase tracking-wider text-muted-foreground/70">
+                          Province
+                        </span>
+                      </div>
                     </div>
                   </TableCell>
 
                   {/* Code */}
                   <TableCell className="py-2.5 px-4">
                     <span className="text-xs font-medium bg-muted/40 px-2 py-1 rounded-md border border-border/40 text-foreground uppercase tracking-wider">
-                      {province.code}
+                      {province.code ?? "null"}
                     </span>
                   </TableCell>
 
                   {/* Depot count */}
                   <TableCell className="py-2.5 text-right pr-8">
-                    <div className="flex items-center justify-end gap-1.5">
-                      <Building2 className="w-3 h-3 text-muted-foreground/50" />
-                      <span className="text-[12px] font-medium tabular-nums text-muted-foreground group-hover:text-foreground transition-colors">
+                    <div 
+                      className={cn("flex items-center justify-end gap-1.5", onDepotClick ? "cursor-pointer hover:underline text-blue-500" : "")}
+                      onClick={(e) => {
+                        if (onDepotClick) {
+                          e.stopPropagation();
+                          onDepotClick(province);
+                        }
+                      }}
+                    >
+                      <Building2 className="w-4 h-4 text-blue-500" />
+                      <span className={cn("text-[14px] font-bold tabular-nums transition-colors", onDepotClick ? "text-blue-500 group-hover:text-blue-600" : "text-muted-foreground group-hover:text-foreground")}>
                         {province.depotCount ?? 0}
                       </span>
                     </div>
@@ -177,16 +201,19 @@ export const ProvinceTable: React.FC<ProvinceTableProps> = ({
 
                   {/* Created date */}
                   <TableCell className="py-2.5 px-4">
-                    <div className="flex items-center gap-1.5">
-                      <Calendar className="w-3 h-3 text-muted-foreground/50 shrink-0" />
-                      <span className="text-[11px] text-muted-foreground">
+                    <div className="flex items-center gap-2">
+                      <div className="flex h-6 w-6 items-center justify-center rounded-md bg-violet-500/10">
+                        <Calendar className="h-3.5 w-3.5 text-violet-500" />
+                      </div>
+
+                      <span className="text-xs text-muted-foreground">
                         {province.createdAt
                           ? new Date(province.createdAt).toLocaleDateString(undefined, {
-                            year: 'numeric',
-                            month: 'short',
-                            day: 'numeric',
-                          })
-                          : '—'}
+                              year: "numeric",
+                              month: "short",
+                              day: "numeric",
+                            })
+                          : "—"}
                       </span>
                     </div>
                   </TableCell>
@@ -219,12 +246,12 @@ export const ProvinceTable: React.FC<ProvinceTableProps> = ({
               onValueChange={(value) => onPageSizeChange(Number(value))}
             >
               <SelectTrigger className="h-8 w-[70px]">
-                <SelectValue placeholder={pageSize} />
+                <SelectValue placeholder={pageSize === 100 ? "All" : pageSize} />
               </SelectTrigger>
               <SelectContent side="top">
-                {[10, 20, 30, 50].map((size) => (
+                {[10, 20, 30, 50, 100].map((size) => (
                   <SelectItem key={size} value={size.toString()}>
-                    {size}
+                    {size === 100 ? "All" : size}
                   </SelectItem>
                 ))}
               </SelectContent>

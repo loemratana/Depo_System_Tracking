@@ -27,7 +27,6 @@ export interface Product {
   id: number;
   name: string;
   sku: string;
-  price: number;
   quantity: number;
   minStock: number;
   status: ProductStatus;
@@ -55,7 +54,6 @@ export interface ProductPerformance {
     id: number;
     name: string;
     sku: string;
-    price: number;
     minStock: number;
     currentStock: number;
   };
@@ -132,7 +130,6 @@ export interface ProductQueryParams {
 export interface CreateProductInput {
   name: string;
   sku?: string;
-  price: number;
   quantity?: number;
   minStock?: number;
   depotId: number;
@@ -145,11 +142,6 @@ export interface UpdateStockInput {
   quantity: number;
   reason?: "manual" | "sale" | "return" | "adjustment";
   employeeId?: number;
-}
-
-export interface UpdatePriceInput {
-  id: number;
-  price: number;
 }
 
 export interface UpdateMinStockInput {

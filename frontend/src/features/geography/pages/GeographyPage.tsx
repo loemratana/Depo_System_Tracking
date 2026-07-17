@@ -70,7 +70,7 @@ export const GeographyPage: React.FC = () => {
   const [editingProvince, setEditingProvince] = useState<Province | null>(null);
   const [provinceToDelete, setProvinceToDelete] = useState<Province | null>(null);
   const [provincePageIndex, setProvincePageIndex] = useState(0);
-  const [provincePageSize, setProvincePageSize] = useState(10);
+  const [provincePageSize, setProvincePageSize] = useState(100);
 
   // District state
   const [districtSearch, setDistrictSearch] = useState("");
@@ -243,7 +243,7 @@ export const GeographyPage: React.FC = () => {
   const inactiveDistricts = districts.filter((d) => d.status === "inactive").length;
 
   return (
-    <div className="space-y-6 p-4 md:p-6 max-w-full mx-auto">
+    <div className="space-y-6 max-w-full">
       {/* Header Section with enhanced visual */}
       <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
         <div className="space-y-1">
@@ -262,14 +262,14 @@ export const GeographyPage: React.FC = () => {
           <Button
             variant="outline"
             onClick={() => navigate({ to: "/geography/bulk-import" })}
-            className="h-9 px-4 shadow-sm bg-background"
+            className="h-9 px-4  bg-background"
           >
             <Upload className="h-4 w-4 mr-2" />
             Bulk Import
           </Button>
           <Button
             onClick={activeTab === "provinces" ? handleAddProvince : handleAddDistrict}
-            className="h-9 px-4 shadow-sm bg-primary text-primary-foreground hover:bg-primary/90"
+            className="h-9 px-4  bg-blue-600 dark:text-white text-primary-foreground hover:bg-primary/90"
           >
             <Plus className="h-4 w-4 mr-2" />
             New {activeTab === "provinces" ? "Province" : "District"}
@@ -279,7 +279,7 @@ export const GeographyPage: React.FC = () => {
 
       {/* Stats Summary Row (dynamic) */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-        <Card className="relative overflow-hidden p-5 flex items-center justify-between border-border/40 bg-card shadow-sm hover:shadow-md transition-shadow group">
+        <Card className="relative overflow-hidden p-5 flex items-center justify-between border-border/40 bg-card  hover:-md transition- group">
           <div className="absolute inset-0 bg-gradient-to-br from-primary/5 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity" />
           <div className="space-y-1.5 relative z-10">
             <p className="text-[13px] font-semibold text-muted-foreground uppercase tracking-wider">
@@ -287,13 +287,13 @@ export const GeographyPage: React.FC = () => {
             </p>
             <p className="text-3xl font-bold text-foreground tracking-tight">{provincesTotalCount}</p>
           </div>
-          <div className="h-12 w-12 rounded-xl bg-primary/10 flex items-center justify-center text-primary shadow-sm relative z-10 transition-transform group-hover:scale-105">
+          <div className="h-12 w-12 rounded-xl bg-primary/10 flex items-center justify-center text-primary  relative z-10 transition-transform group-hover:scale-105">
             <MapPin className="h-6 w-6" />
           </div>
         </Card>
         {activeTab === "districts" && selectedProvinceId ? (
           <>
-            <Card className="relative overflow-hidden p-5 flex items-center justify-between border-border/40 bg-card shadow-sm hover:shadow-md transition-shadow group">
+            <Card className="relative overflow-hidden p-5 flex items-center justify-between border-border/40 bg-card  hover:-md transition- group">
               <div className="absolute inset-0 bg-gradient-to-br from-success/5 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity" />
               <div className="space-y-1.5 relative z-10">
                 <p className="text-[13px] font-semibold text-muted-foreground uppercase tracking-wider">
@@ -301,11 +301,11 @@ export const GeographyPage: React.FC = () => {
                 </p>
                 <p className="text-3xl font-bold text-success tracking-tight">{activeDistricts}</p>
               </div>
-              <div className="h-12 w-12 rounded-xl bg-success/10 flex items-center justify-center text-success shadow-sm relative z-10 transition-transform group-hover:scale-105">
+              <div className="h-12 w-12 rounded-xl bg-success/10 flex items-center justify-center text-success  relative z-10 transition-transform group-hover:scale-105">
                 <Layers className="h-6 w-6" />
               </div>
             </Card>
-            <Card className="relative overflow-hidden p-5 flex items-center justify-between border-border/40 bg-card shadow-sm hover:shadow-md transition-shadow group">
+            <Card className="relative overflow-hidden p-5 flex items-center justify-between border-border/40 bg-card  hover:-md transition- group">
               <div className="absolute inset-0 bg-gradient-to-br from-muted/10 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity" />
               <div className="space-y-1.5 relative z-10">
                 <p className="text-[13px] font-semibold text-muted-foreground uppercase tracking-wider">
@@ -313,13 +313,13 @@ export const GeographyPage: React.FC = () => {
                 </p>
                 <p className="text-3xl font-bold text-muted-foreground tracking-tight">{inactiveDistricts}</p>
               </div>
-              <div className="h-12 w-12 rounded-xl bg-muted/50 flex items-center justify-center text-muted-foreground shadow-sm relative z-10 transition-transform group-hover:scale-105">
+              <div className="h-12 w-12 rounded-xl bg-muted/50 flex items-center justify-center text-muted-foreground  relative z-10 transition-transform group-hover:scale-105">
                 <Layers className="h-6 w-6" />
               </div>
             </Card>
           </>
         ) : activeTab === "districts" ? (
-          <Card className="p-5 col-span-2 flex items-center justify-between border-border/40 bg-muted/20 shadow-sm">
+          <Card className="p-5 col-span-2 flex items-center justify-between border-border/40 bg-muted/20 ">
             <p className="text-sm font-medium text-muted-foreground">
               Select a province to view detailed district statistics
             </p>
@@ -333,13 +333,13 @@ export const GeographyPage: React.FC = () => {
           <TabsList className="grid w-full sm:w-[400px] grid-cols-2 h-11 bg-muted/50 p-1 rounded-lg border border-border/50">
             <TabsTrigger
               value="provinces"
-              className="rounded-md data-[state=active]:bg-background data-[state=active]:text-foreground data-[state=active]:shadow-sm transition-all text-sm font-medium py-1.5"
+              className="rounded-md data-[state=active]:bg-background data-[state=active]:text-foreground data-[state=active]: transition-all text-sm font-medium py-1.5"
             >
               Provinces
             </TabsTrigger>
             <TabsTrigger
               value="districts"
-              className="rounded-md data-[state=active]:bg-background data-[state=active]:text-foreground data-[state=active]:shadow-sm transition-all text-sm font-medium py-1.5"
+              className="rounded-md data-[state=active]:bg-background data-[state=active]:text-foreground data-[state=active]: transition-all text-sm font-medium py-1.5"
             >
               Districts
             </TabsTrigger>
@@ -355,7 +355,7 @@ export const GeographyPage: React.FC = () => {
                   value={selectedProvinceId || "all"}
                   onValueChange={handleProvinceSelectInDistrict}
                 >
-                  <SelectTrigger className="w-[220px] h-9 text-sm bg-background border-border/60 shadow-sm focus:ring-1 focus:ring-primary rounded-md">
+                  <SelectTrigger className="w-[220px] h-9 text-sm bg-background border-border/60  focus:ring-1 focus:ring-primary rounded-md">
                     <SelectValue placeholder="All Provinces" />
                   </SelectTrigger>
                   <SelectContent>
@@ -426,6 +426,9 @@ export const GeographyPage: React.FC = () => {
                   onSelectProvince={(id) => {
                     handleSelectProvince(id);
                     handleTabChange("districts");
+                  }}
+                  onDepotClick={(province) => {
+                    navigate({ to: "/depos", search: { provinceName: province.name } });
                   }}
                   onEditProvince={handleEditProvince}
                   onDeleteProvince={setProvinceToDelete}

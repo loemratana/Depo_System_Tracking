@@ -35,7 +35,7 @@ export function DeleteBrandDialog({ isOpen, onClose, onConfirm, brand }: DeleteB
             transition={{ type: "spring", duration: 0.28 }}
             className="
               relative z-10 w-full max-w-md bg-white dark:bg-zinc-950
-              border border-zinc-200 dark:border-zinc-800 rounded-lg shadow-2xl
+              border border-zinc-200 dark:border-zinc-800 rounded-lg -2xl
               overflow-hidden flex flex-col
             "
           >

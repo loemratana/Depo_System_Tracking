@@ -13,14 +13,23 @@ export function PageHeader({
   className?: string;
 }) {
   return (
-    <div className={cn("mb-5 flex items-end justify-between gap-4", className)}>
+    <div
+      className={cn(
+        "mb-6 flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between",
+        className,
+      )}
+    >
       <div className="min-w-0">
-        <h1 className="text-[20px] font-semibold tracking-tight text-foreground">{title}</h1>
+        <h1 className="text-[22px] font-semibold tracking-tight text-foreground">{title}</h1>
         {description && (
-          <p className="mt-1 text-[13px] text-muted-foreground">{description}</p>
+          <p className="mt-1.5 max-w-2xl text-[13px] leading-relaxed text-muted-foreground">
+            {description}
+          </p>
         )}
       </div>
-      {actions && <div className="flex shrink-0 items-center gap-2">{actions}</div>}
+      {actions && (
+        <div className="flex shrink-0 flex-wrap items-center gap-2">{actions}</div>
+      )}
     </div>
   );
 }
@@ -37,7 +46,7 @@ export function Surface({
   return (
     <div
       className={cn(
-        "rounded-lg border border-border bg-card",
+        "overflow-hidden rounded-xl border border-border/80 bg-card shadow-sm",
         padded && "p-5",
         className,
       )}
@@ -79,25 +88,25 @@ export function StatusBadge({
   dot?: boolean;
 }) {
   const tones: Record<BadgeTone, string> = {
-    default: "bg-muted text-foreground/80 border-border",
-    success: "bg-success/10 text-success border-success/20",
-    warning: "bg-warning/10 text-warning border-warning/25",
-    danger: "bg-destructive/10 text-destructive border-destructive/20",
-    info: "bg-primary/10 text-primary border-primary/20",
-    muted: "bg-muted text-muted-foreground border-border",
+    default: "bg-slate-600 text-white border-slate-600",
+    success: "bg-green-600 text-white border-green-600",
+    warning: "bg-amber-500 text-white border-amber-500",
+    danger: "bg-red-600 text-white border-red-600",
+    info: "bg-blue-600 text-white border-blue-600",
+    muted: "bg-slate-500 text-white border-slate-500",
   };
   const dotTones: Record<BadgeTone, string> = {
-    default: "bg-foreground/40",
-    success: "bg-success",
-    warning: "bg-warning",
-    danger: "bg-destructive",
-    info: "bg-primary",
-    muted: "bg-muted-foreground/50",
+    default: "bg-white/90",
+    success: "bg-white/90",
+    warning: "bg-white/90",
+    danger: "bg-white/90",
+    info: "bg-white/90",
+    muted: "bg-white/90",
   };
   return (
     <span
       className={cn(
-        "inline-flex items-center gap-1.5 rounded-md border px-1.5 py-0.5 text-[10.5px] font-medium",
+        "inline-flex items-center gap-1.5 rounded-full border px-2 py-0.5 text-[10.5px] font-semibold uppercase tracking-wide shadow-sm",
         tones[tone],
       )}
     >
@@ -107,6 +116,39 @@ export function StatusBadge({
   );
 }
 
+export type KpiAccent = "primary" | "info" | "warning" | "danger" | "muted";
+
+const kpiAccentStyles: Record<
+  KpiAccent,
+  { icon: string; ring: string; hint: string }
+> = {
+  primary: {
+    icon: "bg-blue-600 text-white shadow-sm",
+    ring: "ring-blue-600/40",
+    hint: "text-muted-foreground",
+  },
+  info: {
+    icon: "bg-sky-600 text-white shadow-sm",
+    ring: "ring-sky-600/40",
+    hint: "text-muted-foreground",
+  },
+  warning: {
+    icon: "bg-amber-500 text-white shadow-sm",
+    ring: "ring-amber-500/40",
+    hint: "text-muted-foreground",
+  },
+  danger: {
+    icon: "bg-red-600 text-white shadow-sm",
+    ring: "ring-red-600/40",
+    hint: "text-muted-foreground",
+  },
+  muted: {
+    icon: "bg-slate-600 text-white shadow-sm",
+    ring: "ring-slate-500/40",
+    hint: "text-muted-foreground",
+  },
+};
+
 export function KpiCard({
   label,
   value,
@@ -114,6 +156,9 @@ export function KpiCard({
   trend = "up",
   icon: Icon,
   hint,
+  accent = "primary",
+  selected,
+  isLoading,
 }: {
   label: string;
   value: string | number;
@@ -121,23 +166,55 @@ export function KpiCard({
   trend?: "up" | "down" | "flat";
   icon?: React.ComponentType<{ className?: string }>;
   hint?: string;
+  accent?: KpiAccent;
+  selected?: boolean;
+  isLoading?: boolean;
 }) {
+  const styles = kpiAccentStyles[accent];
   const trendColor =
-    trend === "up" ? "text-green-600 dark:text-green-400" : trend === "down" ? "text-red-600 dark:text-red-400" : "ext-gray-500 dark:text-gray-400";
+    trend === "up"
+      ? "text-success"
+      : trend === "down"
+        ? "text-destructive"
+        : "text-muted-foreground";
 
   return (
-    <div className="rounded-lg border border-gray-200 bg-white p-4  dark:border-gray-800 dark:bg-gray-900">
-      <div className="flex items-center justify-between">
-        <span className="text-[11.5px] font-medium uppercase tracking-wide text-muted-foreground">
+    <div
+      className={cn(
+        "group relative h-full rounded-xl border border-border/70 bg-card p-4",
+        selected && cn("ring-2", styles.ring),
+      )}
+    >
+      <div className="flex items-start justify-between gap-3">
+        <span className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
           {label}
         </span>
-        {Icon && <Icon className="h-3.5 w-3.5 text-muted-foreground" />}
+        {Icon && (
+          <div
+            className={cn(
+              "flex h-8 w-8 shrink-0 items-center justify-center rounded-lg",
+              styles.icon,
+            )}
+          >
+            <Icon className="h-4 w-4" />
+          </div>
+        )}
       </div>
-      <div className="mt-2.5 flex items-baseline gap-2">
-        <div className="text-[22px] font-semibold tracking-tight text-foreground">{value}</div>
-        {delta && <div className={cn("text-[11.5px] font-medium", trendColor)}>{delta}</div>}
+      <div className="mt-3 flex items-baseline gap-2">
+        {isLoading ? (
+          <div className="h-7 w-16 animate-pulse rounded-md bg-muted" />
+        ) : (
+          <div className="text-[26px] font-semibold tabular-nums tracking-tight text-foreground">
+            {value}
+          </div>
+        )}
+        {delta && !isLoading && (
+          <div className={cn("text-[11.5px] font-medium", trendColor)}>{delta}</div>
+        )}
       </div>
-      {hint && <div className="mt-1 text-[11px] text-muted-foreground">{hint}</div>}
+      {hint && (
+        <div className={cn("mt-2 text-[11px] leading-snug", styles.hint)}>{hint}</div>
+      )}
     </div>
   );
 }
@@ -155,10 +232,10 @@ export function FilterChip({
     <button
       onClick={onClick}
       className={cn(
-        "inline-flex items-center gap-1.5 rounded-md border px-2 py-1 text-[11.5px] font-medium transition-colors",
+        "inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[11.5px] font-medium transition-all duration-200",
         active
-          ? "border-primary/30 bg-primary/10 text-primary"
-          : "border-border bg-surface text-muted-foreground hover:border-border-strong hover:text-foreground",
+          ? "border-blue-600 bg-blue-600 text-white shadow-sm"
+          : "border-border bg-surface text-muted-foreground hover:border-border-strong hover:bg-muted/50 hover:text-foreground",
       )}
     >
       {children}
@@ -176,14 +253,16 @@ export function EmptyState({
   icon?: React.ComponentType<{ className?: string }>;
 }) {
   return (
-    <div className="flex flex-col items-center justify-center rounded-lg border border-dashed border-border py-12 text-center">
+    <div className="flex flex-col items-center justify-center rounded-xl border border-dashed border-border/80 bg-muted/20 py-14 text-center">
       {Icon && (
-        <div className="mb-3 flex h-9 w-9 items-center justify-center rounded-lg bg-muted">
+        <div className="mb-3 flex h-10 w-10 items-center justify-center rounded-xl bg-muted/80">
           <Icon className="h-4 w-4 text-muted-foreground" />
         </div>
       )}
       <div className="text-[13px] font-medium text-foreground">{title}</div>
-      {description && <div className="mt-1 max-w-xs text-[12px] text-muted-foreground">{description}</div>}
+      {description && (
+        <div className="mt-1 max-w-xs text-[12px] text-muted-foreground">{description}</div>
+      )}
     </div>
   );
 }

@@ -72,10 +72,10 @@ class EmployeeController {
 
     async getEmployeeDepotDetails(req, res) {
         try {
-            const {employeeId} = req.params;
-            const employee =
+            const employeeId = req.params.employeeId || req.params.id;
+            const depots =
                 await employeeService.getEmployeeDepotDetails(employeeId);
-            res.json({success: true, data: employee});
+            res.json({success: true, data: depots});
         } catch (error) {
             res.status(500).json({success: false, message: error.message});
         }

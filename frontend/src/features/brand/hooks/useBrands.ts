@@ -87,6 +87,15 @@ export const useArchiveBrand = () => {
   });
 };
 
+export const useBrandProducts = (brandId?: number) => {
+  return useQuery({
+    queryKey: ["brand-products", brandId],
+    queryFn: () => brandService.getProducts(brandId!),
+    enabled: !!brandId,
+    staleTime: 5 * 60 * 1000,
+  });
+};
+
 export const useBrandDepotCount = (brandId?: number) => {
   return useQuery({
     queryKey: ["brand-depot-count", brandId],

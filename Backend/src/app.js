@@ -17,8 +17,8 @@ import productRoutes from "./routes/productsRoutes.js";
 import path from 'path';
 import environment from './config/env.js';
 import reportRoutes from "./routes/reportRoutes.js";
-import { arcjetMiddleware } from "./middleware/arcjet.js";
 import productAnalyticsRoutes from "./routes/productAnalyticsRoutes.js";
+import kpiSystemRoutes from "./routes/kpiSystemRoutes.js";
 
 const app = express();
 
@@ -26,12 +26,15 @@ const app = express();
    CORS CONFIG
 ======================== */
 const corsOptions = {
-  origin: true, // or your frontend URL
+  origin: [
+    "http://localhost:8080",
+    "http://localhost:5173",
+    "https://earline-unreceivable-juliane.ngrok-free.dev"
+  ],
   credentials: true,
 };
 
 app.use(cors(corsOptions));
-app.use(arcjetMiddleware);
 app.set("trust proxy", 0);
 /* ========================
    SECURITY MIDDLEWARE
@@ -73,17 +76,18 @@ app.use(
 );
 
 /* ========================
-   RATE LIMITING
+   RATE LIMITING (optional — off in dev by default)
 ======================== */
-const limiter = rateLimit({
-  windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 200,
-  message: 'Too many requests from this IP, please try again later.',
-  standardHeaders: true,
-  legacyHeaders: false,
-});
-
-app.use('/api', limiter);
+if (environment.enableRateLimit) {
+  const limiter = rateLimit({
+    windowMs: 15 * 60 * 1000,
+    max: 200,
+    message: 'Too many requests from this IP, please try again later.',
+    standardHeaders: true,
+    legacyHeaders: false,
+  });
+  app.use('/api', limiter);
+}
 
 /* ========================
    ROUTES
@@ -98,6 +102,7 @@ app.use('/api/v1/report', reportRoutes);
 app.use('/api/v1/brands', brandRoutes);
 app.use('/api/v1/products', productRoutes);
 app.use("/api/v1/analytics", productAnalyticsRoutes);
+app.use("/api/v1/kpis", kpiSystemRoutes);
 
 
 /* ========================

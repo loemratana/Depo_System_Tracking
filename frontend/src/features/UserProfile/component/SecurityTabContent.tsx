@@ -1,15 +1,13 @@
 import { useState } from "react";
-import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
 import { Alert, AlertDescription } from "@/components/ui/alert";
+import { Surface, StatusBadge } from "@/components/ui-kit";
 import {
   Shield,
   Lock,
   Smartphone,
   AlertCircle,
   CheckCircle2,
-  ArrowRight,
   Laptop,
 } from "lucide-react";
 import type { SecuritySettings } from "../types/userProfile.types";
@@ -43,33 +41,32 @@ export function SecurityTabContent({
   };
 
   return (
-    <div className="space-y-6">
-      {/* Security Overview Card */}
-      <Card className="p-8 border border-blue-200 bg-blue-50/50">
+    <div className="space-y-4">
+      <Surface className="border-blue-200/60 bg-blue-50/50 dark:border-blue-900/40 dark:bg-blue-950/20">
         <div className="flex items-start gap-4">
-          <Shield className="h-6 w-6 text-blue-600 flex-shrink-0 mt-1" />
+          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-blue-600">
+            <Shield className="h-5 w-5 text-white" />
+          </div>
           <div>
-            <h3 className="text-lg font-semibold text-blue-900 mb-1">Security Overview</h3>
-            <p className="text-sm text-blue-700">
-              Your account security is important to us. Review and update your security settings to
-              keep your account safe.
+            <h3 className="text-sm font-semibold text-foreground">Security Overview</h3>
+            <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
+              Review and update your security settings to keep your account safe.
             </p>
           </div>
         </div>
-      </Card>
+      </Surface>
 
-      {/* Password Section */}
-      <Card className="p-8 border border-gray-200 shadow-sm hover:shadow-md transition-shadow">
-        <div className="flex items-start justify-between gap-6 mb-6 pb-6 border-b border-gray-200">
-          <div className="flex items-start gap-4">
-            <div className="p-3 bg-gray-100 rounded-lg">
-              <Lock className="h-5 w-5 text-gray-700" />
+      <Surface padded={false} className="overflow-hidden">
+        <div className="flex flex-col gap-4 border-b border-border/70 p-5 sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex items-start gap-3">
+            <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-slate-600">
+              <Lock className="h-5 w-5 text-white" />
             </div>
             <div>
-              <h3 className="text-lg font-semibold text-gray-900">Password</h3>
-              <p className="text-sm text-gray-600 mt-1">
+              <h3 className="text-sm font-semibold text-foreground">Password</h3>
+              <p className="mt-0.5 text-xs text-muted-foreground">
                 Last changed{" "}
-                <span className="font-medium">
+                <span className="font-medium text-foreground">
                   {new Date(security.lastPasswordChange).toLocaleDateString()}
                 </span>
               </p>
@@ -77,121 +74,105 @@ export function SecurityTabContent({
           </div>
           <Button
             onClick={onChangePassword}
-            className="bg-gray-900 hover:bg-gray-800 text-white font-medium px-6 py-2 rounded-lg transition-colors whitespace-nowrap"
+            size="sm"
+            className="h-9 rounded-lg bg-blue-600 hover:bg-blue-700"
           >
             Change Password
           </Button>
         </div>
-
-        <div className="bg-gray-50 p-4 rounded-lg">
-          <p className="text-sm text-gray-600">
-            Update your password regularly to maintain account security. We recommend using a
-            strong, unique password.
+        <div className="bg-muted/10 px-5 py-3">
+          <p className="text-xs text-muted-foreground">
+            Use a strong, unique password and update it regularly for better account security.
           </p>
         </div>
-      </Card>
+      </Surface>
 
-      {/* Two-Factor Authentication Section */}
-      <Card className="p-8 border border-gray-200 shadow-sm hover:shadow-md transition-shadow">
-        <div className="flex items-start justify-between gap-6 mb-6 pb-6 border-b border-gray-200">
-          <div className="flex items-start gap-4 flex-1">
-            <div className="p-3 bg-purple-100 rounded-lg">
-              <Smartphone className="h-5 w-5 text-purple-700" />
+      <Surface padded={false} className="overflow-hidden">
+        <div className="flex flex-col gap-4 border-b border-border/70 p-5 sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex items-start gap-3">
+            <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-violet-600">
+              <Smartphone className="h-5 w-5 text-white" />
             </div>
             <div>
-              <h3 className="text-lg font-semibold text-gray-900">Two-Factor Authentication</h3>
-              <p className="text-sm text-gray-600 mt-1">
+              <h3 className="text-sm font-semibold text-foreground">Two-Factor Authentication</h3>
+              <p className="mt-0.5 text-xs text-muted-foreground">
                 Add an extra layer of security to your account
               </p>
-              <div className="mt-3">
-                <Badge
-                  className={`${
-                    twoFactorEnabled ? "bg-green-100 text-green-800" : "bg-gray-100 text-gray-800"
-                  } border-0 font-medium`}
-                >
+              <div className="mt-2">
+                <StatusBadge tone={twoFactorEnabled ? "success" : "muted"} dot>
                   {twoFactorEnabled ? "Enabled" : "Disabled"}
-                </Badge>
+                </StatusBadge>
               </div>
             </div>
           </div>
           <Button
             onClick={handle2FAToggle}
             disabled={isEnabling2FA}
-            className={`font-medium px-6 py-2 rounded-lg transition-colors whitespace-nowrap ${
+            size="sm"
+            variant={twoFactorEnabled ? "outline" : "default"}
+            className={
               twoFactorEnabled
-                ? "bg-red-100 hover:bg-red-200 text-red-700"
-                : "bg-blue-600 hover:bg-blue-700 text-white"
-            }`}
+                ? "h-9 rounded-lg border-red-300 text-red-600 hover:bg-red-50 hover:text-red-700"
+                : "h-9 rounded-lg bg-blue-600 hover:bg-blue-700"
+            }
           >
             {isEnabling2FA ? "Processing..." : twoFactorEnabled ? "Disable 2FA" : "Enable 2FA"}
           </Button>
         </div>
 
-        <Alert
-          className={
-            twoFactorEnabled ? "border-green-200 bg-green-50" : "border-yellow-200 bg-yellow-50"
-          }
-        >
-          {twoFactorEnabled ? (
-            <>
-              <CheckCircle2 className="h-4 w-4 text-green-600" />
-              <AlertDescription className="text-green-800">
-                Two-factor authentication is active. You'll need to provide a verification code in
-                addition to your password when signing in.
-              </AlertDescription>
-            </>
-          ) : (
-            <>
-              <AlertCircle className="h-4 w-4 text-yellow-600" />
-              <AlertDescription className="text-yellow-800">
-                Enable two-factor authentication for enhanced security. You can use your phone or an
-                authenticator app.
-              </AlertDescription>
-            </>
-          )}
-        </Alert>
-      </Card>
+        <div className="p-5">
+          <Alert
+            className={
+              twoFactorEnabled
+                ? "border-emerald-600/30 bg-emerald-50 dark:bg-emerald-950/20"
+                : "border-amber-500/30 bg-amber-50 dark:bg-amber-950/20"
+            }
+          >
+            {twoFactorEnabled ? (
+              <>
+                <CheckCircle2 className="h-4 w-4 text-emerald-600" />
+                <AlertDescription className="text-xs text-emerald-800 dark:text-emerald-300">
+                  Two-factor authentication is active. You'll need a verification code when signing in.
+                </AlertDescription>
+              </>
+            ) : (
+              <>
+                <AlertCircle className="h-4 w-4 text-amber-600" />
+                <AlertDescription className="text-xs text-amber-800 dark:text-amber-300">
+                  Enable 2FA for enhanced security using your phone or an authenticator app.
+                </AlertDescription>
+              </>
+            )}
+          </Alert>
+        </div>
+      </Surface>
 
-      {/* Active Devices Section */}
-      <Card className="p-8 border border-gray-200 shadow-sm hover:shadow-md transition-shadow">
-        <div className="mb-6 pb-6 border-b border-gray-200">
-          <h3 className="text-lg font-semibold text-gray-900">Active Devices</h3>
-          <p className="text-sm text-gray-600 mt-1">
-            {security.activeDevices} device{security.activeDevices !== 1 ? "s" : ""} currently
-            signed in
+      <Surface padded={false} className="overflow-hidden">
+        <div className="border-b border-border/70 p-5">
+          <h3 className="text-sm font-semibold text-foreground">Active Devices</h3>
+          <p className="mt-0.5 text-xs text-muted-foreground">
+            {security.activeDevices} device{security.activeDevices !== 1 ? "s" : ""} currently signed in
           </p>
         </div>
 
-        <div className="space-y-4">
-          {/* Current Device */}
-          <div className="flex items-center justify-between p-4 bg-gray-50 rounded-lg border border-gray-200">
+        <div className="space-y-3 p-5">
+          <div className="flex items-center justify-between rounded-lg border border-border/70 bg-muted/20 px-4 py-3">
             <div className="flex items-center gap-3">
-              <div className="p-2 bg-blue-100 rounded-lg">
-                <Laptop className="h-5 w-5 text-blue-700" />
+              <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-sky-600">
+                <Laptop className="h-4 w-4 text-white" />
               </div>
               <div>
-                <p className="font-medium text-gray-900">This Device</p>
-                <p className="text-xs text-gray-600">Chrome on Windows • Just now</p>
+                <p className="text-sm font-medium text-foreground">This Device</p>
+                <p className="text-xs text-muted-foreground">Chrome on Windows · Just now</p>
               </div>
             </div>
-            <Badge className="bg-blue-100 text-blue-800 border-0">Current</Badge>
+            <StatusBadge tone="info">Current</StatusBadge>
           </div>
-
-          <p className="text-xs text-gray-500 pt-2">
+          <p className="text-[11px] text-muted-foreground">
             Remove any devices you don't recognize to secure your account.
           </p>
         </div>
-      </Card>
-
-      {/* Recent Activity Alert */}
-      <Alert className="border-amber-200 bg-amber-50">
-        <AlertCircle className="h-4 w-4 text-amber-600" />
-        <AlertDescription className="text-amber-800">
-          <p className="font-medium mb-1">Suspicious Activity?</p>
-          If you notice any unusual activity, please change your password immediately and enable
-          two-factor authentication.
-        </AlertDescription>
-      </Alert>
+      </Surface>
     </div>
   );
 }

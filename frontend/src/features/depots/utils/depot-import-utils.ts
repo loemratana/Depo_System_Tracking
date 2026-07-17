@@ -9,6 +9,40 @@ export type ParsedCsv = {
   rows: Record<string, string>[];
 };
 
+const IMPORT_PLACEHOLDER_VALUES = new Set([
+  "vacancy",
+  "vacant",
+  "#n/a",
+  "n/a",
+  "na",
+  "#na",
+  "null",
+  "none",
+  "-",
+  "—",
+]);
+
+/** Treat spreadsheet placeholders (Vacancy, #N/A, etc.) as empty. */
+export function normalizeImportPlaceholder(value: unknown): string {
+  if (value == null) return "";
+  const trimmed = String(value).trim();
+  if (!trimmed) return "";
+  const lower = trimmed.toLowerCase();
+  const compact = lower.replace(/\s+/g, "");
+  if (IMPORT_PLACEHOLDER_VALUES.has(lower) || IMPORT_PLACEHOLDER_VALUES.has(compact)) {
+    return "";
+  }
+  return trimmed;
+}
+
+export function normalizeImportRow(row: Record<string, string>): Record<string, string> {
+  const normalized: Record<string, string> = {};
+  for (const [key, value] of Object.entries(row)) {
+    normalized[key] = normalizeImportPlaceholder(value);
+  }
+  return normalized;
+}
+
 export const parseCSV = (text: string): ParsedCsv => {
   const lines = text.split(/\r?\n/);
   if (lines.length === 0) return { headers: [], rows: [] };
@@ -20,7 +54,7 @@ export const parseCSV = (text: string): ParsedCsv => {
       const values = line.split(",").map((v) => v.trim());
       const row: Record<string, string> = {};
       headers.forEach((h, i) => {
-        row[h] = values[i] || "";
+        row[h] = normalizeImportPlaceholder(values[i] || "");
       });
       row._originalIndex = String(idx);
       return row;

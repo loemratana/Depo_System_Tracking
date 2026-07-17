@@ -37,12 +37,16 @@ interface EmployeeHeaderProps {
   employee: Employee;
   onExportExcel: () => void;
   onExportPDF: () => void;
+  onEdit?: () => void;
+  onAssign?: () => void;
 }
 
 export const EmployeeHeader: React.FC<EmployeeHeaderProps> = ({
   employee,
   onExportExcel,
   onExportPDF,
+  onEdit,
+  onAssign,
 }) => {
   const getStatusConfig = (status: string) => {
     switch (status) {
@@ -166,9 +170,10 @@ export const EmployeeHeader: React.FC<EmployeeHeaderProps> = ({
         </div>
 
         <div className="flex items-center gap-2">
-          <Button
+        <Button
             variant="outline"
             className="h-8 px-3 gap-2 text-[11px] font-bold uppercase tracking-wider border-zinc-200 dark:border-zinc-800 shadow-none"
+            onClick={onEdit}   // trigger edit dialog
           >
             <Edit2 className="h-3 w-3 text-zinc-500" />
             Edit Profile
@@ -176,10 +181,12 @@ export const EmployeeHeader: React.FC<EmployeeHeaderProps> = ({
           <Button
             variant="outline"
             className="h-8 px-3 gap-2 text-[11px] font-bold uppercase tracking-wider border-zinc-200 dark:border-zinc-800 shadow-none"
+            onClick={onAssign} // trigger assign depot dialog
           >
             <UserPlus className="h-3 w-3 text-zinc-500" />
             Assign Depot
           </Button>
+
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <Button

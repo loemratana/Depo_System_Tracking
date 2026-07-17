@@ -1,5 +1,6 @@
 import { prisma } from "../config/db.js";
 import logger from "../config/logger.js";
+import { startOfMonth, endOfMonth, subMonths } from "date-fns";
 
 class BrandService {
   async getAll(filters = {}) {
@@ -157,6 +158,157 @@ class BrandService {
       brand_id: brand.id,
       brand_name: brand.name,
       total_depots: brand._count.depots,
+    };
+  }
+
+  /**
+   * Brand executive summary: depot ops, product inventory, and sales snapshot.
+   */
+  async getSummary(id) {
+    const brandId = parseInt(id, 10);
+    if (isNaN(brandId)) throw new Error("Brand id must be a number");
+
+    const brand = await prisma.brand.findUnique({ where: { id: brandId } });
+    if (!brand) throw new Error("Brand not found");
+
+    const now = new Date();
+    const thirtyDaysLater = new Date(now);
+    thirtyDaysLater.setDate(now.getDate() + 30);
+    const depotWhere = { brandId };
+    const productWhere = { brandId };
+
+    const monthStart = startOfMonth(now);
+    const monthEnd = endOfMonth(now);
+    const prevMonthStart = startOfMonth(subMonths(now, 1));
+    const prevMonthEnd = endOfMonth(subMonths(now, 1));
+
+    const [
+      depotTotal,
+      depotActive,
+      depotVacancy,
+      depotExpired,
+      depotExpiringSoon,
+      productTotal,
+      productLowStock,
+      productOutOfStock,
+      currentSales,
+      previousSales,
+    ] = await Promise.all([
+      prisma.depot.count({ where: depotWhere }),
+      prisma.depot.count({ where: { ...depotWhere, status: "active" } }),
+      prisma.depot.count({ where: { ...depotWhere, status: "vacancy" } }),
+      prisma.depot.count({
+        where: { ...depotWhere, expiryDate: { lt: now } },
+      }),
+      prisma.depot.count({
+        where: {
+          ...depotWhere,
+          expiryDate: { gte: now, lte: thirtyDaysLater },
+        },
+      }),
+      prisma.product.count({ where: productWhere }),
+      prisma.product.count({
+        where: { ...productWhere, status: "LOW" },
+      }),
+      prisma.product.count({
+        where: { ...productWhere, status: "OUT_OF_STOCK" },
+      }),
+      prisma.productPerformance.aggregate({
+        where: {
+          product: { brandId },
+          month: { gte: monthStart, lte: monthEnd },
+        },
+        _sum: { quantitySold: true, revenue: true },
+      }),
+      prisma.productPerformance.aggregate({
+        where: {
+          product: { brandId },
+          month: { gte: prevMonthStart, lte: prevMonthEnd },
+        },
+        _sum: { quantitySold: true, revenue: true },
+      }),
+    ]);
+
+    const currentRevenue = Number(currentSales._sum.revenue ?? 0);
+    const previousRevenue = Number(previousSales._sum.revenue ?? 0);
+    let growthPercent = 0;
+    if (previousRevenue > 0) {
+      growthPercent = ((currentRevenue - previousRevenue) / previousRevenue) * 100;
+    } else if (currentRevenue > 0) {
+      growthPercent = 100;
+    }
+
+    const activeDepots = depotActive;
+    const coveragePercent =
+      depotTotal > 0 ? Math.round((activeDepots / depotTotal) * 100) : 0;
+
+    return {
+      brandId: brand.id,
+      brandName: brand.name,
+      depots: {
+        total: depotTotal,
+        active: depotActive,
+        vacancy: depotVacancy,
+        expiringSoon: depotExpiringSoon,
+        expired: depotExpired,
+      },
+      products: {
+        total: productTotal,
+        lowStock: productLowStock,
+        outOfStock: productOutOfStock,
+      },
+      sales: {
+        revenue: currentRevenue,
+        unitsSold: currentSales._sum.quantitySold ?? 0,
+        growthPercent: parseFloat(growthPercent.toFixed(1)),
+      },
+      coveragePercent,
+    };
+  }
+
+  async getProductsByBrand(brandId, { page = 1, limit = 50 } = {}) {
+    const id = parseInt(brandId, 10);
+    if (isNaN(id)) throw new Error("Brand id must be a number");
+
+    const brand = await prisma.brand.findUnique({ where: { id } });
+    if (!brand) throw new Error("Brand not found");
+
+    const skip = (page - 1) * limit;
+    const [products, total] = await Promise.all([
+      prisma.product.findMany({
+        where: { brandId: id },
+        skip,
+        take: limit,
+        orderBy: { name: "asc" },
+        select: {
+          id: true,
+          name: true,
+          sku: true,
+          quantity: true,
+          minStock: true,
+          status: true,
+          depot: { select: { id: true, name: true } },
+        },
+      }),
+      prisma.product.count({ where: { brandId: id } }),
+    ]);
+
+    return {
+      data: products.map((p) => ({
+        id: p.id,
+        name: p.name,
+        sku: p.sku,
+        quantity: p.quantity,
+        minStock: p.minStock,
+        status: p.status,
+        depotName: p.depot?.name ?? null,
+      })),
+      pagination: {
+        page,
+        limit,
+        total,
+        totalPages: Math.ceil(total / limit),
+      },
     };
   }
   //delete brand by id

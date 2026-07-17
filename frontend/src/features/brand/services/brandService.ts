@@ -39,7 +39,13 @@ export const brandService = {
 
   delete: (id: number) => api.delete(`/brands/${id}`).then((res) => res.data),
   getDepotCountById: (id: number) =>
-    api.get<BrandDepotCount>(`/brands/${id}/depots`).then((res) => res.data),
+    api.get(`/brands/${id}/depots`).then((res) => res.data.data as BrandDepotCount),
+
+  getSummary: (id: number) =>
+    api.get(`/brands/${id}/summary`).then((res) => res.data.data),
+
+  getProducts: (id: number, params?: { page?: number; limit?: number }) =>
+    api.get(`/brands/${id}/products`, { params }).then((res) => res.data),
 
   // /** Fetch all depots assigned to a brand */
   // getDepotsByBrand: async (brandId: number): Promise<AssignedDepot[]> => {

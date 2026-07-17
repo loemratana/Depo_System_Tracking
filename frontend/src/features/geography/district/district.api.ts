@@ -1,8 +1,8 @@
 import apiClient from '@/api/axios-client';
 
 export const districtApi = {
-  getAll: async (params?: { provinceId?: string; search?: string }) => {
-    const response = await apiClient.get('/districts', { params });
+  getAll: async (params?: { provinceId?: string; search?: string; limit?: number }) => {
+    const response = await apiClient.get('/districts', { params: { limit: 1000, ...params } });
     return response.data.data;
   },
 

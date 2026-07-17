@@ -1,10 +1,12 @@
 import { useState } from "react";
-import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import { Alert, AlertDescription } from "@/components/ui/alert";
+import { Surface } from "@/components/ui-kit";
+import { UserAvatar } from "@/components/ui/user-avatar";
 import { CheckCircle2, AlertCircle, Edit2, X } from "lucide-react";
+import { cn } from "@/lib/utils";
 import type { UserProfile, ProfileUpdateInput } from "../types/userProfile.types";
 
 interface ProfileTabContentProps {
@@ -38,8 +40,9 @@ export function ProfileTabContent({ user, onUpdate }: ProfileTabContentProps) {
       setSuccessMessage("Profile updated successfully");
       setIsEditing(false);
       setTimeout(() => setSuccessMessage(""), 3000);
-    } catch (error: any) {
-      setErrorMessage(error?.message || "Failed to update profile");
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : "Failed to update profile";
+      setErrorMessage(message);
       setTimeout(() => setErrorMessage(""), 3000);
     } finally {
       setIsSaving(false);
@@ -57,40 +60,52 @@ export function ProfileTabContent({ user, onUpdate }: ProfileTabContentProps) {
   };
 
   return (
-    <div className="space-y-5">
-      {/* Alerts – minimal design */}
+    <div className="space-y-4">
       {successMessage && (
-        <Alert className="border-success/30 bg-success/5 py-2">
-          <CheckCircle2 className="h-3.5 w-3.5 text-success" />
-          <AlertDescription className="text-[11px] text-success">{successMessage}</AlertDescription>
+        <Alert className="border-emerald-600/30 bg-emerald-50 py-2 dark:bg-emerald-950/20">
+          <CheckCircle2 className="h-3.5 w-3.5 text-emerald-600" />
+          <AlertDescription className="text-xs text-emerald-700 dark:text-emerald-400">
+            {successMessage}
+          </AlertDescription>
         </Alert>
       )}
       {errorMessage && (
-        <Alert className="border-destructive/30 bg-destructive/5 py-2">
-          <AlertCircle className="h-3.5 w-3.5 text-destructive" />
-          <AlertDescription className="text-[11px] text-destructive">
+        <Alert className="border-red-600/30 bg-red-50 py-2 dark:bg-red-950/20">
+          <AlertCircle className="h-3.5 w-3.5 text-red-600" />
+          <AlertDescription className="text-xs text-red-700 dark:text-red-400">
             {errorMessage}
           </AlertDescription>
         </Alert>
       )}
 
-      <Card className="border-border bg-card shadow-sm overflow-hidden">
-        {/* Header */}
-        <div className="flex items-center justify-between border-b border-border px-5 py-3">
+      <Surface className="flex items-center gap-4 p-4">
+        <UserAvatar
+          src={user.avatar}
+          name={user.fullName}
+          email={user.email}
+          id={user.id}
+          size="xl"
+        />
+        <div>
+          <p className="text-sm font-semibold text-foreground">Profile Photo</p>
+          <p className="text-xs text-muted-foreground">
+            Use the camera button on the left sidebar to update your photo.
+          </p>
+        </div>
+      </Surface>
+
+      <Surface padded={false} className="overflow-hidden">
+        <div className="flex items-center justify-between border-b border-border/70 bg-muted/20 px-5 py-3">
           <div>
-            <h2 className="text-sm font-semibold tracking-tight text-foreground">
-              Personal Information
-            </h2>
-            <p className="text-[10px] text-muted-foreground uppercase tracking-wide">
-              Manage your profile details
-            </p>
+            <h2 className="text-sm font-semibold text-foreground">Personal Information</h2>
+            <p className="text-xs text-muted-foreground">Manage your profile details</p>
           </div>
           {!isEditing && (
             <Button
               onClick={() => setIsEditing(true)}
               variant="outline"
               size="sm"
-              className="h-8 gap-1.5 text-[11px]"
+              className="h-8 gap-1.5 rounded-lg text-xs"
             >
               <Edit2 className="h-3.5 w-3.5" />
               Edit
@@ -98,12 +113,10 @@ export function ProfileTabContent({ user, onUpdate }: ProfileTabContentProps) {
           )}
         </div>
 
-        {/* Form fields */}
-        <div className="p-5 space-y-5">
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
-            {/* Full Name – full width on small screens */}
+        <div className="space-y-5 p-5">
+          <div className="grid grid-cols-1 gap-5 md:grid-cols-2">
             <div className="md:col-span-2">
-              <Label className="text-[11px] font-medium uppercase tracking-wider text-muted-foreground mb-1.5 block">
+              <Label className="mb-1.5 block text-xs font-semibold uppercase tracking-wider text-muted-foreground">
                 Full Name
               </Label>
               <Input
@@ -112,14 +125,14 @@ export function ProfileTabContent({ user, onUpdate }: ProfileTabContentProps) {
                 onChange={handleChange}
                 disabled={!isEditing}
                 className={cn(
-                  "h-8 text-sm",
-                  !isEditing && "bg-muted/30 border-transparent text-foreground/70",
+                  "h-9 rounded-lg",
+                  !isEditing && "border-transparent bg-muted/30 text-foreground/80",
                 )}
               />
             </div>
 
             <div>
-              <Label className="text-[11px] font-medium uppercase tracking-wider text-muted-foreground mb-1.5 block">
+              <Label className="mb-1.5 block text-xs font-semibold uppercase tracking-wider text-muted-foreground">
                 Email Address
               </Label>
               <Input
@@ -129,14 +142,14 @@ export function ProfileTabContent({ user, onUpdate }: ProfileTabContentProps) {
                 onChange={handleChange}
                 disabled={!isEditing}
                 className={cn(
-                  "h-8 text-sm",
-                  !isEditing && "bg-muted/30 border-transparent text-foreground/70",
+                  "h-9 rounded-lg",
+                  !isEditing && "border-transparent bg-muted/30 text-foreground/80",
                 )}
               />
             </div>
 
             <div>
-              <Label className="text-[11px] font-medium uppercase tracking-wider text-muted-foreground mb-1.5 block">
+              <Label className="mb-1.5 block text-xs font-semibold uppercase tracking-wider text-muted-foreground">
                 Phone Number
               </Label>
               <Input
@@ -146,46 +159,40 @@ export function ProfileTabContent({ user, onUpdate }: ProfileTabContentProps) {
                 onChange={handleChange}
                 disabled={!isEditing}
                 className={cn(
-                  "h-8 text-sm",
-                  !isEditing && "bg-muted/30 border-transparent text-foreground/70",
+                  "h-9 rounded-lg",
+                  !isEditing && "border-transparent bg-muted/30 text-foreground/80",
                 )}
               />
             </div>
 
             <div>
-              <Label className="text-[11px] font-medium uppercase tracking-wider text-muted-foreground mb-1.5 block">
+              <Label className="mb-1.5 block text-xs font-semibold uppercase tracking-wider text-muted-foreground">
                 Role
               </Label>
               <Input
                 value={user.role}
                 disabled
-                className="h-8 text-sm bg-muted/30 border-transparent text-foreground/60"
+                className="h-9 rounded-lg border-transparent bg-muted/30 text-foreground/60"
               />
-              <p className="text-[9px] text-muted-foreground mt-1">Read-only · contact admin</p>
+              <p className="mt-1 text-[10px] text-muted-foreground">Read-only · contact admin to change</p>
             </div>
 
             <div>
-              <Label className="text-[11px] font-medium uppercase tracking-wider text-muted-foreground mb-1.5 block">
+              <Label className="mb-1.5 block text-xs font-semibold uppercase tracking-wider text-muted-foreground">
                 Member Since
               </Label>
               <Input
                 value={new Date(user.joinDate).toLocaleDateString()}
                 disabled
-                className="h-8 text-sm bg-muted/30 border-transparent text-foreground/60"
+                className="h-9 rounded-lg border-transparent bg-muted/30 text-foreground/60"
               />
             </div>
           </div>
         </div>
 
-        {/* Action buttons (when editing) */}
         {isEditing && (
-          <div className="flex items-center justify-end gap-2 border-t border-border px-5 py-3 bg-muted/5">
-            <Button
-              onClick={handleCancel}
-              variant="ghost"
-              size="sm"
-              className="h-8 text-[11px] gap-1"
-            >
+          <div className="flex items-center justify-end gap-2 border-t border-border/70 bg-muted/10 px-5 py-3">
+            <Button onClick={handleCancel} variant="ghost" size="sm" className="h-8 gap-1 text-xs">
               <X className="h-3 w-3" />
               Cancel
             </Button>
@@ -193,16 +200,13 @@ export function ProfileTabContent({ user, onUpdate }: ProfileTabContentProps) {
               onClick={handleSave}
               disabled={isSaving}
               size="sm"
-              className="h-8 text-[11px] gap-1"
+              className="h-8 gap-1 rounded-lg bg-blue-600 text-xs hover:bg-blue-700"
             >
               {isSaving ? "Saving..." : "Save Changes"}
             </Button>
           </div>
         )}
-      </Card>
+      </Surface>
     </div>
   );
 }
-
-// Helper for conditional className (if cn not imported)
-import { cn } from "@/lib/utils";

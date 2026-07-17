@@ -6,5 +6,6 @@ const router = express.Router();
 // GET /api/kpis/dashboard
 router.get('/dashboard', dashboardController.getDashboardKpisHandler);
 router.get('/assignment-trend', dashboardController.getAssignmentTrend);
+router.get('/brand-distribution', dashboardController.getBrandDistribution);
 
 export default router;

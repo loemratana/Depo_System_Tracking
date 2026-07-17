@@ -1,35 +1,38 @@
 import * as React from "react";
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { keepPreviousData, useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import ImportDepotButton from "@/features/depots/components/ImportDepotButton";
 import { DeleteDepotDialog } from "@/features/depots/components/DeleteDepotDialog";
 import { EditDepotDialog } from "@/features/depots/components/EditDepotDialog";
+import { AssignEmployeeDialog } from "@/features/depots/components/AssignEmployeeDialog";
+import { ManageStaffDialog } from "@/features/depots/components/ManageStaffDialog";
 import { generateDepotReport } from "@/utils/reportUtils";
 import { ExportReportDialog } from "@/features/depots/components/ExportReportDialog";
-
+import { DepotForm, DepotFormData } from "@/features/depots/components/CreateDepotForm.tsx";
 import {
   Download,
   MoreHorizontal,
   Plus,
   Search,
   Building2,
-  CheckCircle2,
   AlertTriangle,
   XCircle,
   ChevronDown,
-  ChevronRight,
   User,
   MapPin,
   Tag,
-  Loader2,
   Eye,
   Edit,
   UserPlus,
   FileText,
   Trash2,
+  Users,
+  Briefcase,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { KpiCard, PageHeader, StatusBadge, Surface } from "@/components/ui-kit";
+import { PageHeader, StatusBadge, Surface } from "@/components/ui-kit";
+import { KpiSummaryGrid } from "@/features/kpi/components/KpiSummaryGrid";
+import { useDepotKpiSummary } from "@/features/kpi/hooks/useKpiSummary";
 import { depotService } from "@/services/depot-service";
 import { employeeService } from "@/services/employee-service";
 import {
@@ -37,7 +40,7 @@ import {
   DialogContent,
   DialogHeader,
   DialogTitle,
-  DialogDescription, // <-- add this
+  DialogDescription,
   DialogTrigger,
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
@@ -54,40 +57,155 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { locationService } from "@/features/depots/services/location-service";
-import { useAllDepots } from "../features/depots/hooks/useAllDepots.ts";
 import { brandService } from "@/features/brand/services/brandService.ts";
 import { FaTelegramPlane } from "react-icons/fa";
+
+export type DeposSearch = {
+  search: string;
+  page: number;
+  pageSize: number;
+  province: string;
+  district: string;
+  brand: string;
+  status: string;
+  owner: string;
+};
+
+function csvToSet(value?: string) {
+  return new Set((value || "").split(",").map((s) => s.trim()).filter(Boolean));
+}
+
+function setToCsv(values: Set<string>) {
+  return Array.from(values).join(",");
+}
+
 export const Route = createFileRoute("/depos")({
+  validateSearch: (search: Record<string, unknown>): DeposSearch => {
+    const page = Number(search.page);
+    const pageSize = Number(search.pageSize);
+    const province =
+      typeof search.province === "string"
+        ? search.province
+        : typeof search.provinceName === "string"
+          ? search.provinceName
+          : "";
+    const brand =
+      typeof search.brand === "string"
+        ? search.brand
+        : typeof search.brandName === "string"
+          ? search.brandName
+          : "";
+    return {
+      search: typeof search.search === "string" ? search.search : "",
+      page: Number.isFinite(page) && page > 0 ? page : 1,
+      pageSize: Number.isFinite(pageSize) && pageSize > 0 ? Math.min(pageSize, 100) : 20,
+      province,
+      district: typeof search.district === "string" ? search.district : "",
+      brand,
+      status: typeof search.status === "string" ? search.status : "",
+      owner: typeof search.owner === "string" ? search.owner : "",
+    };
+  },
   head: () => ({
     meta: [{ title: "Manager Report — Brand Depot" }],
   }),
   component: DeposPage,
 });
 
-const reportTone: Record<string, "success" | "warning" | "danger"> = {
+const reportTone: Record<string, "success" | "warning" | "danger" | "info" | "muted"> = {
   active: "success",
+  vacancy: "info",
   expiring_soon: "warning",
   expired: "danger",
+  inactive: "muted",
 };
+
+function getDepotReportStatus(depot: {
+  status?: string;
+  expiredDate?: string | Date | null;
+}): string {
+  if (depot.status === "vacancy") return "vacancy";
+  const expiry = depot.expiredDate ? new Date(depot.expiredDate) : null;
+  if (expiry) {
+    const now = new Date();
+    const thirtyDaysLater = new Date(now);
+    thirtyDaysLater.setDate(now.getDate() + 30);
+    if (expiry < now) return "expired";
+    if (expiry <= thirtyDaysLater) return "expiring_soon";
+  }
+  return depot.status || "active";
+}
 
 import AutocompleteInput from "@/features/depots/components/AutocompleteInput";
 import { Brand } from "@/features/brand/types/brand.types.ts";
 import { useMemo } from "react";
-import { email } from "zod/v4";
 
 function DeposPage() {
+  const searchParams = Route.useSearch();
+  const navigate = Route.useNavigate();
   const queryClient = useQueryClient();
-  const [query, setQuery] = React.useState("");
+  const [searchInput, setSearchInput] = React.useState(searchParams.search);
   const [selected, setSelected] = React.useState<Set<number>>(new Set());
   const [expandedRows, setExpandedRows] = React.useState<Set<number>>(new Set());
-  const [selectedOwners, setSelectedOwners] = React.useState<Set<string>>(new Set());
-  const [selectedProvinces, setSelectedProvinces] = React.useState<Set<string>>(new Set());
-  const [selectedDistricts, setSelectedDistricts] = React.useState<Set<string>>(new Set());
-  const [selectedBrands, setSelectedBrands] = React.useState<Set<string>>(new Set());
-  const [selectedStatuses, setSelectedStatuses] = React.useState<Set<string>>(new Set());
   const [isDialogOpen, setIsDialogOpen] = React.useState(false);
   const [editDialogOpen, setEditDialogOpen] = React.useState(false);
   const [selectedDepotForEdit, setSelectedDepotForEdit] = React.useState(null);
+  const [assignEmployeeOpen, setAssignEmployeeOpen] = React.useState(false);
+  const [selectedDepotForAssign, setSelectedDepotForAssign] = React.useState<any>(null);
+  const [staffDialogOpen, setStaffDialogOpen] = React.useState(false);
+  const [selectedDepotForStaff, setSelectedDepotForStaff] = React.useState<any>(null);
+
+  const selectedOwners = React.useMemo(() => csvToSet(searchParams.owner), [searchParams.owner]);
+  const selectedProvinces = React.useMemo(
+    () => csvToSet(searchParams.province),
+    [searchParams.province],
+  );
+  const selectedDistricts = React.useMemo(
+    () => csvToSet(searchParams.district),
+    [searchParams.district],
+  );
+  const selectedBrands = React.useMemo(() => csvToSet(searchParams.brand), [searchParams.brand]);
+  const selectedStatuses = React.useMemo(() => csvToSet(searchParams.status), [searchParams.status]);
+  const page = searchParams.page;
+  const pageSize = searchParams.pageSize;
+
+  const updateSearch = React.useCallback(
+    (patch: Partial<DeposSearch>) => {
+      navigate({
+        search: (prev) => {
+          const next = { ...prev, ...patch };
+          const filterKeys: (keyof DeposSearch)[] = [
+            "search",
+            "province",
+            "district",
+            "brand",
+            "status",
+            "owner",
+            "pageSize",
+          ];
+          const filtersChanged = filterKeys.some(
+            (key) => patch[key] !== undefined && patch[key] !== prev[key],
+          );
+          if (filtersChanged && patch.page === undefined) next.page = 1;
+          return next;
+        },
+        replace: true,
+      });
+    },
+    [navigate],
+  );
+
+  React.useEffect(() => {
+    setSearchInput(searchParams.search);
+  }, [searchParams.search]);
+
+  React.useEffect(() => {
+    const timer = window.setTimeout(() => {
+      if (searchInput === searchParams.search) return;
+      updateSearch({ search: searchInput });
+    }, 300);
+    return () => window.clearTimeout(timer);
+  }, [searchInput, searchParams.search, updateSearch]);
 
   // Form State
   const [formData, setFormData] = React.useState({
@@ -100,7 +218,6 @@ function DeposPage() {
     employeeName: "",
     phone: "",
     address: "",
-    expired: "",
     homeNumber: "",
     street: "",
     village: "",
@@ -110,38 +227,25 @@ function DeposPage() {
     brandId: null as number | null,
   });
 
-  const [page, setPage] = React.useState(1);
-  const [pageSize, setPageSize] = React.useState(20);
-
-  // Fetch provinces from master data (no staleTime — always fresh)
   const { data: provincesData, isLoading: provincesLoading } = useQuery({
     queryKey: ["provinces"],
     queryFn: locationService.getProvinces,
-    staleTime: 0,
+    staleTime: 10 * 60 * 1000,
   });
-
-  //fetch brand service
-  const search = "";
-  const status = "";
 
   const { data: brandsData } = useQuery({
-    queryKey: ["brands", search, status],
-    queryFn: () =>
-      brandService.getAllFilter({
-        search,
-        status,
-      }),
-    staleTime: 5 * 60 * 1000, // 5minute
+    queryKey: ["brands", "", ""],
+    queryFn: () => brandService.getAllFilter({ search: "", status: "" }),
+    staleTime: 10 * 60 * 1000,
   });
-  //  Brand name options for autocomplete (array of strings)
+
   const brandNameOptions = useMemo(() => {
-    const brands = brandsData ?? []; // adjust if your API returns { data: [...] }
+    const brands = brandsData ?? [];
     return brands.map((b: any) => b.name);
   }, [brandsData]);
 
-  // Full brand list for ID lookup (brandsData is already the array from getAllFilter)
   const allBrands = useMemo(() => brandsData ?? [], [brandsData]);
-  // Find province ID from selected name
+
   const selectedProvinceId = React.useMemo(() => {
     if (!provincesData || !formData.provinceName) return undefined;
     const provinces = provincesData.data ?? provincesData;
@@ -149,51 +253,50 @@ function DeposPage() {
     return province?.id;
   }, [provincesData, formData.provinceName]);
 
-  // Extract province and district name lists for dropdowns
   const masterProvinces = React.useMemo(() => {
     if (!provincesData) return [];
     const provinces = provincesData.data ?? provincesData;
     return provinces.map((p: any) => p.name);
   }, [provincesData]);
-  // Fetch districts — no staleTime so deletes are reflected immediately
+
   const { data: districtsData, isLoading: districtsLoading } = useQuery({
     queryKey: ["districts"],
     queryFn: () => locationService.getDistricts(),
-    staleTime: 0,
+    staleTime: 10 * 60 * 1000,
   });
 
-  // Then filter districts client-side based on selected province name
   const masterDistricts = React.useMemo(() => {
     if (!districtsData) return [];
     const districts = districtsData.data ?? districtsData;
-    // If a province is selected, filter districts by that province's name
     if (formData.provinceName) {
       return districts
         .filter((d: any) => d.province?.name === formData.provinceName)
         .map((d: any) => d.name);
     }
-    // Otherwise show all districts
     return districts.map((d: any) => d.name);
   }, [districtsData, formData.provinceName]);
 
-  // Fetch Depots from API using useAllDepots to allow full local filtering
-  const { data: response, isLoading } = useAllDepots();
+  const { data: response, isLoading, isFetching } = useQuery({
+    queryKey: ["depots", "list", searchParams],
+    queryFn: () =>
+      depotService.getDepots({
+        page: searchParams.page,
+        pageSize: searchParams.pageSize,
+        search: searchParams.search || undefined,
+        province: searchParams.province || undefined,
+        district: searchParams.district || undefined,
+        brand: searchParams.brand || undefined,
+        status: searchParams.status || undefined,
+        owner: searchParams.owner || undefined,
+      }),
+    placeholderData: keepPreviousData,
+    staleTime: 30 * 1000,
+  });
 
-  React.useEffect(() => {
-    setPage(1);
-  }, [
-    query,
-    selectedOwners,
-    selectedProvinces,
-    selectedDistricts,
-    selectedBrands,
-    selectedStatuses,
-  ]);
-
-  // Fetch all employees for owner dropdown
   const { data: employeesResponse } = useQuery({
-    queryKey: ["employees"],
-    queryFn: () => employeeService.getEmployees({ page: 1, pageSize: 1000 }),
+    queryKey: ["employees", "depot-page"],
+    queryFn: () => employeeService.getEmployees({ page: 1, pageSize: 500 }),
+    staleTime: 10 * 60 * 1000,
   });
 
   // Create Depot Mutation
@@ -211,7 +314,6 @@ function DeposPage() {
         districtName: "",
         employeeId: null,
         employeeName: "",
-        expired: "",
         phone: "",
         address: "",
         homeNumber: "",
@@ -219,7 +321,7 @@ function DeposPage() {
         village: "",
         commune: "",
         expiryDate: "",
-        brandId: "",
+        brandId: null,
         brandName: "",
       });
     },
@@ -250,20 +352,29 @@ function DeposPage() {
     }
   };
   const depots = response?.data || [];
+  const pagination = response?.pagination || {
+    page: 1,
+    pageSize,
+    total: 0,
+    totalPages: 1,
+    hasNext: false,
+    hasPrev: false,
+  };
 
   // Transform data for UI
   const enhancedDepots = depots.map((d: any) => {
     return {
       ...d,
-      reportStatus: d.status || "active",
+      reportStatus: getDepotReportStatus(d),
       ownerId: d.owner?.id,
       owner: d.owner?.name || "No Owner Assigned",
       ownerImage: d.owner?.image || null,
       phone: d.phone || "N/A",
       ownerPhone: d.owner?.phone || "N/A",
-      nationalId: d.owner?.code || "N/A", // using employeeCode as National ID for now
+      nationalId: d.owner?.code || "N/A",
       brands: d.brand ? [d.brand.name] : [],
-      email: d.email?.email,
+      staffCount: d.staffCount ?? 0,
+      email: d.owner?.email || d.email?.email,
       createdAt: d.createdAt
         ? new Date(d.createdAt).toLocaleDateString(undefined, {
             year: "numeric",
@@ -272,28 +383,9 @@ function DeposPage() {
           })
         : "N/A",
       fullAddress: d.address,
-      // ? `${d.address.houseNumber || ""} ${d.address.street || ""} ${d.address.village || ""}, ${d.district}, ${d.city}`
-      // : `${d.district}, ${d.city}`,
     };
   });
-  const filtered = enhancedDepots.filter((d: any) => {
-    const matchQuery =
-      query === "" ||
-      d.name?.toLowerCase().includes(query.toLowerCase()) ||
-      d.code?.toLowerCase().includes(query.toLowerCase()) ||
-      d.district?.toLowerCase().includes(query.toLowerCase()) ||
-      d.city?.toLowerCase().includes(query.toLowerCase()) ||
-      d.owner?.toLowerCase().includes(query.toLowerCase());
-
-    const matchOwner = selectedOwners.size === 0 || selectedOwners.has(d.owner);
-    const matchProvince = selectedProvinces.size === 0 || selectedProvinces.has(d.city);
-    const matchDistrict = selectedDistricts.size === 0 || selectedDistricts.has(d.district);
-    const matchBrand =
-      selectedBrands.size === 0 || d.brands.some((b: string) => selectedBrands.has(b));
-    const matchStatus = selectedStatuses.size === 0 || selectedStatuses.has(d.reportStatus);
-
-    return matchQuery && matchOwner && matchProvince && matchDistrict && matchBrand && matchStatus;
-  });
+  const filtered = enhancedDepots;
 
   const toggleSelect = (id: number) => {
     setSelected((prev) => {
@@ -320,77 +412,51 @@ function DeposPage() {
     });
   };
 
-  const totalDepots = enhancedDepots.length;
-  const activeCount = enhancedDepots.filter((d: any) => d.reportStatus === "active").length;
-  const expiringCount = enhancedDepots.filter(
-    (d: any) => d.reportStatus === "expiring_soon",
-  ).length;
-  const expiredCount = enhancedDepots.filter((d: any) => d.reportStatus === "expired").length;
-
-  const uniqueProvinces = Array.from(
-    new Set(enhancedDepots.map((d: any) => d.city).filter(Boolean)),
-  ) as string[];
-  // District options filtered by selected provinces
-  const validDepotsForDistricts =
-    selectedProvinces.size > 0
-      ? enhancedDepots.filter((d: any) => selectedProvinces.has(d.city))
-      : enhancedDepots;
-  const uniqueDistricts = Array.from(
-    new Set(validDepotsForDistricts.map((d: any) => d.district).filter(Boolean)),
-  ) as string[];
-
-  const fetchedEmployeeNames = (
-    employeesResponse?.employees ??
-    employeesResponse?.data?.employees ??
-    []
-  )
-    .map((e: any) => e.khmerName || e.englishName)
-    .filter(Boolean);
-  const existingOwnerNames = enhancedDepots
-    .map((d: any) => d.owner)
-    .filter((o: any) => o !== "No Owner Assigned" && o !== "Unknown");
-  const uniqueOwners = Array.from(
-    new Set([...fetchedEmployeeNames, ...existingOwnerNames]),
-  ) as string[];
-
-  const uniqueBrands = Array.from(
-    new Set(enhancedDepots.flatMap((d: any) => d.brands).filter(Boolean)),
-  ) as string[];
+  const totalDepots = pagination.total ?? 0;
 
   const ownerOptions = React.useMemo(() => {
-    const employees = employeesResponse?.employees ?? employeesResponse?.data?.employees ?? [];
+    const employees =
+      employeesResponse?.employees ||
+      employeesResponse?.data?.employees ||
+      employeesResponse?.data ||
+      [];
+    const names: string[] = [];
+    const seen = new Set<string>();
+    for (const emp of employees as any[]) {
+      const name = emp.englishName || emp.khmerName;
+      if (!name || seen.has(name)) continue;
+      seen.add(name);
+      names.push(name);
+    }
+    for (const depot of enhancedDepots) {
+      const name = depot.owner as string;
+      if (!name || name === "No Owner Assigned" || name === "Unknown" || seen.has(name)) continue;
+      seen.add(name);
+      names.push(name);
+    }
+    names.sort((a, b) => a.localeCompare(b));
+    return names.map((name) => ({ label: name, value: name }));
+  }, [employeesResponse, enhancedDepots]);
 
-    return employees
-      .map((emp: any) => ({
-        label: emp.khmerName || emp.englishName,
-        value: emp.khmerName || emp.englishName,
-      }))
-      .filter((item) => item.label);
-  }, [employeesResponse]);
   const provinceOptions = React.useMemo(() => {
     return masterProvinces.map((name: string) => ({ label: name, value: name }));
   }, [masterProvinces]);
 
-  // District filter options from all districts in the system (filtered by selected province if any)
   const districtOptions = React.useMemo(() => {
     const districts = districtsData?.data ?? districtsData ?? [];
     let sourceDistricts = districts;
-
     if (selectedProvinces.size > 0) {
       sourceDistricts = districts.filter((d: any) => selectedProvinces.has(d.province?.name));
     }
-
     const names = Array.from(
       new Set(sourceDistricts.map((d: any) => d.name).filter(Boolean)),
     ) as string[];
-
     return names.map((name) => ({ label: name, value: name }));
   }, [districtsData, selectedProvinces]);
 
   const brandOptions = React.useMemo(() => {
     if (!brandsData) return [];
-
-    return brandsData.map((brand) => ({
+    return brandsData.map((brand: any) => ({
       label: brand.name,
       value: brand.name,
     }));
@@ -398,16 +464,40 @@ function DeposPage() {
 
   const statusOptions = [
     { label: "Active", value: "active" },
+    { label: "Vacancy", value: "vacancy" },
     { label: "Expiring Soon", value: "expiring_soon" },
     { label: "Expired", value: "expired" },
   ];
+
   const handleStatusClick = (status: string) => {
     if (status === "all") {
-      setSelectedStatuses(new Set());
+      updateSearch({ status: "" });
     } else {
-      setSelectedStatuses(new Set([status]));
+      updateSearch({ status });
     }
   };
+
+  const handleBrandClick = (brand: string) => {
+    if (selectedBrands.size === 1 && selectedBrands.has(brand)) {
+      updateSearch({ brand: "", status: "" });
+      return;
+    }
+    updateSearch({ brand, status: "" });
+  };
+
+  const selectedBrandIds = useMemo(() => {
+    if (!allBrands.length || selectedBrands.size === 0) return [];
+    return allBrands
+      .filter((b: Brand) => selectedBrands.has(b.name))
+      .map((b: Brand) => b.id);
+  }, [allBrands, selectedBrands]);
+
+  const selectedBrandLabel =
+    selectedBrands.size === 1
+      ? Array.from(selectedBrands)[0]
+      : selectedBrands.size > 1
+        ? `${selectedBrands.size} brands`
+        : null;
   //=============================================
 
   // delete dialog state
@@ -422,6 +512,17 @@ function DeposPage() {
     setSelectedDepotForEdit(depot);
     setEditDialogOpen(true);
   };
+
+  const handleAssignEmployeeClick = (depot: any) => {
+    setSelectedDepotForAssign(depot);
+    setAssignEmployeeOpen(true);
+  };
+
+  const handleManageStaffClick = (depot: any) => {
+    setSelectedDepotForStaff(depot);
+    setStaffDialogOpen(true);
+  };
+
   const confirmDeleteMutation = useMutation({
     mutationFn: ({ id }: { id: number }) => depotService.deleteDepot(id),
     onSuccess: () => {
@@ -434,27 +535,84 @@ function DeposPage() {
       toast.error(error?.response?.data?.message || "Failed to delete depot");
     },
   });
+  const { data: counts, isLoading: countsLoading } = useDepotKpiSummary({
+    brandIds: selectedBrandIds.length ? selectedBrandIds : undefined,
+  });
+
+  const displayCounts = counts ?? {
+    total: 0,
+    vacancy: 0,
+    expired: 0,
+    expiringSoon: 0,
+  };
+
+  const depotKpiCards = [
+    {
+      id: "total",
+      label: "Total Depots",
+      value: displayCounts.total,
+      icon: Building2,
+      hint: selectedBrandLabel ? `${selectedBrandLabel} depots` : "All time operations",
+      accent: "primary" as const,
+      selected: selectedStatuses.size === 0,
+      onClick: () => handleStatusClick("all"),
+    },
+    {
+      id: "vacancy",
+      label: "Vacancy",
+      value: displayCounts.vacancy,
+      icon: Users,
+      hint: selectedBrandLabel ? `${selectedBrandLabel} vacancies` : "Open positions",
+      trend: "up" as const,
+      accent: "info" as const,
+      selected: selectedStatuses.has("vacancy"),
+      onClick: () => handleStatusClick("vacancy"),
+    },
+    {
+      id: "expiring",
+      label: "Expiring Soon",
+      value: displayCounts.expiringSoon,
+      icon: AlertTriangle,
+      hint: selectedBrandLabel ? `${selectedBrandLabel} expiring` : "Action required (30d)",
+      trend: "down" as const,
+      accent: "warning" as const,
+      selected: selectedStatuses.has("expiring_soon"),
+      onClick: () => handleStatusClick("expiring_soon"),
+    },
+    {
+      id: "expired",
+      label: "Expired Licenses",
+      value: displayCounts.expired,
+      icon: XCircle,
+      hint: selectedBrandLabel ? `${selectedBrandLabel} expired` : "Past due",
+      trend: "flat" as const,
+      accent: "danger" as const,
+      selected: selectedStatuses.has("expired"),
+      onClick: () => handleStatusClick("expired"),
+    },
+  ];
+
   const [exportDialogOpen, setExportDialogOpen] = React.useState(false);
   const getImageUrl = (path: string | null | undefined) => {
     if (!path) return null;
     if (path.startsWith("http")) return path;
     const cleanPath = path.replace(/^[/\\]+/, "").replace(/\\/g, "/");
-    return `http://localhost:5000/${cleanPath}`;
+    const base = (import.meta.env.VITE_API_BASE_URL || "http://localhost:5000").replace(/\/$/, "");
+    return `${base}/${cleanPath}`;
   };
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-5">
       <PageHeader
         title="Manager Report Dashboard"
         description="Comprehensive overview of depot operations and license statuses."
         actions={
           <>
-            {/* New Depot Dialog */}
             <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
               <DialogTrigger asChild>
-                <button className="inline-flex items-center gap-1.5 rounded-md bg-primary px-2.5 py-1.5 text-[12px] font-medium text-primary-foreground hover:opacity-90 transition-opacity">
-                  <Plus className="h-3 w-3" /> New Depot
-                </button>
+                <Button size="sm" className="h-8 gap-1.5 bg-blue-600 text-[12px] text-white shadow-sm hover:bg-blue-700">
+                  <Plus className="h-3.5 w-3.5" /> New Depot
+                </Button>
               </DialogTrigger>
               <DialogContent className="sm:max-w-[650px] max-h-[90vh] overflow-y-auto">
                 <DialogHeader>
@@ -463,307 +621,39 @@ function DeposPage() {
                     Fill in all required information below.
                   </DialogDescription>
                 </DialogHeader>
-                <form onSubmit={handleCreate} className="space-y-5 mt-2">
-                  {/* Row 1: Depot Code + Depot Name */}
-                  <div className="grid grid-cols-2 gap-4">
-                    <div className="space-y-1.5">
-                      <Label htmlFor="code" className="text-xs font-medium">
-                        Depot Code <span className="text-red-500">*</span>
-                      </Label>
-                      <Input
-                        id="code"
-                        required
-                        value={formData.code}
-                        onChange={(e) => setFormData({ ...formData, code: e.target.value })}
-                        placeholder="e.g. BD-1001"
-                        className="h-9 text-sm"
-                      />
-                    </div>
-                    <div className="space-y-1.5">
-                      <Label htmlFor="name" className="text-xs font-medium">
-                        Depot Name <span className="text-red-500">*</span>
-                      </Label>
-                      <Input
-                        id="name"
-                        required
-                        value={formData.name}
-                        onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                        placeholder="e.g. Central Hub"
-                        className="h-9 text-sm"
-                      />
-                    </div>
-                  </div>
-
-                  <div className="grid grid-cols-2 gap-4">
-                    <div className="space-y-1.5">
-                      <Label htmlFor="khmerName" className="text-xs font-medium">
-                        Khmer Name
-                      </Label>
-                      <Input
-                        id="khmerName"
-                        value={formData.khmerName || ""}
-                        onChange={(e) => setFormData({ ...formData, khmerName: e.target.value })}
-                        placeholder="ឈ្មោះជាភាសាខ្មែរ"
-                        className="h-9 text-sm"
-                      />
-                    </div>
-                    <div className="space-y-1.5">
-                      <Label htmlFor="brandName" className="text-xs font-medium">
-                        Brand *
-                      </Label>
-                      <AutocompleteInput
-                        id="brandName"
-                        value={formData.brandName || ""}
-                        onChange={(val) => {
-                          // Resolve the selected name back to its brand ID
-                          const matched = allBrands.find(
-                            (b: any) => b.name.toLowerCase() === val.toLowerCase(),
-                          );
-                          setFormData({
-                            ...formData,
-                            brandName: val,
-                            brandId: matched ? matched.id : null,
-                          });
-                        }}
-                        placeholder="e.g. Coca-Cola"
-                        options={brandNameOptions} // array of strings
-                      />
-                    </div>
-                    {/* <div className="space-y-1.5">
-              <Label htmlFor="name" className="text-xs font-medium">
-                Depot Name <span className="text-red-500">*</span>
-              </Label>
-              <Input
-                id="name"
-                value={formData.name}
-                onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                placeholder="e.g. Central Hub"
-                className="h-9 text-sm"
-              />
-            </div> */}
-                  </div>
-
-                  {/* Row 2: Province + District (autocomplete) */}
-                  <div className="grid grid-cols-2 gap-4">
-                    <div className="space-y-1.5">
-                      <Label htmlFor="province" className="text-xs font-medium">
-                        City / Province <span className="text-red-500">*</span>
-                      </Label>
-                      <AutocompleteInput
-                        id="province"
-                        required
-                        value={formData.provinceName}
-                        onChange={(val) => setFormData({ ...formData, provinceName: val })}
-                        placeholder="e.g. Phnom Penh"
-                        options={provincesLoading ? [] : masterProvinces}
-                        className="h-9 text-sm"
-                      />
-                    </div>
-                    <div className="space-y-1.5">
-                      <Label htmlFor="district" className="text-xs font-medium">
-                        District <span className="text-red-500">*</span>
-                      </Label>
-                      <AutocompleteInput
-                        id="district"
-                        required
-                        value={formData.districtName}
-                        onChange={(val) => setFormData({ ...formData, districtName: val })}
-                        placeholder="e.g. Daun Penh"
-                        options={districtsLoading ? [] : masterDistricts}
-                        className="h-9 text-sm"
-                      />
-                    </div>
-                  </div>
-
-                  {/* Row 3: ID Number + Home Number */}
-                  <div className="grid grid-cols-2 gap-4">
-                    {/* <div className="space-y-1.5">
-          <Label htmlFor="idNumber" className="text-xs font-medium">
-            ID Number
-          </Label>
-          <Input
-            id="idNumber"
-            value={formData.idNumber || ""}
-            onChange={(e) => setFormData({ ...formData, idNumber: e.target.value })}
-            placeholder="e.g. 123456789"
-            className="h-9 text-sm"
-          />
-        </div> */}
-                    <div className="space-y-1.5">
-                      <Label htmlFor="homeNumber" className="text-xs font-medium">
-                        Home Number
-                      </Label>
-                      <Input
-                        id="homeNumber"
-                        value={formData.homeNumber || ""}
-                        onChange={(e) => setFormData({ ...formData, homeNumber: e.target.value })}
-                        placeholder="e.g. #12B"
-                        className="h-9 text-sm"
-                      />
-                    </div>
-                  </div>
-
-                  {/* Row 4: Street + Village */}
-                  <div className="grid grid-cols-2 gap-4">
-                    <div className="space-y-1.5">
-                      <Label htmlFor="street" className="text-xs font-medium">
-                        Street
-                      </Label>
-                      <Input
-                        id="street"
-                        value={formData.street || ""}
-                        onChange={(e) => setFormData({ ...formData, street: e.target.value })}
-                        placeholder="e.g. Street 271"
-                        className="h-9 text-sm"
-                      />
-                    </div>
-                    <div className="space-y-1.5">
-                      <Label htmlFor="village" className="text-xs font-medium">
-                        Village
-                      </Label>
-                      <Input
-                        id="village"
-                        value={formData.village || ""}
-                        onChange={(e) => setFormData({ ...formData, village: e.target.value })}
-                        placeholder="e.g. Phsar Thmei"
-                        className="h-9 text-sm"
-                      />
-                    </div>
-                  </div>
-
-                  {/* Row 5: Commune + Expired Date */}
-                  <div className="grid grid-cols-2 gap-4">
-                    <div className="space-y-1.5">
-                      <Label htmlFor="commune" className="text-xs font-medium">
-                        Commune
-                      </Label>
-                      <Input
-                        id="commune"
-                        value={formData.commune || ""}
-                        onChange={(e) => setFormData({ ...formData, commune: e.target.value })}
-                        placeholder="e.g. Sangkat Boeung Keng Kang"
-                        className="h-9 text-sm"
-                      />
-                    </div>
-                    <div className="space-y-1.5">
-                      <Label htmlFor="expiredDate" className="text-xs font-medium">
-                        Expired Date
-                      </Label>
-                      <Input
-                        id="expiredDate"
-                        type="date"
-                        value={formData.expiredDate || ""}
-                        onChange={(e) => setFormData({ ...formData, expiredDate: e.target.value })}
-                        className="h-9 text-sm"
-                      />
-                    </div>
-                  </div>
-
-                  {/* Row 6: Owner Name (autocomplete) + Phone Number */}
-                  <div className="grid grid-cols-2 gap-4">
-                    <div className="space-y-1.5">
-                      <Label htmlFor="owner" className="text-xs font-medium">
-                        Owner (Optional)
-                      </Label>
-                      {employeesResponse ? (
-                        <select
-                          id="owner"
-                          value={formData.employeeId ?? ""}
-                          onChange={(e) => {
-                            const id = e.target.value ? Number(e.target.value) : null;
-                            const name = e.target.options[e.target.selectedIndex]?.text || "";
-                            setFormData({
-                              ...formData,
-                              employeeId: id,
-                              employeeName: name,
-                            });
-                          }}
-                          className="h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm focus:outline-none focus:ring-1 focus:ring-ring"
-                        >
-                          <option value="">No owner</option>
-                          {(
-                            employeesResponse.employees ||
-                            employeesResponse.data?.employees ||
-                            []
-                          ).map((emp: never) => (
-                            <option key={emp.id} value={emp.id}>
-                              {emp.khmerName || emp.englishName || "Unnamed"}
-                            </option>
-                          ))}
-                        </select>
-                      ) : (
-                        <div className="h-9 w-full rounded-md border border-input bg-muted/20 px-3 py-1 text-sm text-muted-foreground">
-                          Loading employees...
-                        </div>
-                      )}
-                    </div>
-                    <div className="space-y-1.5">
-                      <Label htmlFor="phone" className="text-xs font-medium">
-                        Contact Phone
-                      </Label>
-                      <Input
-                        id="phone"
-                        value={formData.phone || ""}
-                        onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
-                        placeholder="e.g. +855 12 345 678"
-                        className="h-9 text-sm"
-                      />
-                    </div>
-                  </div>
-
-                  {/* Row 7: Address (full) - optional if street/village/commune already cover it */}
-                  <div className="space-y-1.5">
-                    <Label htmlFor="address" className="text-xs font-medium">
-                      Full Address (Optional)
-                    </Label>
-                    <Input
-                      id="address"
-                      value={formData.address || ""}
-                      onChange={(e) => setFormData({ ...formData, address: e.target.value })}
-                      placeholder="e.g. Additional address details"
-                      className="h-9 text-sm"
-                    />
-                  </div>
-
-                  {/* Submit Buttons */}
-                  <div className="flex justify-end gap-3 pt-2">
-                    <Button
-                      type="button"
-                      variant="outline"
-                      onClick={() => setIsDialogOpen(false)}
-                      className="h-9 text-sm"
-                    >
-                      Cancel
-                    </Button>
-                    <Button
-                      type="submit"
-                      disabled={createMutation.isPending}
-                      className="h-9 text-sm bg-blue-600 hover:bg-blue-700"
-                    >
-                      {createMutation.isPending && (
-                        <Loader2 className="mr-2 h-3.5 w-3.5 animate-spin" />
-                      )}
-                      Create Depot
-                    </Button>
-                  </div>
-                </form>
+                <DepotForm
+                  formData={formData}
+                  setFormData={setFormData}
+                  onSubmit={handleCreate}
+                  isPending={createMutation.isPending}
+                  allBrands={allBrands}
+                  brandNameOptions={brandNameOptions}
+                  provinces={masterProvinces}
+                  districts={masterDistricts}
+                  provincesLoading={provincesLoading}
+                  districtsLoading={districtsLoading}
+                  employees={
+                    employeesResponse?.employees || employeesResponse?.data?.employees || []
+                  }
+                  employeesLoading={!employeesResponse}
+                />
               </DialogContent>
             </Dialog>
 
-            {/* Download Template Button – outside DialogTrigger */}
-            <button
-              onClick={downloadTemplate}
-              className="inline-flex items-center gap-1.5 rounded-md border border-border bg-surface px-2.5 py-1.5 text-[12px] font-medium cursor-pointer"
-            >
-              <Download className="h-3 w-3" /> Download Template
-            </button>
-            <ImportDepotButton />
-
-            {/* Export PDF Button */}
             <Button
               variant="outline"
               size="sm"
-              className="gap-2 h-8"
+              onClick={downloadTemplate}
+              className="h-8 gap-1.5 text-[12px]"
+            >
+              <Download className="h-3.5 w-3.5" /> Download Template
+            </Button>
+            <ImportDepotButton />
+
+            <Button
+              variant="outline"
+              size="sm"
+              className="h-8 gap-2"
               onClick={() => setExportDialogOpen(true)}
             >
               <Download className="h-3.5 w-3.5" /> Export
@@ -772,85 +662,24 @@ function DeposPage() {
         }
       />
 
-      {/* KPI Cards */}
-      <div className="grid grid-cols-4 gap-4 pb-2 pr-4 pl-4">
-        <div
-          onClick={() => handleStatusClick("all")}
-          className={cn(
-            "cursor-pointer transition-all duration-200 ",
-            selectedStatuses.size === 0 ? "ring-2 ring-primary/20 rounded-lg" : "",
-          )}
-        >
-          <KpiCard
-            label="Total Depots"
-            value={isLoading ? "..." : totalDepots}
-            icon={Building2}
-            delta="All time operations"
-            hint="All time operations"
-          />
-        </div>
-        <div
-          onClick={() => handleStatusClick("active")}
-          className={cn(
-            "cursor-pointer transition-all duration-200",
-            selectedStatuses.has("active") ? "ring-2 ring-success/20 rounded-lg" : "",
-          )}
-        >
-          <KpiCard
-            label="UNASSIGNED"
-            value={isLoading ? "..." : activeCount}
-            icon={CheckCircle2}
-            hint="In good standing"
-            trend="up"
-            delta=""
-          />
-        </div>
-        <div
-          onClick={() => handleStatusClick("expiring_soon")}
-          className={cn(
-            "cursor-pointer transition-all duration-200",
-            selectedStatuses.has("expiring_soon") ? "ring-2 ring-warning/20 rounded-lg" : "",
-          )}
-        >
-          <KpiCard
-            label="Expiring Soon"
-            value={isLoading ? "..." : expiringCount}
-            icon={AlertTriangle}
-            hint="Action required (30d)"
-            trend="down"
-            delta=""
-          />
-        </div>
-        <div
-          onClick={() => handleStatusClick("expired")}
-          className={cn(
-            "cursor-pointer transition-all duration-200",
-            selectedStatuses.has("expired") ? "ring-2 ring-destructive/20 rounded-lg" : "",
-          )}
-        >
-          <KpiCard
-            label="Expired Licenses"
-            value={isLoading ? "..." : expiredCount}
-            icon={XCircle}
-            hint="Past due"
-            trend="flat"
-            delta=""
-          />
-        </div>
-      </div>
+      <KpiSummaryGrid
+        cards={depotKpiCards}
+        columns={4}
+        isLoading={countsLoading}
+        scopeLabel={selectedBrandLabel}
+        onClearScope={selectedBrandLabel ? () => updateSearch({ brand: "" }) : undefined}
+      />
 
-      {/*filter element*/}
-      <Surface padded={false} className="relative z-0 dark:bg-gray-950">
-        {/* Filter bar */}
-        <div className="flex flex-col gap-3 border-b border-border p-3 sticky top-0 z-20 bg-surface/95 backdrop-blur supports-[backdrop-filter]:bg-surface/60">
-          <div className="flex items-center justify-between">
-            <div className="relative w-full max-w-sm">
-              <Search className="absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+      <Surface padded={false} className="relative z-0">
+        <div className="flex flex-col gap-3 border-b border-border/70 bg-card/80 p-4 backdrop-blur-md sticky top-0 z-20 supports-[backdrop-filter]:bg-card/70">
+          <div className="flex items-center justify-between gap-3">
+            <div className="relative w-full max-w-md">
+              <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
               <input
-                value={query}
-                onChange={(e) => setQuery(e.target.value)}
+                value={searchInput}
+                onChange={(e) => setSearchInput(e.target.value)}
                 placeholder="Search by code, name, city, owner…"
-                className="h-9 w-full rounded-md border border-input bg-transparent pl-9 pr-3 text-sm shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                className="h-10 w-full rounded-lg border border-input/80 bg-background/60 pl-10 pr-3 text-sm shadow-sm transition-all duration-200 placeholder:text-muted-foreground/70 focus-visible:border-primary/30 focus-visible:bg-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/15"
               />
             </div>
             <div className="flex items-center gap-2">
@@ -859,16 +688,21 @@ function DeposPage() {
                 selectedDistricts.size > 0 ||
                 selectedBrands.size > 0 ||
                 selectedStatuses.size > 0 ||
-                query !== "") && (
+                searchParams.search !== "" ||
+                searchInput !== "") && (
                 <Button
                   variant="ghost"
                   onClick={() => {
-                    setSelectedOwners(new Set());
-                    setSelectedProvinces(new Set());
-                    setSelectedDistricts(new Set());
-                    setSelectedBrands(new Set());
-                    setSelectedStatuses(new Set());
-                    setQuery("");
+                    setSearchInput("");
+                    updateSearch({
+                      search: "",
+                      owner: "",
+                      province: "",
+                      district: "",
+                      brand: "",
+                      status: "",
+                      page: 1,
+                    });
                   }}
                   className="h-8 px-2 text-xs"
                 >
@@ -879,50 +713,65 @@ function DeposPage() {
           </div>
           <div className="flex flex-wrap items-center gap-2">
             <MultiSelect
-              title="Owner"
+              title="Sales Supervisor"
               options={ownerOptions}
               selectedValues={selectedOwners}
-              onSelect={setSelectedOwners}
+              onSelect={(vals) => updateSearch({ owner: setToCsv(vals) })}
             />
             <MultiSelect
               title="Province"
               options={provinceOptions}
               selectedValues={selectedProvinces}
-              onSelect={(vals) => {
-                setSelectedProvinces(vals);
-                setSelectedDistricts(new Set()); // Reset districts when province changes
-              }}
+              onSelect={(vals) =>
+                updateSearch({ province: setToCsv(vals), district: "" })
+              }
             />
             <MultiSelect
               title="District"
               options={districtOptions}
               selectedValues={selectedDistricts}
-              onSelect={setSelectedDistricts}
+              onSelect={(vals) => updateSearch({ district: setToCsv(vals) })}
             />
             <MultiSelect
               title="Brands"
               options={brandOptions}
               selectedValues={selectedBrands}
-              onSelect={setSelectedBrands}
+              onSelect={(vals) => updateSearch({ brand: setToCsv(vals), status: "" })}
             />
             <MultiSelect
               title="Status"
               options={statusOptions}
               selectedValues={selectedStatuses}
-              onSelect={setSelectedStatuses}
+              onSelect={(vals) => updateSearch({ status: setToCsv(vals) })}
             />
+            {isFetching && !isLoading && (
+              <span className="text-[11px] text-muted-foreground">Updating…</span>
+            )}
           </div>
         </div>
 
-        {/* Table */}
-        <div className="overflow-x-auto min-h-[300px] ">
+        <div className="overflow-x-auto min-h-[320px]">
           {isLoading ? (
-            <div className="flex items-center justify-center h-[300px]">
-              <Loader2 className="h-8 w-8 animate-spin text-primary" />
+            <div className="space-y-2 p-4">
+              {Array.from({ length: 8 }).map((_, i) => (
+                <div
+                  key={i}
+                  className="h-12 animate-pulse rounded-lg bg-muted/50"
+                  style={{ animationDelay: `${i * 60}ms` }}
+                />
+              ))}
+            </div>
+          ) : filtered.length === 0 ? (
+            <div className="flex flex-col items-center justify-center py-20 text-center">
+              <Building2 className="mb-3 h-10 w-10 text-muted-foreground/40" />
+              <p className="text-sm font-medium text-foreground">No depots found</p>
+              <p className="mt-1 text-xs text-muted-foreground">
+                Try adjusting your search or filters
+              </p>
             </div>
           ) : (
             <table className="w-full text-[12.5px]">
-              <thead className="sticky top-0 bg-muted/40 text-[11px] uppercase tracking-wide text-muted-foreground">
+              <thead className="sticky top-0 z-10 bg-muted/50 text-[11px] uppercase tracking-wide text-muted-foreground backdrop-blur-sm">
                 <tr className="border-b border-border">
                   <th className="w-8 px-3 py-2.5">
                     <input
@@ -941,8 +790,8 @@ function DeposPage() {
                     />
                   </th>
                   <th className="w-8 px-1 py-2.5"></th>
-                  <th className="px-3 py-2.5 text-left font-medium">Depot Info</th>
                   <th className="px-3 py-2.5 text-left font-medium">Owner</th>
+                  <th className="px-3 py-2.5 text-left font-medium">Sales Supervisor</th>
                   <th className="px-3 py-2.5 text-left font-medium">Location</th>
                   <th className="px-3 py-2.5 text-left font-medium">Brands</th>
                   <th className="px-3 py-2.5 text-left font-medium">Created Date</th>
@@ -950,12 +799,17 @@ function DeposPage() {
                   <th className="w-8 px-3 py-2.5"></th>
                 </tr>
               </thead>
-              <tbody>
-                {filtered.slice((page - 1) * pageSize, page * pageSize).map((d: any) => {
+              <tbody className="divide-y divide-border/50">
+                {filtered.map((d: any) => {
                   const telegramPhone = d.ownerPhone?.replace(/\s+/g, "").replace(/^0/, "+855");
+                  const isExpanded = expandedRows.has(d.id);
                   return (
                     <React.Fragment key={d.id}>
-                      <tr className="border-b border-border/70 transition-colors hover:bg-muted/30">
+                      <tr
+                        className={cn(
+                          isExpanded ? "bg-muted/25" : "hover:bg-muted/20",
+                        )}
+                      >
                         <td className="px-3 py-2.5">
                           <input
                             type="checkbox"
@@ -967,13 +821,14 @@ function DeposPage() {
                         <td className="px-1 py-2.5 text-center">
                           <button
                             onClick={() => toggleExpand(d.id)}
-                            className="text-muted-foreground hover:text-foreground transition-colors"
+                            className="rounded-md p-1 text-muted-foreground transition-all duration-200 hover:bg-muted hover:text-foreground"
                           >
-                            {expandedRows.has(d.id) ? (
-                              <ChevronDown className="h-4 w-4" />
-                            ) : (
-                              <ChevronRight className="h-4 w-4" />
-                            )}
+                            <ChevronDown
+                              className={cn(
+                                "h-4 w-4 transition-transform duration-200",
+                                isExpanded ? "rotate-0" : "-rotate-90",
+                              )}
+                            />
                           </button>
                         </td>
                         <td className="px-3 py-2.5">
@@ -1018,7 +873,7 @@ function DeposPage() {
                                 ) : null}
                                 <span
                                   style={{ display: d.ownerImage ? "none" : "flex" }}
-                                  className="h-8 w-8 items-center justify-center rounded-full bg-primary/10 text-[10px] font-bold text-primary uppercase"
+                                  className="h-8 w-8 items-center justify-center rounded-full bg-blue-600 text-[10px] font-bold text-white uppercase"
                                 >
                                   {d.owner
                                     ? d.owner
@@ -1061,12 +916,19 @@ function DeposPage() {
                         <td className="px-3 py-2.5 text-foreground/80">
                           <div className="flex gap-1 flex-wrap">
                             {d.brands.map((b: string) => (
-                              <span
+                              <button
                                 key={b}
-                                className="rounded border border-blue-500/20 bg-blue-500/10 text-blue-600 px-1.5 py-0.5 text-[10px] whitespace-nowrap"
+                                type="button"
+                                onClick={() => handleBrandClick(b)}
+                                className={cn(
+                                  "rounded-full border px-2 py-0.5 text-[10px] font-medium whitespace-nowrap transition-all duration-200",
+                                  selectedBrands.has(b)
+                                    ? "border-blue-600 bg-blue-600 text-white shadow-sm"
+                                    : "border-blue-200 bg-blue-50 text-blue-700 hover:border-blue-400 hover:bg-blue-100 dark:border-blue-800 dark:bg-blue-950 dark:text-blue-300",
+                                )}
                               >
                                 {b}
-                              </span>
+                              </button>
                             ))}
                           </div>
                         </td>
@@ -1087,7 +949,7 @@ function DeposPage() {
                               <DropdownMenuLabel>Actions</DropdownMenuLabel>
                               <DropdownMenuSeparator />
                               <DropdownMenuItem className="cursor-pointer" asChild>
-                                <Link to={`/depos/${d.id}`}>
+                                <Link to="/depos/$id" params={{ id: String(d.id) }}>
                                   <Eye className="mr-2 h-4 w-4" />
                                   View Details
                                 </Link>
@@ -1099,9 +961,24 @@ function DeposPage() {
                                 <Edit className="mr-2 h-4 w-4" />
                                 Edit
                               </DropdownMenuItem>
-                              <DropdownMenuItem className="cursor-pointer">
+                              <DropdownMenuItem
+                                className="cursor-pointer"
+                                onClick={() => handleAssignEmployeeClick(d)}
+                              >
                                 <UserPlus className="mr-2 h-4 w-4" />
                                 Assign Employee
+                              </DropdownMenuItem>
+                              <DropdownMenuItem
+                                className="cursor-pointer"
+                                onClick={() => handleManageStaffClick(d)}
+                              >
+                                <Users className="mr-2 h-4 w-4" />
+                                Manage Staff
+                                {(d.staffCount ?? 0) > 0 ? (
+                                  <span className="ml-auto text-[10px] text-muted-foreground">
+                                    {d.staffCount}
+                                  </span>
+                                ) : null}
                               </DropdownMenuItem>
                               <DropdownMenuItem onClick={() => generateDepotReport(d)}>
                                 <FileText className="mr-2 h-4 w-4" />
@@ -1120,10 +997,10 @@ function DeposPage() {
                         </td>
                       </tr>
                       {/* Expanded Row */}
-                      {expandedRows.has(d.id) && (
-                        <tr className="border-b border-border bg-muted/20">
+                      {isExpanded && (
+                        <tr className="bg-muted/15">
                           <td colSpan={9} className="p-0">
-                            <div className="px-14 py-5 grid grid-cols-3 gap-6 text-[12px]">
+            <div className="border-t border-border/40 px-14 py-5 grid grid-cols-1 md:grid-cols-4 gap-6 text-[12px]">
                               <div>
                                 <h4 className="font-medium text-foreground mb-2 flex items-center gap-1.5">
                                   <MapPin className="h-3.5 w-3.5 text-muted-foreground" /> Full
@@ -1150,6 +1027,26 @@ function DeposPage() {
                                   </span>{" "}
                                   {d.email}
                                 </p>
+                              </div>
+
+                              <div>
+                                <h4 className="font-medium text-foreground mb-2 flex items-center gap-1.5">
+                                  <Users className="h-3.5 w-3.5 text-muted-foreground" /> Depot Staff
+                                </h4>
+                                <p className="text-muted-foreground mb-2">
+                                  {(d.staffCount ?? 0) > 0
+                                    ? `${d.staffCount} staff working at this depot`
+                                    : "No staff added yet"}
+                                </p>
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  className="h-7 gap-1.5 text-xs"
+                                  onClick={() => handleManageStaffClick(d)}
+                                >
+                                  <Briefcase className="h-3 w-3" />
+                                  Manage Staff
+                                </Button>
                               </div>
 
                               {/*Owner contact Details */}
@@ -1195,31 +1092,37 @@ function DeposPage() {
           )}
         </div>
 
-        {!isLoading && (
-          <div className="flex items-center justify-between border-t border-border px-3 py-2 text-[11.5px] text-muted-foreground">
+        {!isLoading && filtered.length > 0 && (
+          <div className="flex items-center justify-between border-t border-border/70 bg-muted/20 px-4 py-3 text-[11.5px] text-muted-foreground">
             <span>
-              {selected.size > 0 ? `${selected.size} selected` : `${filtered.length} depots found`}
+              {selected.size > 0
+                ? `${selected.size} selected`
+                : `${pagination.total.toLocaleString()} depots found`}
             </span>
-            <div className="flex items-center gap-1">
-              <button
+            <div className="flex items-center gap-1.5">
+              <Button
+                variant="outline"
+                size="sm"
                 disabled={page <= 1}
-                onClick={() => setPage((p) => Math.max(1, p - 1))}
-                className="rounded border border-border px-2 py-0.5 hover:text-foreground transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+                onClick={() => updateSearch({ page: Math.max(1, page - 1) })}
+                className="h-7 px-2.5 text-xs"
               >
                 Prev
-              </button>
-              <span className="px-1">
-                Page {page} of {Math.ceil(filtered.length / pageSize) || 1}
+              </Button>
+              <span className="px-2 tabular-nums">
+                Page {page} of {pagination.totalPages || 1}
               </span>
-              <button
-                disabled={page >= (Math.ceil(filtered.length / pageSize) || 1)}
+              <Button
+                variant="outline"
+                size="sm"
+                disabled={page >= (pagination.totalPages || 1)}
                 onClick={() =>
-                  setPage((p) => Math.min(Math.ceil(filtered.length / pageSize) || 1, p + 1))
+                  updateSearch({ page: Math.min(pagination.totalPages || 1, page + 1) })
                 }
-                className="rounded border border-border px-2 py-0.5 hover:text-foreground transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+                className="h-7 px-2.5 text-xs"
               >
                 Next
-              </button>
+              </Button>
             </div>
           </div>
         )}
@@ -1236,6 +1139,30 @@ function DeposPage() {
         }}
         depot={selectedDepotForEdit}
       />
+
+      <AssignEmployeeDialog
+        open={assignEmployeeOpen}
+        onOpenChange={(open) => {
+          setAssignEmployeeOpen(open);
+          if (!open) setSelectedDepotForAssign(null);
+        }}
+        depot={selectedDepotForAssign}
+      />
+
+      {selectedDepotForStaff?.id != null && (
+        <ManageStaffDialog
+          open={staffDialogOpen}
+          onOpenChange={(open) => {
+            setStaffDialogOpen(open);
+            if (!open) {
+              setSelectedDepotForStaff(null);
+              queryClient.invalidateQueries({ queryKey: ["depots"] });
+            }
+          }}
+          depotId={selectedDepotForStaff.id}
+          depotName={selectedDepotForStaff.name}
+        />
+      )}
 
       {/* Delete Depot Dialog */}
       {selectedDepot && (

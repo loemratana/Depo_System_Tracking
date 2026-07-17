@@ -21,7 +21,7 @@ interface AdjustStockDialogProps {
   onOpenChange: (open: boolean) => void;
   product?: Product | null;
   onSave: (productId: number, type: "ADD" | "REMOVE", amount: number, reason: string, employeeId?: number) => void;
-  isSaving?: boolean; // optional loading state from parent
+  isSaving?: boolean;
 }
 
 export const AdjustStockDialog: React.FC<AdjustStockDialogProps> = ({
@@ -34,12 +34,12 @@ export const AdjustStockDialog: React.FC<AdjustStockDialogProps> = ({
   const [type, setType] = useState<"ADD" | "REMOVE">("ADD");
   const [amount, setAmount] = useState("");
   const [reason, setReason] = useState<string>("manual");
-  const [employeeId, setEmployeeId] = useState<string>("");
+  const [employeeId, setEmployeeId] = useState<string>(""); // can be "auto" or numeric string
   const [error, setError] = useState("");
 
   const { employees, loading: loadingEmployees } = useEmployees({ page: 1, limit: 1000 });
 
-  // Reset form when dialog opens/closes
+  // Reset form when dialog closes
   useEffect(() => {
     if (!open) {
       setType("ADD");
@@ -61,14 +61,14 @@ export const AdjustStockDialog: React.FC<AdjustStockDialogProps> = ({
       return;
     }
 
-    if (reason === "sale" && type === "REMOVE") {
-      if (!employeeId) {
-        setError("Please select the employee who made the sale.");
-        return;
-      }
+    // Convert employeeId: "auto" → undefined, numeric string → number
+    let finalEmployeeId: number | undefined;
+    if (employeeId && employeeId !== "auto") {
+      finalEmployeeId = parseInt(employeeId);
     }
+    // if employeeId === "auto" or empty, finalEmployeeId stays undefined (backend will auto-assign)
 
-    onSave(product.id, type, amountNum, reason, employeeId ? parseInt(employeeId) : undefined);
+    onSave(product.id, type, amountNum, reason, finalEmployeeId);
     onOpenChange(false);
   };
 
@@ -143,16 +143,18 @@ export const AdjustStockDialog: React.FC<AdjustStockDialogProps> = ({
                 </div>
               </div>
 
-              {/* Employee selection (only for sale) */}
+              {/* Employee selection (only for sale) – now optional */}
               {reason === "sale" && type === "REMOVE" && (
                 <div className="grid grid-cols-4 items-center gap-4 animate-in fade-in slide-in-from-top-1">
                   <Label htmlFor="employee" className="text-right">Sold By</Label>
                   <div className="col-span-3">
-                    <Select value={employeeId} onValueChange={setEmployeeId} required>
+                    <Select value={employeeId} onValueChange={setEmployeeId}>
                       <SelectTrigger>
-                        <SelectValue placeholder={loadingEmployees ? "Loading employees..." : "Select Employee"} />
+                        <SelectValue placeholder={loadingEmployees ? "Loading employees..." : "Auto (Depot Manager)"} />
                       </SelectTrigger>
                       <SelectContent>
+                        {/* Use "auto" as a special value for auto-assign */}
+                        <SelectItem value="auto">🤖 Auto (Depot Manager)</SelectItem>
                         {employees.map((emp) => (
                           <SelectItem key={emp.id} value={emp.id.toString()}>
                             {emp.khmerName || emp.englishName || `Employee #${emp.id}`}
@@ -160,6 +162,9 @@ export const AdjustStockDialog: React.FC<AdjustStockDialogProps> = ({
                         ))}
                       </SelectContent>
                     </Select>
+                    <p className="text-[10px] text-muted-foreground mt-0.5">
+                      Leave as "Auto" to automatically assign the depot manager.
+                    </p>
                   </div>
                 </div>
               )}

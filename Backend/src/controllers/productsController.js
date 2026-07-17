@@ -34,7 +34,7 @@ export class ProductController {
     }
 
     /**
-     * 3. 🔍 GET PRODUCT BY ID
+     * 3.GET PRODUCT BY ID
      */
     async findById(req, res, next) {
         try {
@@ -93,27 +93,7 @@ export class ProductController {
     }
 
     /**
-     * 5.UPDATE PRICE
-     */
-    async updatePrice(req, res, next) {
-        try {
-            const { id } = req.params;
-            const { price } = req.body;
-
-            const product = await productService.updatePrice(id, price);
-
-            res.json({
-                success: true,
-                message: "Price updated successfully",
-                data: product
-            });
-        } catch (error) {
-            next(error);
-        }
-    }
-
-    /**
-     * 6. ⚠️ UPDATE MIN STOCK
+     * 5. UPDATE MIN STOCK
      */
     async updateMinStock(req, res, next) {
         try {

@@ -34,6 +34,10 @@ class Database {
                 ? ['query', 'info', 'warn', 'error']
                 : ['error'],
             errorFormat: env.isProduction ? 'minimal' : 'pretty',
+            transactionOptions: {
+                maxWait: 10000,
+                timeout: 30000,
+            },
         });
 
         Database.instance = this;

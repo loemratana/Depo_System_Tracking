@@ -65,7 +65,7 @@ export function DepotsTab({ brandId }: DepotsTabProps) {
       {depots.map((depot) => (
         <Card
           key={depot.id}
-          className="border-border hover:shadow-md hover:border-primary/30 transition-all duration-200"
+          className="border-border hover:-md hover:border-primary/30 transition-all duration-200"
         >
           <CardContent className="p-4 ">
             <div className="flex items-start justify-between gap-3">

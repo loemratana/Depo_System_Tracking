@@ -56,7 +56,7 @@ export function BrandFilters({
                 className={cn(
                   "px-2.5 py-1 rounded border text-[11px] font-semibold transition-all duration-150 cursor-pointer",
                   active
-                    ? "bg-primary border-primary text-primary-foreground font-bold shadow-sm"
+                    ? "bg-blue-600 border-primary text-primary-foreground dark:text-white font-bold "
                     : "bg-background border-border hover:border-border-strong text-foreground hover:bg-muted/10"
                 )}
               >

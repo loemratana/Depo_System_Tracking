@@ -37,15 +37,24 @@ export type CreateEmployeeInput = Omit<Employee, 'id' | 'createdAt' | 'updatedAt
 export interface HandledDepot {
     id: number;
     name: string;
-    code: string;
-    province: string;
-    district: string;
+    code: string | null;
+    khmerName?: string | null;
+    address?: string | null;
+    phone?: string | null;
+    status?: string;
+    province: string | null;
+    district: string | null;
+    brandName?: string | null;
+    brandCode?: string | null;
     assignmentStatus: 'assigned' | 'pending' | 'completed' | 'overdue';
     visitFrequency: string;
     lastVisit: string;
     coverageStatus: 'full' | 'partial' | 'at_risk';
     productsManaged: number;
+    staffCount?: number;
     activeTasks: number;
+    assignedAt?: string | null;
+    expiryDate?: string | null;
 }
 
 export interface Assignment {

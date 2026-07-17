@@ -46,6 +46,38 @@ export class BrandController {
     }
   };
 
+  getBrandSummary = async (req, res) => {
+    try {
+      const { id } = req.params;
+      const summary = await brandService.getSummary(id);
+      res.json({ success: true, data: summary });
+    } catch (error) {
+      if (error.message === "Brand not found") {
+        return res.status(404).json({ success: false, message: error.message });
+      }
+      logger.error("Get brand summary error:", error);
+      res.status(500).json({ success: false, message: "Failed to fetch brand summary" });
+    }
+  };
+
+  getBrandProducts = async (req, res) => {
+    try {
+      const { id } = req.params;
+      const { page, limit } = req.query;
+      const result = await brandService.getProductsByBrand(id, {
+        page: parseInt(page, 10) || 1,
+        limit: parseInt(limit, 10) || 50,
+      });
+      res.json({ success: true, ...result });
+    } catch (error) {
+      if (error.message === "Brand not found") {
+        return res.status(404).json({ success: false, message: error.message });
+      }
+      logger.error("Get brand products error:", error);
+      res.status(500).json({ success: false, message: "Failed to fetch brand products" });
+    }
+  };
+
   getCountDepots = async (req, res) => {
     try {
       const id = Number(req.params.id);

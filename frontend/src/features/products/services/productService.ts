@@ -5,7 +5,6 @@ import type {
   ProductQueryParams,
   CreateProductInput,
   UpdateStockInput,
-  UpdatePriceInput,
   UpdateMinStockInput,
   LowStockProduct,
   ProductPerformance,
@@ -52,16 +51,15 @@ export const productService = {
   // ─────────────────────────────────────────────
   // POST /api/products/sales — Record a sale (employee‑specific)
   // ─────────────────────────────────────────────
-  recordSale: (data: { productId: number; employeeId: number; quantitySold: number; saleDate?: string }): Promise<{ product: Product; performance: any }> =>
-    api.post("/products/sales", data).then((res) => res.data.data ?? res.data),
+  // services/productService.ts
 
-  // ─────────────────────────────────────────────
-  // PATCH /api/products/{id}/price — Update price
-  // ─────────────────────────────────────────────
-  updatePrice: ({ id, price }: UpdatePriceInput): Promise<Product> =>
-    api
-      .patch<{ data: Product }>(`/products/${id}/price`, { price })
-      .then((res) => res.data.data ?? res.data),
+recordSale: (data: { 
+  productId: number; 
+  employeeId?: number;  // ← make optional
+  quantitySold: number; 
+  saleDate?: string 
+}): Promise<{ product: Product; performance: any }> =>
+  api.post("/products/sales", data).then((res) => res.data.data ?? res.data),
 
   // ─────────────────────────────────────────────
   // PATCH /api/products/{id}/min-stock — Update minimum stock threshold
