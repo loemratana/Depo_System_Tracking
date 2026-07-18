@@ -5,8 +5,14 @@ const env = loadEnv(process.env.NODE_ENV || "development", process.cwd(), "");
 const apiTarget = env.VITE_API_PROXY_TARGET || "http://localhost:5000";
 
 export default defineConfig({
+  // Disable Cloudflare Workers plugin — not compatible with Vercel
+  cloudflare: false,
+
   tanstackStart: {
-    server: { entry: "server" },
+    server: {
+      // Use Vercel Functions instead of Cloudflare Workers
+      preset: "vercel",
+    },
   },
 
   vite: {
