@@ -306,4 +306,8 @@ class ProductAnalyticsService {
     }
 }
 
+<<<<<<< HEAD
 export default new ProductAnalyticsService();
+=======
+export default new ProductAnalyticsService();
+>>>>>>> feature/branch-product
