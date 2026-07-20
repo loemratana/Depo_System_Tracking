@@ -5,11 +5,15 @@ const env = loadEnv(process.env.NODE_ENV || "development", process.cwd(), "");
 const apiTarget = env.VITE_API_PROXY_TARGET || "http://localhost:5000";
 
 export default defineConfig({
-  // Disable Cloudflare Workers plugin — deploying to Vercel as SPA
+  // Disable Cloudflare Workers — static SPA on Vercel
   cloudflare: false,
 
   tanstackStart: {
     server: { entry: "server" },
+    // Generate a client shell (index.html) for static hosting
+    spa: {
+      enabled: true,
+    },
   },
 
   vite: {
