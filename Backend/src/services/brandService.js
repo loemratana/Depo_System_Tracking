@@ -1,6 +1,5 @@
 import { prisma } from "../config/db.js";
 import logger from "../config/logger.js";
-import { startOfMonth, endOfMonth, subMonths } from "date-fns";
 
 class BrandService {
   async getAll(filters = {}) {
@@ -22,41 +21,71 @@ class BrandService {
     });
     return brands;
   }
-  async getDepotsByBrand(brandId) {
+  async getDepotsByBrand(brandId, options = {}) {
     try {
-      const parsedId = parseInt(brandId);
-
+      const parsedId = parseInt(brandId, 10);
       if (isNaN(parsedId)) {
-        throw  new Error(`Brand with id "${brandId}" not found.`);
+        throw new Error(`Brand with id "${brandId}" not found.`);
       }
-      const depots = await prisma.depot.findMany({
-        where: {
-          brandId: parsedId,
-          status: 'active',
-        },
-        include: {
-          district: { select: { name: true } },
-          province: { select: { name: true } },
-          brand: { select: { name: true } },
-        },
-        orderBy: { name: 'asc' },
-      });
 
-      logger.info(`Depot ${depots.length} depots found.`);
+      const page = Math.max(1, Number(options.page) || 1);
+      const pageSize = Math.min(100, Math.max(1, Number(options.pageSize) || 10));
+      const skip = (page - 1) * pageSize;
+      const search = options.search?.trim() || "";
+      const status = options.status?.trim() || "";
 
-      // Transform to frontend-friendly format
-      return depots.map(depot => ({
-        id: depot.id,
-        name: depot.name,
-        code: depot.code,
-        district: depot.district?.name ?? '',
-        province: depot.province?.name ?? '',
-      }));
-    }
-    catch (error) {
+      const where = { brandId: parsedId };
+      if (status) where.status = status;
+      if (search) {
+        where.OR = [
+          { name: { contains: search, mode: "insensitive" } },
+          { code: { contains: search, mode: "insensitive" } },
+          { khmerName: { contains: search, mode: "insensitive" } },
+        ];
+      }
+
+      const [total, depots] = await Promise.all([
+        prisma.depot.count({ where }),
+        prisma.depot.findMany({
+          where,
+          include: {
+            district: { select: { name: true } },
+            province: { select: { name: true } },
+            brand: { select: { name: true } },
+          },
+          orderBy: [{ status: "asc" }, { name: "asc" }],
+          skip,
+          take: pageSize,
+        }),
+      ]);
+
+      const totalPages = Math.max(1, Math.ceil(total / pageSize));
+
+      logger.info(
+        `Brand ${parsedId}: ${depots.length}/${total} depots (page ${page})`,
+      );
+
+      return {
+        data: depots.map((depot) => ({
+          id: depot.id,
+          name: depot.name,
+          code: depot.code,
+          district: depot.district?.name ?? "",
+          province: depot.province?.name ?? "",
+          status: depot.status,
+        })),
+        pagination: {
+          page,
+          pageSize,
+          total,
+          totalPages,
+          hasNext: page < totalPages,
+          hasPrev: page > 1,
+        },
+      };
+    } catch (error) {
       logger.error(error);
       throw error;
-
     }
   }
 
@@ -73,7 +102,7 @@ class BrandService {
   }
 
   async create(data) {
-    const { name, code, description, status } = data;
+    const { name, code, description, status, logoUrl } = data;
     if (!name?.trim()) throw new Error("Brand name is required");
     
     if (code) {
@@ -89,6 +118,7 @@ class BrandService {
         code: code?.trim() || null,
         description: description?.trim() || null,
         status: status || "active",
+        logoUrl: logoUrl?.trim() || null,
       },
     });
 
@@ -115,6 +145,10 @@ class BrandService {
       updateData.description = data.description?.trim() || null;
 
     if (data.status !== undefined) updateData.status = data.status;
+
+    if (data.logoUrl !== undefined) {
+      updateData.logoUrl = data.logoUrl?.trim() || null;
+    }
 
     if (data.code !== undefined) {
       if (data.code && data.code !== existing.code) {
@@ -162,7 +196,7 @@ class BrandService {
   }
 
   /**
-   * Brand executive summary: depot ops, product inventory, and sales snapshot.
+   * Brand executive summary: depot ops snapshot.
    */
   async getSummary(id) {
     const brandId = parseInt(id, 10);
@@ -175,12 +209,6 @@ class BrandService {
     const thirtyDaysLater = new Date(now);
     thirtyDaysLater.setDate(now.getDate() + 30);
     const depotWhere = { brandId };
-    const productWhere = { brandId };
-
-    const monthStart = startOfMonth(now);
-    const monthEnd = endOfMonth(now);
-    const prevMonthStart = startOfMonth(subMonths(now, 1));
-    const prevMonthEnd = endOfMonth(subMonths(now, 1));
 
     const [
       depotTotal,
@@ -188,11 +216,6 @@ class BrandService {
       depotVacancy,
       depotExpired,
       depotExpiringSoon,
-      productTotal,
-      productLowStock,
-      productOutOfStock,
-      currentSales,
-      previousSales,
     ] = await Promise.all([
       prisma.depot.count({ where: depotWhere }),
       prisma.depot.count({ where: { ...depotWhere, status: "active" } }),
@@ -206,37 +229,7 @@ class BrandService {
           expiryDate: { gte: now, lte: thirtyDaysLater },
         },
       }),
-      prisma.product.count({ where: productWhere }),
-      prisma.product.count({
-        where: { ...productWhere, status: "LOW" },
-      }),
-      prisma.product.count({
-        where: { ...productWhere, status: "OUT_OF_STOCK" },
-      }),
-      prisma.productPerformance.aggregate({
-        where: {
-          product: { brandId },
-          month: { gte: monthStart, lte: monthEnd },
-        },
-        _sum: { quantitySold: true, revenue: true },
-      }),
-      prisma.productPerformance.aggregate({
-        where: {
-          product: { brandId },
-          month: { gte: prevMonthStart, lte: prevMonthEnd },
-        },
-        _sum: { quantitySold: true, revenue: true },
-      }),
     ]);
-
-    const currentRevenue = Number(currentSales._sum.revenue ?? 0);
-    const previousRevenue = Number(previousSales._sum.revenue ?? 0);
-    let growthPercent = 0;
-    if (previousRevenue > 0) {
-      growthPercent = ((currentRevenue - previousRevenue) / previousRevenue) * 100;
-    } else if (currentRevenue > 0) {
-      growthPercent = 100;
-    }
 
     const activeDepots = depotActive;
     const coveragePercent =
@@ -252,76 +245,15 @@ class BrandService {
         expiringSoon: depotExpiringSoon,
         expired: depotExpired,
       },
-      products: {
-        total: productTotal,
-        lowStock: productLowStock,
-        outOfStock: productOutOfStock,
-      },
-      sales: {
-        revenue: currentRevenue,
-        unitsSold: currentSales._sum.quantitySold ?? 0,
-        growthPercent: parseFloat(growthPercent.toFixed(1)),
-      },
       coveragePercent,
     };
   }
 
-  async getProductsByBrand(brandId, { page = 1, limit = 50 } = {}) {
-    const id = parseInt(brandId, 10);
-    if (isNaN(id)) throw new Error("Brand id must be a number");
-
-    const brand = await prisma.brand.findUnique({ where: { id } });
-    if (!brand) throw new Error("Brand not found");
-
-    const skip = (page - 1) * limit;
-    const [products, total] = await Promise.all([
-      prisma.product.findMany({
-        where: { brandId: id },
-        skip,
-        take: limit,
-        orderBy: { name: "asc" },
-        select: {
-          id: true,
-          name: true,
-          sku: true,
-          quantity: true,
-          minStock: true,
-          status: true,
-          depot: { select: { id: true, name: true } },
-        },
-      }),
-      prisma.product.count({ where: { brandId: id } }),
-    ]);
-
-    return {
-      data: products.map((p) => ({
-        id: p.id,
-        name: p.name,
-        sku: p.sku,
-        quantity: p.quantity,
-        minStock: p.minStock,
-        status: p.status,
-        depotName: p.depot?.name ?? null,
-      })),
-      pagination: {
-        page,
-        limit,
-        total,
-        totalPages: Math.ceil(total / limit),
-      },
-    };
-  }
   //delete brand by id
 
   async delete(id) {
     const brandId = parseInt(id);
     if (isNaN(brandId)) throw new Error("Brand id must be a number");
-    //check if brand is used
-
-    // const depotBrandsCount = await prisma.depotBrand.count({
-    //   where: { brandId },
-    // });
-    // const productsCount = await prisma.product.count({ where: { brandId } });
 
     await prisma.brand.delete({ where: { id: brandId } });
     logger.info("Brand deleted successfully.");

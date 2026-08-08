@@ -99,6 +99,12 @@ export const resetPasswordValidator = [
 
 // Update profile validator
 export const updateProfileValidator = [
+    body('fullName')
+        .optional()
+        .isString()
+        .trim()
+        .isLength({ min: 2, max: 100 })
+        .withMessage('Full name must be between 2 and 100 characters'),
     body('name')
         .optional()
         .isString()
@@ -110,6 +116,22 @@ export const updateProfileValidator = [
         .isEmail()
         .withMessage('Valid email is required')
         .normalizeEmail(),
+    body('phone')
+        .optional({ nullable: true, checkFalsy: true })
+        .isString()
+        .trim()
+        .isLength({ max: 20 })
+        .withMessage('Phone must be at most 20 characters'),
+    body('avatar')
+        .optional({ nullable: true, checkFalsy: true })
+        .isString()
+        .withMessage('Avatar must be a string URL'),
+    body('department')
+        .optional({ nullable: true, checkFalsy: true })
+        .isString()
+        .trim()
+        .isLength({ max: 100 })
+        .withMessage('Department must be at most 100 characters'),
     validate
 ];
 

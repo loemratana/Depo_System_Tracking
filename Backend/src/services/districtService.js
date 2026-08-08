@@ -1,6 +1,7 @@
 import { prisma } from '../config/db.js';
 import logger from '../config/logger.js';
 import Excel from 'exceljs';
+import provinceService from './provinceService.js';
 
 class DistrictService {
   // Get All Districts with Filters
@@ -127,6 +128,7 @@ class DistrictService {
       });
 
       logger.info(`District created: ${district.code} - ${district.name}`);
+      provinceService.cache.clear();
       return district;
     } catch (error) {
       logger.error("DistrictService create error:", error);
@@ -136,7 +138,7 @@ class DistrictService {
 
   async update(id, data) {
     try {
-      return await prisma.district.update({
+      const district = await prisma.district.update({
         where: { id: parseInt(id) },
         data: {
           name: data.name,
@@ -144,6 +146,8 @@ class DistrictService {
           provinceId: data.provinceId ? parseInt(data.provinceId) : undefined,
         },
       });
+      provinceService.cache.clear();
+      return district;
     } catch (error) {
       logger.error("DistrictService update error:", error);
       throw error;
@@ -183,6 +187,7 @@ class DistrictService {
         where: { id: districtId },
       });
 
+      provinceService.cache.clear();
       return deleted;
     } catch (error) {
       logger.error("DistrictService delete error:", error);
@@ -394,6 +399,8 @@ class DistrictService {
           "Some rows were not inserted because they conflicted with existing data (unexpected).",
       });
     }
+
+    provinceService.cache.clear();
 
     return {
       importedCount: totalInserted,

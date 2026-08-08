@@ -1,43 +1,112 @@
 import { Telegraf } from 'telegraf';
 
 const BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN;
-const ALLOWED_CHATS = process.env.ALLOWED_CHAT_IDS?.split(',').map(Number) || [];
+const ALLOWED_CHATS =
+  process.env.ALLOWED_CHAT_IDS?.split(',')
+    .map((s) => s.trim())
+    .filter(Boolean)
+    .map(Number)
+    .filter((n) => !Number.isNaN(n)) || [];
 
 class TelegramService {
   constructor() {
     if (!BOT_TOKEN) {
       console.warn('Telegram bot token missing. Notifications disabled.');
+      this.bot = null;
       return;
     }
     this.bot = new Telegraf(BOT_TOKEN);
   }
 
- async sendDocument(documentBuffer, filename, caption = '') {
-   if (!this.enabled) return;
-   for (const chatId of ALLOWED_CHATS) {
-     try {
-       await this.bot.telegram.sendDocument(
-         chatId,
-         { source: documentBuffer, filename },
-         { caption, parse_mode: 'HTML' }
-       );
-     } catch (err) {
-       console.error(`Telegram document send error (chat ${chatId}):`, err.message);
-     }
-   }
- }
-
-  async sendMessage(text, parseMode = 'HTML') {
-    for (const chatId of ALLOWED_CHATS) {
-      try {
-        await this.bot.telegram.sendMessage(chatId, text, { parse_mode: parseMode });
-      } catch (err) {
-        console.error(`Telegram send error (chat ${chatId}):`, err.message);
-      }
-    }
+  get enabled() {
+    return Boolean(this.bot && ALLOWED_CHATS.length > 0);
   }
 
-  // Expose bot instance for commands
+  getChatIds() {
+    return [...ALLOWED_CHATS];
+  }
+
+  async sendDocument(documentBuffer, filename, caption = '') {
+    if (!this.bot) {
+      return { sent: 0, errors: ['TELEGRAM_BOT_TOKEN is missing'] };
+    }
+    if (!ALLOWED_CHATS.length) {
+      return { sent: 0, errors: ['ALLOWED_CHAT_IDS is missing'] };
+    }
+
+    const buffer = Buffer.isBuffer(documentBuffer)
+      ? documentBuffer
+      : Buffer.from(documentBuffer);
+    // Telegram caption hard limit is 1024
+    const safeCaption =
+      String(caption || '').length > 1024
+        ? `${String(caption).slice(0, 1000)}\n… (see Excel)`
+        : String(caption || '');
+
+    const errors = [];
+    let sent = 0;
+    for (const chatId of ALLOWED_CHATS) {
+      try {
+        await this.bot.telegram.sendDocument(
+          chatId,
+          { source: buffer, filename },
+          {
+            caption: safeCaption || undefined,
+            parse_mode: safeCaption ? 'HTML' : undefined,
+          },
+        );
+        sent += 1;
+      } catch (err) {
+        console.error(`Telegram document send error (chat ${chatId}):`, err.message);
+        errors.push(`chat ${chatId}: ${err.message}`);
+      }
+    }
+    return { sent, errors };
+  }
+
+  /** Send report package: Excel file + summary caption */
+  async sendReportPackage({ buffer, filename, caption }) {
+    return this.sendDocument(buffer, filename, caption);
+  }
+
+  async sendMessage(text, parseMode = 'HTML') {
+    if (!this.bot) {
+      return { sent: 0, errors: ['TELEGRAM_BOT_TOKEN is missing'] };
+    }
+    if (!ALLOWED_CHATS.length) {
+      return { sent: 0, errors: ['ALLOWED_CHAT_IDS is missing'] };
+    }
+
+    // Telegram hard limit is 4096 characters per message
+    const chunks = [];
+    const max = 4000;
+    let remaining = String(text || '');
+    while (remaining.length > max) {
+      let cut = remaining.lastIndexOf('\n', max);
+      if (cut < max * 0.5) cut = max;
+      chunks.push(remaining.slice(0, cut));
+      remaining = remaining.slice(cut).replace(/^\n+/, '');
+    }
+    if (remaining) chunks.push(remaining);
+
+    const errors = [];
+    let sent = 0;
+    for (const chatId of ALLOWED_CHATS) {
+      try {
+        for (const chunk of chunks) {
+          await this.bot.telegram.sendMessage(chatId, chunk, {
+            parse_mode: parseMode,
+          });
+        }
+        sent += 1;
+      } catch (err) {
+        console.error(`Telegram send error (chat ${chatId}):`, err.message);
+        errors.push(`chat ${chatId}: ${err.message}`);
+      }
+    }
+    return { sent, errors };
+  }
+
   getBot() {
     return this.bot;
   }

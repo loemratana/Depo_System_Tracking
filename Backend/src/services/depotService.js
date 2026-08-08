@@ -1,9 +1,10 @@
 import { prisma } from "../config/db.js";
 import logger from "../config/logger.js";
 import {
-  parseImportDate,
-  normalizeSex,
   normalizeImportRow,
+  tryParseImportDate,
+  normalizeSex,
+  isEmptyOptional,
 } from "../utils/importUtils.js";
 
 
@@ -108,6 +109,16 @@ class DepotService {
             assignedAt: employeeId ? new Date() : null,
             brandId: data.brandId || null,
             note: data.note?.trim() || null,
+            dateOfBirth: data.dateOfBirth
+              ? new Date(data.dateOfBirth)
+              : data.dob
+                ? new Date(data.dob)
+                : null,
+            sex: data.sex || null,
+            DepotIdNumber:
+              data.DepotIdNumber?.trim?.() ||
+              data.depotNumber?.trim?.() ||
+              null,
           },
           include: {
             district: { include: { province: true } },
@@ -251,6 +262,44 @@ class DepotService {
       if (data.expiryDate !== undefined && data.expiryDate !== "") {
         updateData.expiryDate = new Date(data.expiryDate);
       }
+      if (data.dateOfBirth !== undefined) {
+        updateData.dateOfBirth = data.dateOfBirth
+          ? new Date(data.dateOfBirth)
+          : null;
+      }
+      if (data.sex !== undefined) updateData.sex = data.sex || null;
+      if (data.DepotIdNumber !== undefined || data.depotNumber !== undefined) {
+        updateData.DepotIdNumber =
+          (data.DepotIdNumber ?? data.depotNumber)?.trim?.() || null;
+      }
+
+      // Resolve province / district by name when provided
+      if (data.provinceName?.trim() && data.districtName?.trim()) {
+        let province = await prisma.province.findFirst({
+          where: { name: data.provinceName.trim() },
+        });
+        if (!province) {
+          province = await prisma.province.create({
+            data: { name: data.provinceName.trim() },
+          });
+        }
+        let district = await prisma.district.findFirst({
+          where: {
+            name: data.districtName.trim(),
+            provinceId: province.id,
+          },
+        });
+        if (!district) {
+          district = await prisma.district.create({
+            data: {
+              name: data.districtName.trim(),
+              provinceId: province.id,
+            },
+          });
+        }
+        updateData.provinceId = province.id;
+        updateData.districtId = district.id;
+      }
 
       updateData.employeeId = employeeId;
       if (data.assignedAt !== undefined && data.assignedAt !== "") {
@@ -364,7 +413,7 @@ class DepotService {
             orderBy: { name: "asc" },
           },
           _count: {
-            select: { products: true, staffs: true },
+            select: { staffs: true },
           },
           district: {
             select: {
@@ -447,7 +496,6 @@ class DepotService {
         employees: employeesFormatted,
         staffs,
         counts: {
-          products: depot._count.products,
           staffs: depot._count.staffs,
         },
         timeline,
@@ -687,7 +735,7 @@ class DepotService {
     filters = {},
   }) {
     const safePage = Math.max(1, Number(page) || 1);
-    const safePageSize = Math.min(100, Math.max(1, Number(pageSize) || 20));
+    const safePageSize = Math.min(1000, Math.max(1, Number(pageSize) || 20));
     const skip = (safePage - 1) * safePageSize;
     const orderBy = sortBy === "id"
       ? { id: sortOrder }
@@ -974,12 +1022,14 @@ class DepotService {
     }
 
     // ── Status (optional) ──
-    const validStatuses = ["active", "inactive"];
+    const validStatuses = ["active", "inactive", "vacancy", "expired"];
     if (record.status && !validStatuses.includes(record.status.toLowerCase())) {
       errors.push(`status must be one of: ${validStatuses.join(", ")}`);
     } else if (!record.status) {
       record.status = "active"; // default
       warnings.push("Status missing – defaulted to 'active'");
+    } else {
+      record.status = record.status.toLowerCase();
     }
 
     // ── Depot Number (optional) ──
@@ -987,38 +1037,39 @@ class DepotService {
       errors.push("Depot Number must be a string");
     }
 
-    // ── DOB (optional) ──
-    if (record.dob && record.dob.toString().trim()) {
-      try {
-        record.dobParsed = parseImportDate(record.dob, rowNumber);
-      } catch (err) {
-        errors.push(`DOB: ${err.message}`);
-      }
-    } else {
+    // ── DOB / Expiry / Sex (optional — invalid or placeholder → null) ──
+    if (isEmptyOptional(record.dob)) {
+      record.dob = null;
       record.dobParsed = null;
-    }
-
-    // ── Expiry Date (optional) ──
-    if (record.expiryDate && record.expiryDate.toString().trim()) {
-      try {
-        record.expiryDateParsed = parseImportDate(record.expiryDate, rowNumber);
-      } catch (err) {
-        errors.push(`ExpiryDate: ${err.message}`);
-      }
     } else {
-      record.expiryDateParsed = null;
+      record.dobParsed = tryParseImportDate(record.dob);
+      if (!record.dobParsed) {
+        warnings.push(`DOB "${record.dob}" invalid – left empty`);
+        record.dob = null;
+      }
     }
 
-    // ── Sex (optional) ──
-    if (record.sex) {
+    if (isEmptyOptional(record.expiryDate)) {
+      record.expiryDate = null;
+      record.expiryDateParsed = null;
+    } else {
+      record.expiryDateParsed = tryParseImportDate(record.expiryDate);
+      if (!record.expiryDateParsed) {
+        warnings.push(`ExpiryDate "${record.expiryDate}" invalid – left empty`);
+        record.expiryDate = null;
+      }
+    }
+
+    if (isEmptyOptional(record.sex)) {
+      record.sex = null;
+    } else {
       const normalised = normalizeSex(record.sex);
       if (!normalised) {
-        errors.push(`Sex must be one of: male, female, M, F, other`);
+        warnings.push(`Sex "${record.sex}" invalid – left empty`);
+        record.sex = null;
       } else {
         record.sex = normalised;
       }
-    } else {
-      record.sex = null;
     }
 
     // ── Throw if any errors ──

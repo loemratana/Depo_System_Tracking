@@ -1,45 +1,30 @@
 import express from 'express';
 import authController from '../controllers/authController.js';
-// import authMiddleware from '../middleware/auth.js';
+import authMiddleware from '../middleware/auth.js';
 import {
-  registerValidator,
   loginValidator,
   refreshTokenValidator,
   changePasswordValidator,
-  forgotPasswordValidator,
-  resetPasswordValidator,
   updateProfileValidator,
-  userIdValidator,
-  paginationValidator,
-} from "../validators/authValidator.js";
-import { arcjetMiddleware } from "../middleware/arcjet.js";
-import { validateEmail, detectBot, slidingWindow } from "@arcjet/node";
-const router = express.Router();
+} from '../validators/authValidator.js';
+import { arcjetMiddleware } from '../middleware/arcjet.js';
 
-// Public routes
-router.post('/register', arcjetMiddleware, registerValidator, authController.register);
+const router = express.Router();
+const { authenticate } = authMiddleware;
+
+// Public routes (no self-register — admins create users via /api/v1/users)
 router.post('/login', arcjetMiddleware, loginValidator, authController.login);
 router.post('/refresh', refreshTokenValidator, authController.refreshToken);
 
-// router.post('/forgot-password', forgotPasswordValidator, authController.forgotPassword);
-// router.post('/reset-password', resetPasswordValidator, authController.resetPassword);
-// router.get('/verify-email', authController.verifyEmail);
-// Protected routes (require authentication)
-// router.use(authMiddleware.authenticate());
+// Protected routes
+router.post('/logout', authenticate, authController.logout);
+router.get('/me', authenticate, authController.getProfile);
+router.put('/me', authenticate, updateProfileValidator, authController.updateProfile);
+router.post(
+  '/change-password',
+  authenticate,
+  changePasswordValidator,
+  authController.changePassword,
+);
 
-// router.post('/logout', authController.logout);
-// router.post('/logout-all', authController.logoutAllDevices);
-// router.post('/change-password', changePasswordValidator, authController.changePassword);
-// router.get('/me', authController.getProfile);
-// router.put('/me', updateProfileValidator, authController.updateProfile);
-// router.post('/resend-verification', authController.resendVerificationEmail);
-
-// // Admin only routes
-// router.use(authMiddleware.authorize('ADMIN'));
-
-// router.get('/users', paginationValidator, authController.getAllUsers);
-// router.get('/users/:id', userIdValidator, authController.getUserById);
-// router.put('/users/:id/role', userIdValidator, authController.updateUserRole);
-// router.patch('/users/:id/status', userIdValidator, authController.toggleUserStatus);
-// router.delete('/users/:id', userIdValidator, authController.deleteUser);
 export default router;

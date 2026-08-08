@@ -13,12 +13,12 @@ import employeeRoutes from './routes/employeeRoutes.js';
 import uploadRoutes from './routes/uploadRoutes.js';
 import db from './config/db.js';
 import brandRoutes from "./routes/brandRoutes.js";
-import productRoutes from "./routes/productsRoutes.js";
 import path from 'path';
 import environment from './config/env.js';
 import reportRoutes from "./routes/reportRoutes.js";
-import productAnalyticsRoutes from "./routes/productAnalyticsRoutes.js";
 import kpiSystemRoutes from "./routes/kpiSystemRoutes.js";
+import userRoutes from "./routes/userRoutes.js";
+import telegramRoutes from "./routes/telegramRoutes.js";
 
 const app = express();
 
@@ -27,6 +27,7 @@ const app = express();
 ======================== */
 const corsOptions = {
   origin: [
+    "http://localhost:3000",
     "http://localhost:8080",
     "http://localhost:5173",
     "https://earline-unreceivable-juliane.ngrok-free.dev"
@@ -100,9 +101,9 @@ app.use('/api/v1/upload', uploadRoutes);
 app.use('/api/v1/depots', depotRoutes);
 app.use('/api/v1/report', reportRoutes);
 app.use('/api/v1/brands', brandRoutes);
-app.use('/api/v1/products', productRoutes);
-app.use("/api/v1/analytics", productAnalyticsRoutes);
 app.use("/api/v1/kpis", kpiSystemRoutes);
+app.use('/api/v1/users', userRoutes);
+app.use('/api/v1/telegram', telegramRoutes);
 
 
 /* ========================
@@ -146,8 +147,6 @@ app.get('/', (req, res) => {
 /* ========================
    ROUTES (future)
 ======================== */
-// import userRoutes from './routes/user.routes.js';
-// app.use('/api/users', userRoutes);
 
 /* ========================
    404 HANDLER

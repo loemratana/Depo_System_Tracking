@@ -170,7 +170,7 @@ export const createDistrictValidator = [
     body('provinceId')
         .notEmpty()
         .withMessage('Province ID is required')
-        .isString()
+        .custom((value) => !Number.isNaN(Number(value)))
         .withMessage('Invalid province ID'),
 
     validate

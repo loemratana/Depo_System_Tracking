@@ -22,6 +22,39 @@ function cleanValue(value) {
     return str;
 }
 
+/** True when optional import fields should be stored as null */
+export function isEmptyOptional(value) {
+    if (value == null) return true;
+    const s = String(value).trim().toLowerCase();
+    return (
+        !s ||
+        [
+            "vacancy",
+            "n/a",
+            "#n/a",
+            "-",
+            "null",
+            "undefined",
+            "none",
+            "na",
+            ".",
+        ].includes(s)
+    );
+}
+
+/**
+ * Soft date parse for optional fields: blank / placeholder / invalid → null
+ * (does not throw).
+ */
+export function tryParseImportDate(value) {
+    if (isEmptyOptional(value)) return null;
+    try {
+        return parseImportDate(value, 0);
+    } catch {
+        return null;
+    }
+}
+
 // ─── Date helpers ───────────────────────────────────────────
 function buildLocalDate(year, monthIndex, day, rowNumber) {
     const date = new Date(year, monthIndex, day);
@@ -164,8 +197,8 @@ export function parseImportDate(value, rowNumber) {
 
 // ─── Normalize sex ───────────────────────────────────────────
 export function normalizeSex(value) {
-    if (!value?.trim()) return null;
-    const s = value.trim().toLowerCase();
+    if (isEmptyOptional(value)) return null;
+    const s = String(value).trim().toLowerCase();
     if (s === "m" || s === "male") return "male";
     if (s === "f" || s === "female") return "female";
     if (s === "other") return "other";
@@ -190,6 +223,32 @@ export function normalizeImportRow(data) {
         return undefined;
     };
 
+    if (!result.name) {
+        const name = findValue([
+            "name",
+            "depotenglishsname",
+            "depotenglishname",
+            "depotname",
+            "englishname",
+        ]);
+        if (name) result.name = name;
+    }
+    if (!result.khmerName) {
+        const khmerName = findValue([
+            "khmername",
+            "depotskhmername",
+            "depotkhmername",
+        ]);
+        if (khmerName) result.khmerName = khmerName;
+    }
+    if (!result.code) {
+        const code = findValue(["code", "depotcode"]);
+        if (code) result.code = code;
+    }
+    if (!result.phone) {
+        const phone = findValue(["phone", "depotphone"]);
+        if (phone) result.phone = phone;
+    }
     if (!result.dob) {
         const dob = findValue(["dob", "dateofbirth"]);
         if (dob) result.dob = dob;
@@ -207,16 +266,40 @@ export function normalizeImportRow(data) {
         if (depotNumber) result.depotNumber = depotNumber;
     }
     if (!result.provinceName) {
-        const province = findValue(["province"]);
+        const province = findValue(["province", "provincename"]);
         if (province) result.provinceName = province;
     }
     if (!result.districtName) {
-        const district = findValue(["district"]);
+        const district = findValue(["district", "districtname"]);
         if (district) result.districtName = district;
     }
     if (!result.employeeName) {
-        const supervisor = findValue(["supervisorname", "employeesupervisor"]);
+        const supervisor = findValue([
+            "supervisorname",
+            "employeesupervisor",
+            "salesupervisorname",
+            "employeename",
+        ]);
         if (supervisor) result.employeeName = supervisor;
+    }
+    if (!result.employeeEmail) {
+        const email = findValue(["employeeemail", "salesupervisoremail"]);
+        if (email) result.employeeEmail = email;
+    }
+    if (!result.employeePhone) {
+        const phone = findValue(["employeephone", "salesupervisorphone"]);
+        if (phone) result.employeePhone = phone;
+    }
+    if (!result.employeeKhmerName) {
+        const khmer = findValue([
+            "employeekhmername",
+            "salesupervisorkhmername",
+        ]);
+        if (khmer) result.employeeKhmerName = khmer;
+    }
+    if (!result.brandCode) {
+        const brandCode = findValue(["brandcode", "brand"]);
+        if (brandCode) result.brandCode = brandCode;
     }
 
     return result;

@@ -1,5 +1,5 @@
 import depotService from '../services/depotService.js';
-import { normalizeImportRow } from "../utils/importUtils.js";
+import { normalizeImportRow, tryParseImportDate, normalizeSex, isEmptyOptional } from "../utils/importUtils.js";
 import logger from '../config/logger.js';
 import multer from "multer";
 import { ReportService } from "../services/report/report.service.js";
@@ -33,6 +33,73 @@ function parseCSV(buffer) {
     parser.end();
   });
 }
+
+function cellToString(value) {
+  if (value == null) return "";
+  if (value instanceof Date) {
+    return value.toISOString().slice(0, 10);
+  }
+  if (typeof value === "object") {
+    if ("result" in value && value.result != null) return cellToString(value.result);
+    if ("text" in value) return String(value.text);
+    if ("richText" in value && Array.isArray(value.richText)) {
+      return value.richText.map((part) => part.text).join("");
+    }
+  }
+  return String(value).trim();
+}
+
+async function parseExcelDepots(buffer) {
+  const workbook = new ExcelJS.Workbook();
+  await workbook.xlsx.load(buffer);
+  const sheet = workbook.getWorksheet(1);
+  if (!sheet) return [];
+
+  const headerRow = sheet.getRow(1);
+  const headers = [];
+  headerRow.eachCell({ includeEmpty: true }, (cell, colNumber) => {
+    headers[colNumber] = cellToString(cell.value);
+  });
+
+  const records = [];
+  sheet.eachRow((row, rowNumber) => {
+    if (rowNumber === 1) return;
+    const record = {};
+    let hasValue = false;
+    headers.forEach((header, colNumber) => {
+      if (!header) return;
+      const value = cellToString(row.getCell(colNumber).value);
+      if (value) hasValue = true;
+      record[header] = value;
+    });
+    // Skip blank / instruction-only trailing rows
+    if (!hasValue) return;
+    const nameHint = Object.values(record).join(" ").toLowerCase();
+    if (nameHint.includes("required:") || nameHint.includes("⚠️")) return;
+    records.push(record);
+  });
+
+  return records;
+}
+
+function isExcelUpload(file) {
+  const name = (file.originalname || "").toLowerCase();
+  const type = (file.mimetype || "").toLowerCase();
+  return (
+    name.endsWith(".xlsx") ||
+    name.endsWith(".xls") ||
+    type.includes("spreadsheet") ||
+    type.includes("excel")
+  );
+}
+
+async function parseDepotImportFile(file) {
+  if (isExcelUpload(file)) {
+    return parseExcelDepots(file.buffer);
+  }
+  return parseCSV(file.buffer);
+}
+
 const reportService = new ReportService(depotService);
 
 class DepotController {
@@ -201,12 +268,9 @@ class DepotController {
   };
   /**
    * POST /api/depots/bulk-import
-   * Expects multipart/form-data with field "file" (CSV)
+   * Expects multipart/form-data with field "file" (.xlsx template or .csv)
    *
-   * Required CSV columns : name, provinceName, districtName
-   * Optional CSV columns : code, address, phone, status,
-   *                        employeeName, employeeKhmerName,
-   *                        employeeEmail, employeePhone
+   * Required columns : name / DepotEnglishsname, provinceName, districtName
    */
   bulkImport = async (req, res) => {
     try {
@@ -214,25 +278,26 @@ class DepotController {
       if (!req.file) {
         return res.status(400).json({
           success: false,
-          message: 'No file uploaded. Send a CSV file with field name "file".',
+          message:
+            'No file uploaded. Send an Excel (.xlsx) or CSV file with field name "file".',
         });
       }
 
-      // ── 1. Parse CSV ──────────────────────────────────────────────────────
+      // ── 1. Parse Excel or CSV ─────────────────────────────────────────────
       let records;
       try {
-        records = await parseCSV(req.file.buffer);
+        records = await parseDepotImportFile(req.file);
       } catch (parseErr) {
         return res.status(400).json({
           success: false,
-          message: `CSV parse error: ${parseErr.message}`,
+          message: `File parse error: ${parseErr.message}. Use the downloaded .xlsx template (or a UTF-8 CSV).`,
         });
       }
 
       if (records.length === 0) {
         return res.status(400).json({
           success: false,
-          message: "CSV file is empty or has no data rows.",
+          message: "File is empty or has no data rows.",
         });
       }
 
@@ -374,6 +439,183 @@ class DepotController {
     }
   }
 
+  /**
+   * POST /api/depots/verify
+   * Multipart file upload — parse + validate, return preview rows
+   * (same shape as employees/provinces verify for the admin preview page).
+   */
+  verifyDepotFile = async (req, res) => {
+    try {
+      if (!req.file) {
+        return res.status(400).json({
+          success: false,
+          message: 'No file uploaded. Send an Excel (.xlsx) or CSV with field "file".',
+        });
+      }
+
+      let records;
+      try {
+        records = await parseDepotImportFile(req.file);
+      } catch (parseErr) {
+        return res.status(400).json({
+          success: false,
+          message: `File parse error: ${parseErr.message}. Use the downloaded .xlsx template.`,
+        });
+      }
+
+      if (!records.length) {
+        return res.status(400).json({
+          success: false,
+          message: "File is empty or has no data rows.",
+        });
+      }
+
+      const normalizedRows = records.map((raw) => normalizeImportRow({ ...raw }));
+
+      const brandCodes = [
+        ...new Set(
+          normalizedRows.map((r) => r.brandCode?.trim()).filter(Boolean),
+        ),
+      ];
+      const brandNames = [
+        ...new Set(
+          normalizedRows.map((r) => r.brandName?.trim()).filter(Boolean),
+        ),
+      ];
+      const brandWhere = [];
+      if (brandCodes.length) {
+        brandWhere.push({ code: { in: brandCodes, mode: "insensitive" } });
+      }
+      if (brandNames.length) {
+        brandWhere.push({ name: { in: brandNames, mode: "insensitive" } });
+      }
+      const brands =
+        brandWhere.length > 0
+          ? await prisma.brand.findMany({ where: { OR: brandWhere } })
+          : [];
+      const brandKeySet = new Set();
+      for (const b of brands) {
+        if (b.code) brandKeySet.add(b.code.toLowerCase());
+        if (b.name) brandKeySet.add(b.name.toLowerCase());
+      }
+
+      const seenCodes = new Map();
+      const validRows = [];
+      const invalidRows = [];
+
+      for (const [i, row] of normalizedRows.entries()) {
+        const rowNumber = i + 2; // header is row 1
+        const errors = [];
+        const previewData = {
+          name: row.name || "",
+          khmerName: row.khmerName || "",
+          code: row.code || "",
+          phone: row.phone || "",
+          provinceName: row.provinceName || "",
+          districtName: row.districtName || "",
+          employeeName: row.employeeName || "",
+          employeeEmail: row.employeeEmail || "",
+          brandCode: row.brandCode || "",
+          status: row.status || "",
+          depotNumber: row.depotNumber || "",
+          dob: row.dob || "",
+          sex: row.sex || "",
+          expiryDate: row.expiryDate || "",
+          address: row.address || "",
+        };
+
+        if (!String(row.name || "").trim()) {
+          errors.push("Owner name (DepotEnglishsname) is required");
+        }
+        if (!String(row.provinceName || "").trim()) {
+          errors.push("provinceName is required");
+        }
+        if (!String(row.districtName || "").trim()) {
+          errors.push("districtName is required");
+        }
+
+        if (row.status) {
+          const status = String(row.status).trim().toLowerCase();
+          if (!["active", "inactive", "vacancy", "expired"].includes(status)) {
+            errors.push(
+              `status must be active, inactive, vacancy, or expired (got "${row.status}")`,
+            );
+          }
+        }
+
+        if (
+          row.employeeEmail &&
+          !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(row.employeeEmail).trim())
+        ) {
+          errors.push(`employeeEmail "${row.employeeEmail}" is not valid`);
+        }
+
+        // DOB / Expiry / Sex are optional — invalid or placeholder values become null (no error)
+        if (!isEmptyOptional(row.dob) && !tryParseImportDate(row.dob)) {
+          row.dob = "";
+        }
+        if (!isEmptyOptional(row.expiryDate) && !tryParseImportDate(row.expiryDate)) {
+          row.expiryDate = "";
+        }
+        if (!isEmptyOptional(row.sex) && !normalizeSex(row.sex)) {
+          row.sex = "";
+        }
+
+        const brandCode = row.brandCode?.trim();
+        const brandName = row.brandName?.trim();
+        if (brandCode && !brandKeySet.has(brandCode.toLowerCase())) {
+          errors.push(
+            `Brand code "${brandCode}" not found — use an existing brand code from Brands`,
+          );
+        } else if (
+          !brandCode &&
+          brandName &&
+          !brandKeySet.has(brandName.toLowerCase())
+        ) {
+          errors.push(
+            `Brand name "${brandName}" not found — use an existing brand`,
+          );
+        }
+
+        const code = row.code?.trim();
+        if (code) {
+          if (seenCodes.has(code)) {
+            errors.push(
+              `Duplicate code "${code}" in file (also on row ${seenCodes.get(code)})`,
+            );
+          } else {
+            seenCodes.set(code, rowNumber);
+          }
+        }
+
+        if (errors.length > 0) {
+          invalidRows.push({ rowNumber, errors, data: previewData });
+        } else {
+          validRows.push({ rowNumber, data: previewData });
+        }
+      }
+
+      return res.json({
+        success: true,
+        message: `Verified ${normalizedRows.length} row(s)`,
+        summary: {
+          totalRows: validRows.length + invalidRows.length,
+          validCount: validRows.length,
+          invalidCount: invalidRows.length,
+        },
+        validRows,
+        invalidRows,
+        canImport: invalidRows.length === 0 && validRows.length > 0,
+      });
+    } catch (error) {
+      logger.error(`Verify depot import error: ${error.message}`);
+      return res.status(500).json({
+        success: false,
+        message: error.message || "Failed to verify depot import file",
+      });
+    }
+  };
+
   // Inside DepotController class, add this method:
 
   validateDepotImport = async (req, res) => {
@@ -424,9 +666,9 @@ class DepotController {
         }
 
         // ── Status (optional) ──
-        const validStatuses = ["active", "inactive"];
+        const validStatuses = ["active", "inactive", "vacancy", "expired"];
         if (row.status && !validStatuses.includes(row.status.trim().toLowerCase())) {
-          errors.push(`status must be "active" or "inactive", got "${row.status}"`);
+          errors.push(`status must be "active", "inactive", "vacancy", or "expired", got "${row.status}"`);
         } else if (!row.status) {
           row.status = "active";
           warnings.push("Status missing – defaulted to 'active'");
@@ -599,10 +841,58 @@ class DepotController {
   };
 
   downloadTemplate = async (req, res) => {
-    const workbook = new ExcelJS.Workbook();
-    const worksheet = workbook.addWorksheet("Depots");
+    try {
+      const brands = await prisma.brand.findMany({
+        where: { code: { not: null } },
+        select: { code: true, name: true, status: true },
+        orderBy: { code: "asc" },
+      });
+      const brandCodes = brands
+        .map((b) => b.code?.trim())
+        .filter(Boolean);
 
-    worksheet.columns = [
+      const workbook = new ExcelJS.Workbook();
+      const worksheet = workbook.addWorksheet("Depots");
+
+      // Hidden sheet holding allowed list values for dropdowns
+      const listsSheet = workbook.addWorksheet("Lists");
+      listsSheet.state = "veryHidden";
+      listsSheet.getCell("A1").value = "status";
+      listsSheet.getCell("A2").value = "active";
+      listsSheet.getCell("A3").value = "inactive";
+      listsSheet.getCell("A4").value = "vacancy";
+      listsSheet.getCell("A5").value = "expired";
+      listsSheet.getCell("B1").value = "sex";
+      listsSheet.getCell("B2").value = "male";
+      listsSheet.getCell("B3").value = "female";
+      listsSheet.getCell("B4").value = "other";
+
+      listsSheet.getCell("C1").value = "brandCode";
+      if (brandCodes.length === 0) {
+        listsSheet.getCell("C2").value = "";
+      } else {
+        brandCodes.forEach((code, i) => {
+          listsSheet.getCell(`C${i + 2}`).value = code;
+        });
+      }
+
+      // Readable reference: brand code → name
+      const brandRef = workbook.addWorksheet("BrandCodes");
+      brandRef.columns = [
+        { header: "brandCode", key: "code", width: 18 },
+        { header: "brandName", key: "name", width: 28 },
+        { header: "status", key: "status", width: 12 },
+      ];
+      brandRef.getRow(1).font = { bold: true };
+      brands.forEach((b) => {
+        brandRef.addRow({
+          code: b.code,
+          name: b.name,
+          status: b.status || "",
+        });
+      });
+
+      worksheet.columns = [
       { header: "DepotEnglishsname", key: "name", width: 25 },
       { header: "DepotsKhmername", key: "khmerName", width: 25 },
       { header: "Depotcode", key: "code", width: 15 },
@@ -628,13 +918,14 @@ class DepotController {
     headerRow.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FF2F5597" } };
     headerRow.alignment = { horizontal: "center", vertical: "middle" };
     headerRow.height = 28;
+    const sampleBrand = brandCodes[0] || "";
 
-    // ─── Sample rows (matching your data) ──────
+    // ─── Sample rows ──────
     const samples = [
       {
         name: "Depot A",
         khmerName: "ឃ្លាំងក",
-        code: "WH-001",
+        code: "WH-SAMPLE-001",
         phone: "023123456",
         provinceName: "Phnom Penh",
         districtName: "Chamkar Mon",
@@ -643,17 +934,17 @@ class DepotController {
         employeePhone: "012345678",
         employeeKhmerName: "សុខ ជា",
         address: "ភូមិបី សង្កាត់ទួលស្វាយព្រៃ1 ខណ្ឌចំការមន រាជធានីភ្នំពេញ",
-        brandCode: "GB-001",
+        brandCode: sampleBrand,
         status: "active",
         depotNumber: "010146722 (01)",
         dob: "18/Aug/1962",
-        sex: "M",
+        sex: "male",
         expiryDate: "15/Jul/2025",
       },
       {
         name: "Depot B",
         khmerName: "ឃ្លាំងខ",
-        code: "WH-002",
+        code: "WH-SAMPLE-002",
         phone: "023123457",
         provinceName: "Phnom Penh",
         districtName: "Chamkar Mon",
@@ -662,11 +953,11 @@ class DepotController {
         employeePhone: "012345679",
         employeeKhmerName: "ច័ន្ទ ដារ៉ា",
         address: "ភូមិប្រាំពីរ សង្កាត់ទួលស្វាយព្រៃ2 ខណ្ឌចំការមន រាជធានីភ្នំពេញ",
-        brandCode: "GB-002",
+        brandCode: sampleBrand,
         status: "active",
         depotNumber: "010066280 (01)",
         dob: "29/Jun/1967",
-        sex: "F",
+        sex: "female",
         expiryDate: "31/Mar/2025",
       },
     ];
@@ -675,17 +966,75 @@ class DepotController {
       worksheet.addRow(row);
     }
 
-    // ─── Instruction row ──────────
+    // Columns: L brandCode, M status, P Sex
+    const dropdownRows = 1000;
+    const brandListEnd = Math.max(brandCodes.length + 1, 2);
+
+    worksheet.dataValidations.add(`L2:L${dropdownRows}`, {
+      type: "list",
+      allowBlank: true,
+      formulae: [`Lists!$C$2:$C$${brandListEnd}`],
+      showErrorMessage: true,
+      errorStyle: "error",
+      errorTitle: "Invalid brand code",
+      error:
+        brandCodes.length > 0
+          ? "Please select a brand code from the list (see BrandCodes sheet)"
+          : "No brand codes found — add brands first",
+      showInputMessage: true,
+      promptTitle: "Brand code",
+      prompt: "Select an existing brand code (or leave blank)",
+    });
+
+    worksheet.dataValidations.add(`M2:M${dropdownRows}`, {
+      type: "list",
+      allowBlank: true,
+      formulae: ["Lists!$A$2:$A$5"],
+      showErrorMessage: true,
+      errorStyle: "error",
+      errorTitle: "Invalid status",
+      error: "Please select: active, inactive, vacancy, or expired",
+      showInputMessage: true,
+      promptTitle: "Status",
+      prompt: "Select depot status",
+    });
+
+    worksheet.dataValidations.add(`P2:P${dropdownRows}`, {
+      type: "list",
+      allowBlank: true,
+      formulae: ["Lists!$B$2:$B$4"],
+      showErrorMessage: true,
+      errorStyle: "error",
+      errorTitle: "Invalid sex",
+      error: "Please select: male, female, or other",
+      showInputMessage: true,
+      promptTitle: "Sex",
+      prompt: "Select sex",
+    });
+
+    for (let r = 2; r <= 3; r++) {
+      for (const col of ["L", "M", "P"]) {
+        worksheet.getCell(`${col}${r}`).fill = {
+          type: "pattern",
+          pattern: "solid",
+          fgColor: { argb: "FFE8F0FE" },
+        };
+      }
+    }
+
     const instructionRow = worksheet.addRow({
-      name: "⚠️ Required: name, provinceName, districtName",
-      status: "Use 'active' or 'inactive'",
-      sex: "Use 'M' or 'F'",
-      expiryDate: "Dates: D/MMM/YYYY (e.g., 1/Jan/2026)",
+      name: "⚠️ Required: DepotEnglishsname, provinceName, districtName",
+      brandCode:
+        brandCodes.length > 0
+          ? "Use dropdown (existing brand codes)"
+          : "No brands in DB — create brands first",
+      status: "Use dropdown: active | inactive | vacancy | expired",
+      sex: "Use dropdown: male | female | other",
+      expiryDate: "Dates: D/MMM/YYYY (e.g. 1/Jan/2026)",
     });
     instructionRow.font = { italic: true, size: 10, color: { argb: "FF999999" } };
     instructionRow.height = 22;
 
-    // ─── Response ────────────────
     res.setHeader(
       "Content-Type",
       "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
@@ -697,6 +1046,14 @@ class DepotController {
 
     await workbook.xlsx.write(res);
     res.end();
+    } catch (error) {
+      logger.error(`Download depot template error: ${error.message}`);
+      return res.status(500).json({
+        success: false,
+        message: "Failed to download depot template",
+        error: error.message,
+      });
+    }
   };
 }
 

@@ -339,31 +339,83 @@ class EmployeeService {
         return departments.map((d) => d.department);
     }
 
-    async getEmployeeDepotDetails(employeeId) {
+    async getEmployeeDepotDetails(employeeId, options = {}) {
         try {
             const id = Number(employeeId);
             if (isNaN(id)) throw new Error("Invalid employee ID");
 
-            const depots = await prisma.depot.findMany({
-                where: { employeeId: id },
-                include: {
-                    district: {
-                        select: {
-                            id: true,
-                            name: true,
-                            province: { select: { id: true, name: true } },
+            const hasPaging =
+                options.page != null ||
+                options.pageSize != null ||
+                options.limit != null;
+            const page = Math.max(1, Number(options.page) || 1);
+            const pageSize = hasPaging
+                ? Math.min(
+                    100,
+                    Math.max(1, Number(options.pageSize || options.limit) || 10),
+                )
+                : undefined;
+            const search = String(options.search || "").trim();
+            const skip = hasPaging ? (page - 1) * pageSize : undefined;
+
+            const where = { employeeId: id };
+            if (search) {
+                where.OR = [
+                    { name: { contains: search, mode: "insensitive" } },
+                    { code: { contains: search, mode: "insensitive" } },
+                    { khmerName: { contains: search, mode: "insensitive" } },
+                    { address: { contains: search, mode: "insensitive" } },
+                    {
+                        brand: {
+                            name: { contains: search, mode: "insensitive" },
                         },
                     },
-                    province: { select: { id: true, name: true } },
-                    brand: { select: { id: true, name: true, code: true } },
-                    _count: { select: { products: true, staffs: true } },
-                },
-                orderBy: { name: "asc" },
-            });
+                    {
+                        district: {
+                            name: { contains: search, mode: "insensitive" },
+                        },
+                    },
+                    {
+                        province: {
+                            name: { contains: search, mode: "insensitive" },
+                        },
+                    },
+                    {
+                        district: {
+                            province: {
+                                name: { contains: search, mode: "insensitive" },
+                            },
+                        },
+                    },
+                ];
+            }
+
+            const [depots, total] = await Promise.all([
+                prisma.depot.findMany({
+                    where,
+                    include: {
+                        district: {
+                            select: {
+                                id: true,
+                                name: true,
+                                province: { select: { id: true, name: true } },
+                            },
+                        },
+                        province: { select: { id: true, name: true } },
+                        brand: { select: { id: true, name: true, code: true } },
+                        _count: { select: { staffs: true } },
+                    },
+                    orderBy: { name: "asc" },
+                    ...(hasPaging ? { skip, take: pageSize } : {}),
+                }),
+                prisma.depot.count({ where }),
+            ]);
 
             const now = new Date();
+            const effectivePageSize = pageSize ?? Math.max(total, 1);
+            const totalPages = Math.max(1, Math.ceil(total / effectivePageSize));
 
-            return depots.map((depot) => {
+            const data = depots.map((depot) => {
                 const expiry = depot.expiryDate ? new Date(depot.expiryDate) : null;
                 let assignmentStatus = "assigned";
                 if (depot.status === "inactive" || depot.status === "vacancy") {
@@ -400,9 +452,9 @@ class EmployeeService {
                     coverageStatus,
                     assignedAt: depot.assignedAt,
                     expiryDate: depot.expiryDate,
-                    productsManaged: depot._count.products,
+                    productsManaged: 0,
                     staffCount: depot._count.staffs,
-                    activeTasks: depot._count.products,
+                    activeTasks: 0,
                     visitFrequency: depot.assignedAt
                         ? `Since ${new Date(depot.assignedAt).toLocaleDateString()}`
                         : "—",
@@ -411,6 +463,18 @@ class EmployeeService {
                         : "—",
                 };
             });
+
+            return {
+                data,
+                pagination: {
+                    page: hasPaging ? page : 1,
+                    pageSize: effectivePageSize,
+                    total,
+                    totalPages,
+                    hasNext: hasPaging ? page < totalPages : false,
+                    hasPrev: hasPaging ? page > 1 : false,
+                },
+            };
         } catch (error) {
             logger.error("EmployeeService error:", error);
             throw error;

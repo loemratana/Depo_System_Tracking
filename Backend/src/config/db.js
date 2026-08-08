@@ -12,6 +12,12 @@ class Database {
             return Database.instance;
         }
 
+        if (!env.databaseUrl) {
+            throw new Error(
+                'DATABASE_URL is missing. Copy Backend/.env.example to Backend/.env and set DATABASE_URL.',
+            );
+        }
+
         // Create a pg Pool with SSL configuration to fix the "self-signed certificate" error
         const pool = new Pool({ 
             connectionString: env.databaseUrl,

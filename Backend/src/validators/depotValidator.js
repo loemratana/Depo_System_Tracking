@@ -39,7 +39,7 @@ export const createDepotValidator = [
         .isLength({ max: 20 }).withMessage('Phone max 20 characters'),
     body('status')
         .optional()
-        .isIn(['active', 'inactive']).withMessage('Status must be active or inactive'),
+        .isIn(['active', 'inactive', 'vacancy', 'expired']).withMessage('Status must be active, inactive, vacancy, or expired'),
     validate,
 
 ];
@@ -67,7 +67,7 @@ export const updateDepotValidator = [
         .isLength({ max: 20 }),
     body('status')
         .optional()
-        .isIn(['active', 'inactive']),
+        .isIn(['active', 'inactive', 'vacancy', 'expired']),
     validate,
 ];
 

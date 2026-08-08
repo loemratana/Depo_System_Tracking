@@ -1,7 +1,10 @@
 import districtController from "../controllers/districtController.js";
 import { createDistrictValidator } from "../validators/provinceValidator.js";
+import authMiddleware from "../middleware/auth.js";
 import express from 'express';
 import multer from 'multer';
+
+const { authenticate } = authMiddleware;
 
 // Separate multer instance for Excel uploads (district bulk import)
 const excelUpload = multer({
@@ -22,14 +25,15 @@ const excelUpload = multer({
 
 const router = express.Router();
 
+router.use(authenticate);
+
 router.get("/", districtController.getAll);
 router.post("/", createDistrictValidator, districtController.create);
 
 router.get('/template', districtController.downloadDistrictTemplate);
 router.post('/verify', excelUpload.single('file'), districtController.verifyDistrictFile);
 router.post('/import', excelUpload.single('file'), districtController.importDistricts);
-router.delete('/:id', districtController.deleteDistrict)
-router.put('/:id',districtController.update)
-
+router.delete('/:id', districtController.deleteDistrict);
+router.put('/:id', districtController.update);
 
 export default router;

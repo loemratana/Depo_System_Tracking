@@ -5,89 +5,74 @@ import Excel from 'exceljs';
 class ProvinceService {
     cache = new Map();
 
-    async getAllProvinces(query) {
+    clearListCache() {
+        this.cache.clear();
+    }
+
+    async getAllProvinces(query = {}) {
         try {
-            // ── Support 'fresh=true' to bypass cache ──
-            const { fresh = false, ...rest } = query;
-            const cacheKey = JSON.stringify(rest);
-
-            if (!fresh && this.cache.has(cacheKey)) {
-                return this.cache.get(cacheKey);
-            }
-
             const {
                 page = 1,
-                limit = 10,
+                limit = 1000,
                 search = '',
-                region,
-                isActive,
-                sortBy = 'createdAt',
-                sortOrder = 'desc'
-            } = rest;
+                sortBy = 'name',
+                sortOrder = 'asc',
+            } = query;
 
-            const skip = (page - 1) * limit;
+            const pageNum = Math.max(parseInt(page, 10) || 1, 1);
+            const limitNum = Math.min(Math.max(parseInt(limit, 10) || 1000, 1), 1000);
+            const skip = (pageNum - 1) * limitNum;
 
-            // ── Build where clause ──
             const where = {};
-            if (search) {
+            if (search && String(search).trim()) {
+                const q = String(search).trim();
                 where.OR = [
-                    { name: { contains: search, mode: 'insensitive' } },
-                    { code: { contains: search, mode: 'insensitive' } }
+                    { name: { contains: q, mode: 'insensitive' } },
+                    { code: { contains: q, mode: 'insensitive' } },
                 ];
             }
 
-            // ── Query provinces with district counts ──
+            const allowedSortFields = ['code', 'name', 'createdAt', 'id'];
+            const validSortBy = allowedSortFields.includes(sortBy) ? sortBy : 'name';
+            const validSortOrder = sortOrder === 'desc' ? 'desc' : 'asc';
+
             const [provinces, total] = await Promise.all([
                 prisma.province.findMany({
                     where,
                     skip,
-                    take: parseInt(limit),
-                    orderBy: { [sortBy]: sortOrder },
+                    take: limitNum,
+                    orderBy: { [validSortBy]: validSortOrder },
                     include: {
-                        districts: {
-                            include: {
-                                _count: {
-                                    select: {
-                                        depots: true // ✅ must match the relation name on District
-                                    }
-                                }
-                            }
-                        }
-                    }
+                        _count: {
+                            select: {
+                                districts: true,
+                                depots: true,
+                            },
+                        },
+                    },
                 }),
-                prisma.province.count({ where })
+                prisma.province.count({ where }),
             ]);
 
-            // ── Sum depot counts per province ──
-            const formattedProvinces = provinces.map(province => {
-                const depotCount = province.districts.reduce(
-                    (total, district) => total + district._count.depots,
-                    0
-                );
+            const formattedProvinces = provinces.map((province) => ({
+                id: province.id,
+                code: province.code,
+                name: province.name,
+                createdAt: province.createdAt,
+                updatedAt: province.updatedAt,
+                districtCount: province._count.districts,
+                depotCount: province._count.depots,
+            }));
 
-                return {
-                    id: province.id,
-                    code: province.code,
-                    name: province.name,
-                    createdAt: province.createdAt,
-                    updatedAt: province.updatedAt,
-                    depotCount: depotCount // ✅ now correctly calculated
-                };
-            });
-
-            const result = {
+            return {
                 provinces: formattedProvinces,
                 pagination: {
-                    page: parseInt(page),
-                    limit: parseInt(limit),
+                    page: pageNum,
+                    limit: limitNum,
                     total,
-                    pages: Math.ceil(total / limit)
-                }
+                    pages: Math.ceil(total / limitNum) || 1,
+                },
             };
-
-            // ── Store in cache ──
-            this.cache.set(cacheKey, result);
-            return result;
         } catch (error) {
             logger.error('Get all provinces service error:', error);
             throw error;

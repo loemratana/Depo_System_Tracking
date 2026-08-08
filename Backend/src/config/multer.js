@@ -2,24 +2,15 @@ import multer from 'multer';
 import path from 'path';
 import fs from 'fs';
 
-// Create uploads directory if it doesn't exist
-const uploadDir = path.join(process.cwd(), 'uploads', 'profiles');
-if (!fs.existsSync(uploadDir)) {
-  fs.mkdirSync(uploadDir, { recursive: true });
+const profileDir = path.join(process.cwd(), 'uploads', 'profiles');
+const brandDir = path.join(process.cwd(), 'uploads', 'brands');
+
+for (const dir of [profileDir, brandDir]) {
+  if (!fs.existsSync(dir)) {
+    fs.mkdirSync(dir, { recursive: true });
+  }
 }
 
-// Multer storage config
-const storage = multer.diskStorage({
-  destination: function (req, file, cb) {
-    cb(null, uploadDir);
-  },
-  filename: function (req, file, cb) {
-    const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1e9);
-    cb(null, 'profile-' + uniqueSuffix + path.extname(file.originalname));
-  }
-});
-
-// File filter to only allow images
 const fileFilter = (req, file, cb) => {
   const allowedFileTypes = /jpeg|jpg|png|webp|gif/;
   const isMimeTypeValid = allowedFileTypes.test(file.mimetype);
@@ -32,12 +23,29 @@ const fileFilter = (req, file, cb) => {
   }
 };
 
-const upload = multer({
-  storage: storage,
-  limits: {
-    fileSize: 5 * 1024 * 1024 // 5MB max
-  },
-  fileFilter: fileFilter
+function makeStorage(subdir, prefix) {
+  return multer.diskStorage({
+    destination: function (_req, _file, cb) {
+      cb(null, path.join(process.cwd(), 'uploads', subdir));
+    },
+    filename: function (_req, file, cb) {
+      const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1e9);
+      cb(null, `${prefix}-${uniqueSuffix}${path.extname(file.originalname)}`);
+    },
+  });
+}
+
+export const uploadProfile = multer({
+  storage: makeStorage('profiles', 'profile'),
+  limits: { fileSize: 5 * 1024 * 1024 },
+  fileFilter,
 });
 
-export default upload;
+export const uploadBrandLogo = multer({
+  storage: makeStorage('brands', 'brand'),
+  limits: { fileSize: 5 * 1024 * 1024 },
+  fileFilter,
+});
+
+// Default export kept for existing profile upload imports
+export default uploadProfile;

@@ -1,16 +1,28 @@
 import { prisma } from "../../config/db.js";
 import logger from "../../config/logger.js";
+import { kpiSystemService } from "../kpiSystemService.js";
+
+function monthDateBounds(date = new Date()) {
+  const y = date.getFullYear();
+  const m = date.getMonth();
+  const fromDate = new Date(y, m, 1).toISOString().split("T")[0];
+  const toDate = new Date(y, m + 1, 0).toISOString().split("T")[0];
+  return { fromDate, toDate };
+}
 
 class DashboardKpi {
   async getDashboardKpis() {
     const today = new Date();
     today.setHours(0, 0, 0, 0);
+    const { fromDate, toDate } = monthDateBounds(today);
 
     const [
       totalDepots,
       activeEmployees,
       totalEmployees,
       totalDepotsWithExpiry,
+      totalBrands,
+      vacancy,
     ] = await Promise.all([
       prisma.depot.count(),
       prisma.employee.count({ where: { status: "active" } }),
@@ -20,63 +32,113 @@ class DashboardKpi {
           expiryDate: { lt: today },
         },
       }),
+      prisma.brand.count(),
+      prisma.depot.count({ where: { status: "vacancy" } }),
     ]);
 
+    let kpiSummary = { averageKpi: 0, employeesAssessed: 0 };
+    try {
+      kpiSummary = await kpiSystemService.getSummary({ fromDate, toDate });
+    } catch (error) {
+      logger.warn(
+        `Dashboard KPI summary unavailable, using zeros: ${error.message}`,
+      );
+    }
+
     logger.info(
-      `Dashboard KPIs: depots=${totalDepots}, activeEmployees=${activeEmployees}`,
+      `Dashboard KPIs: depots=${totalDepots}, activeEmployees=${activeEmployees}, vacancy=${vacancy}, avgKpi=${kpiSummary.averageKpi}`,
     );
 
     return {
       brandDepots: totalDepots,
       handlers: activeEmployees,
-      totalEmployees: totalEmployees,
+      totalEmployees,
       expiredDepots: totalDepotsWithExpiry,
-      // user count removed – no User model
+      totalBrands,
+      vacancy,
+      averageKpi: kpiSummary.averageKpi,
+      employeesAssessed: kpiSummary.employeesAssessed,
     };
   }
 
   /**
-   * Since no assignments table exists, we provide an alternative trend:
-   * Monthly employee hire trend (last 6 months) as a placeholder.
-   * If you need depot creation trend, replace with depot.createdAt.
+   * Monthly PO quantity trend from brand_depot_month_kpis.
+   * Returns the last `months` months ending at year/month (defaults: current).
+   * Optional brandId filters to one brand; otherwise sums all brands.
    */
-  async getMonthlyAssignmentTrend() {
-    const sixMonthsAgo = new Date();
-    sixMonthsAgo.setMonth(sixMonthsAgo.getMonth() - 5);
-    sixMonthsAgo.setDate(1);
-    sixMonthsAgo.setHours(0, 0, 0, 0);
-
-    const results = await prisma.$queryRaw`
-      SELECT
-        DATE_TRUNC('month', hire_date) AS month,
-      COUNT(*)::int AS count
-      FROM employees
-      WHERE hire_date >= ${sixMonthsAgo}
-      GROUP BY DATE_TRUNC('month', hire_date)
-      ORDER BY month ASC
-    `;
-
-    const months = [];
+  async getMonthlyPoTrend({ year, month, brandId, months = 6 } = {}) {
     const now = new Date();
+    const endYear = Number.isFinite(Number(year))
+      ? Number(year)
+      : now.getFullYear();
+    const endMonth = Number.isFinite(Number(month))
+      ? Number(month)
+      : now.getMonth() + 1;
+    const span = Math.min(Math.max(Number(months) || 6, 1), 12);
 
-    for (let i = 5; i >= 0; i--) {
-      const date = new Date(now.getFullYear(), now.getMonth() - i, 1);
+    if (endMonth < 1 || endMonth > 12) {
+      throw new Error("month must be between 1 and 12");
+    }
 
+    const end = new Date(Date.UTC(endYear, endMonth - 1, 1));
+    const start = new Date(
+      Date.UTC(end.getUTCFullYear(), end.getUTCMonth() - (span - 1), 1),
+    );
+
+    const brandFilter = brandId ? Number(brandId) : null;
+
+    const results = brandFilter
+      ? await prisma.$queryRaw`
+          SELECT
+            DATE_TRUNC('month', period_month) AS month,
+            COALESCE(SUM(po_actual), 0)::float AS total_po
+          FROM brand_depot_month_kpis
+          WHERE period_month >= ${start}
+            AND period_month <= ${end}
+            AND brand_id = ${brandFilter}
+          GROUP BY DATE_TRUNC('month', period_month)
+          ORDER BY month ASC
+        `
+      : await prisma.$queryRaw`
+          SELECT
+            DATE_TRUNC('month', period_month) AS month,
+            COALESCE(SUM(po_actual), 0)::float AS total_po
+          FROM brand_depot_month_kpis
+          WHERE period_month >= ${start}
+            AND period_month <= ${end}
+          GROUP BY DATE_TRUNC('month', period_month)
+          ORDER BY month ASC
+        `;
+
+    const series = [];
+    for (let i = span - 1; i >= 0; i--) {
+      const date = new Date(
+        Date.UTC(end.getUTCFullYear(), end.getUTCMonth() - i, 1),
+      );
       const found = results.find((r) => {
         const m = new Date(r.month);
         return (
-          m.getMonth() === date.getMonth() &&
-          m.getFullYear() === date.getFullYear()
+          m.getUTCMonth() === date.getUTCMonth() &&
+          m.getUTCFullYear() === date.getUTCFullYear()
         );
       });
 
-      months.push({
-        month: date.toLocaleString("en-US", { month: "short" }),
-        count: found?.count ?? 0,
+      series.push({
+        month: date.toLocaleString("en-US", {
+          month: "short",
+          timeZone: "UTC",
+        }),
+        year: date.getUTCFullYear(),
+        count: Number(Number(found?.total_po ?? 0).toFixed(1)),
       });
     }
 
-    return months;
+    return series;
+  }
+
+  /** @deprecated Use getMonthlyPoTrend */
+  async getMonthlyAssignmentTrend(params = {}) {
+    return this.getMonthlyPoTrend(params);
   }
 
   /**

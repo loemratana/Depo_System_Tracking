@@ -22,6 +22,6 @@ pnpm-debug.log*
 uploads/**
 !uploads/.gitkeep
 
-# Misc
-*.local
-coverage/
+# Local runtime data
+data/
+

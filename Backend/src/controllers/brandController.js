@@ -20,12 +20,22 @@ export class BrandController {
   getDepotByBrand = async (req, res) => {
     try {
       const { brandId } = req.params;
-      const depots = await brandService.getDepotsByBrand(brandId);
+      const { page, pageSize, search, status } = req.query;
+      const result = await brandService.getDepotsByBrand(brandId, {
+        page,
+        pageSize,
+        search,
+        status,
+      });
 
-      res.status(201).json({ success: true,data: depots });
-
+      res.status(200).json({
+        success: true,
+        data: result.data,
+        pagination: result.pagination,
+      });
     } catch (error) {
       res.status(500).json({
+        success: false,
         message: error.message || "Internal server error",
       });
     }
@@ -57,24 +67,6 @@ export class BrandController {
       }
       logger.error("Get brand summary error:", error);
       res.status(500).json({ success: false, message: "Failed to fetch brand summary" });
-    }
-  };
-
-  getBrandProducts = async (req, res) => {
-    try {
-      const { id } = req.params;
-      const { page, limit } = req.query;
-      const result = await brandService.getProductsByBrand(id, {
-        page: parseInt(page, 10) || 1,
-        limit: parseInt(limit, 10) || 50,
-      });
-      res.json({ success: true, ...result });
-    } catch (error) {
-      if (error.message === "Brand not found") {
-        return res.status(404).json({ success: false, message: error.message });
-      }
-      logger.error("Get brand products error:", error);
-      res.status(500).json({ success: false, message: "Failed to fetch brand products" });
     }
   };
 

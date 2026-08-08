@@ -47,8 +47,16 @@
     "supertest": "^7.2.2"
   },
   "scripts": {
-  "dev": "nodemon src/server.js",
-  "start": "node src/server.js",
-  "postinstall": "prisma generate"
-}
+    "dev": "nodemon src/server.js",
+    "start": "node src/server.js",
+    "seed": "node prisma/seed.js",
+    "postinstall": "prisma generate",
+    "lint": "eslint src --ext .js --max-warnings=50",
+    "format": "prettier --write \"src/**/*.{js,json,md}\" \"prisma/**/*.prisma\"",
+    "format:check": "prettier --check \"src/**/*.{js,json,md}\" \"prisma/**/*.prisma\"",
+    "test": "jest --passWithNoTests --forceExit",
+    "prisma:validate": "prisma validate",
+    "prisma:generate": "prisma generate",
+    "ci": "npm run prisma:validate && npm run prisma:generate && node --check src/server.js && npm test"
+  }
 }

@@ -73,49 +73,6 @@ async function fixEmployeeKpis() {
   console.log(`employee_kpis: ${moved} moved, ${merged} merged`);
 }
 
-async function fixProductPerformances() {
-  const rows = await prisma.productPerformance.findMany();
-  let moved = 0;
-  let merged = 0;
-
-  for (const row of rows) {
-    const month = intendedMonth(row.month);
-    if (!month) continue;
-
-    const existing = await prisma.productPerformance.findFirst({
-      where: { productId: row.productId, employeeId: row.employeeId, month },
-    });
-
-    if (existing) {
-      console.log(
-        `product_performances #${row.id}: merge into #${existing.id} (${fmt(row.month)} -> ${fmt(month)})`,
-      );
-      if (!DRY_RUN) {
-        await prisma.$transaction([
-          prisma.productPerformance.update({
-            where: { id: existing.id },
-            data: {
-              quantitySold: { increment: row.quantitySold },
-              revenue: { increment: Number(row.revenue || 0) },
-            },
-          }),
-          prisma.productPerformance.delete({ where: { id: row.id } }),
-        ]);
-      }
-      merged++;
-    } else {
-      console.log(`product_performances #${row.id}: ${fmt(row.month)} -> ${fmt(month)}`);
-      if (!DRY_RUN) {
-        await prisma.productPerformance.update({ where: { id: row.id }, data: { month } });
-      }
-      moved++;
-    }
-  }
-
-  console.log(`product_performances: ${moved} moved, ${merged} merged`);
-}
-
 console.log(DRY_RUN ? "DRY RUN — no changes will be written\n" : "Applying changes\n");
 await fixEmployeeKpis();
-await fixProductPerformances();
 await prisma.$disconnect();

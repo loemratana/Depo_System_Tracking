@@ -1,0 +1,89 @@
+# Backend CI — use this file if Backend is (or becomes) its own Git repository.
+#
+# Current monorepo (Depo_System_Tracking): GitHub runs the root workflow instead:
+#   ../.github/workflows/backend-ci.yml  (from repo root: .github/workflows/backend-ci.yml)
+
+name: Backend CI
+
+on:
+  push:
+    branches: [main, master, develop]
+  pull_request:
+    branches: [main, master, develop]
+  workflow_dispatch:
+
+concurrency:
+  group: backend-ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  NODE_ENV: test
+  DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/depot_ci?schema=public
+  DIRECT_URL: postgresql://postgres:postgres@127.0.0.1:5432/depot_ci?schema=public
+  JWT_SECRET: ci-jwt-secret-change-me-32chars-min
+  JWT_REFRESH_SECRET: ci-refresh-secret-change-me-32chars
+  SESSION_SECRET: ci-session-secret
+  ENABLE_ARCJET: 'false'
+  ENABLE_RATE_LIMIT: 'false'
+
+jobs:
+  ci:
+    name: Install · Validate · Test · Audit
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Validate Prisma schema
+        run: npx prisma validate
+
+      - name: Generate Prisma Client
+        run: npx prisma generate
+
+      - name: Syntax check (entry points)
+        run: |
+          node --check src/server.js
+          node --check src/app.js
+
+      - name: Format check
+        run: npm run format:check
+        continue-on-error: true
+
+      - name: Lint
+        run: npm run lint
+        continue-on-error: true
+
+      - name: Test
+        run: npm test
+
+      - name: Security audit (production, high+)
+        run: npm audit --omit=dev --audit-level=high
+        continue-on-error: true
+
+      - name: CI summary
+        if: always()
+        run: |
+          echo "## Backend CI" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Check | Status |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| --- | --- |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Node | 22 |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Prisma validate / generate | required |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Syntax check | required |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Tests | required (passWithNoTests) |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Lint / format / audit | advisory until tightened |" >> "$GITHUB_STEP_SUMMARY"

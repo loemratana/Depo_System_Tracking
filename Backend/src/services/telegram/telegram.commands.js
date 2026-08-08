@@ -4,18 +4,15 @@ import {
   generateDailyReport,
   generateWeeklyReport,
   generateMonthlyKPIReport,
-  getLowStockAlertMessage,
   getEmployeePerformance,
   getDailyReportData,
   getWeeklyReportData,
   getMonthlyKPIData,
-  getLowStockData,
 } from "./telegram.reports.js";
 import {
   generateDailyExcel,
   generateWeeklyExcel,
   generateMonthlyKPIExcel,
-  generateLowStockExcel,
 } from "./telegram.excel.js";
 import {
   mainMenu,
@@ -33,9 +30,9 @@ export function setupCommands() {
     const welcome = `
 👋 Welcome to the <b>Depot Management Bot</b>!
 
-I can provide you with real‑time sales reports, KPI summaries, and stock alerts.
+I provide <b>PO / KPI</b> depot performance snapshots and employee rankings — same data as KPI Management.
 
-Use the buttons below to explore, or type /help for a list of commands.
+Use the buttons below, or type /help for commands.
     `;
     await ctx.reply(welcome, { parse_mode: "HTML", ...mainMenu() });
   });
@@ -54,10 +51,9 @@ Use the buttons below to explore, or type /help for a list of commands.
 <b>🤖 Available Commands</b>
 
 /menu – Show interactive menu
-/daily – Quick daily sales text
-/weekly – Quick weekly sales text
-/monthly – Quick monthly KPI text
-/stock – Quick low‑stock text
+/daily – Daily PO snapshot (MTD)
+/weekly – Employee PO % rankings (MTD)
+/monthly – Monthly depot × brand KPI
 /kpi &lt;id&gt; – Employee KPI detail
     `;
     await ctx.reply(help, { parse_mode: "HTML", ...backToMenu() });
@@ -67,7 +63,6 @@ Use the buttons below to explore, or type /help for a list of commands.
   //  CALLBACK HANDLERS
   // ─────────────────────────────────────────────────────────────
 
-  // Handle "menu" – back to main menu
   bot.action("menu", async (ctx) => {
     await ctx.editMessageText("📌 <b>Main Menu</b> – choose an option:", {
       parse_mode: "HTML",
@@ -76,16 +71,14 @@ Use the buttons below to explore, or type /help for a list of commands.
     await ctx.answerCbQuery();
   });
 
-  // Handle "help"
   bot.action("help", async (ctx) => {
     const help = `
 <b>🤖 Available Commands</b>
 
 /menu – Show interactive menu
-/daily – Quick daily sales text
-/weekly – Quick weekly sales text
-/monthly – Quick monthly KPI text
-/stock – Quick low‑stock text
+/daily – Daily PO snapshot (MTD)
+/weekly – Employee PO % rankings (MTD)
+/monthly – Monthly depot × brand KPI
 /kpi &lt;id&gt; – Employee KPI detail
     `;
     await ctx.editMessageText(help, { parse_mode: "HTML", ...backToMenu() });
@@ -94,7 +87,7 @@ Use the buttons below to explore, or type /help for a list of commands.
 
   // ─── Report menus ──────────────────────────────────────────
   bot.action("daily_menu", async (ctx) => {
-    await ctx.editMessageText("📊 <b>Daily Report</b>\nChoose format:", {
+    await ctx.editMessageText("📊 <b>Daily PO Snapshot</b>\nChoose format:", {
       parse_mode: "HTML",
       ...reportOptions("daily"),
     });
@@ -102,7 +95,7 @@ Use the buttons below to explore, or type /help for a list of commands.
   });
 
   bot.action("weekly_menu", async (ctx) => {
-    await ctx.editMessageText("📈 <b>Weekly Report</b>\nChoose format:", {
+    await ctx.editMessageText("📈 <b>Weekly Rankings</b>\nChoose format:", {
       parse_mode: "HTML",
       ...reportOptions("weekly"),
     });
@@ -110,17 +103,9 @@ Use the buttons below to explore, or type /help for a list of commands.
   });
 
   bot.action("monthly_menu", async (ctx) => {
-    await ctx.editMessageText("📋 <b>Monthly KPI Report</b>\nChoose format:", {
+    await ctx.editMessageText("📋 <b>Monthly Depot KPI</b>\nChoose format:", {
       parse_mode: "HTML",
       ...reportOptions("monthly"),
-    });
-    await ctx.answerCbQuery();
-  });
-
-  bot.action("stock_menu", async (ctx) => {
-    await ctx.editMessageText("🚨 <b>Stock Alert</b>\nChoose format:", {
-      parse_mode: "HTML",
-      ...reportOptions("stock"),
     });
     await ctx.answerCbQuery();
   });
@@ -152,12 +137,6 @@ Use the buttons below to explore, or type /help for a list of commands.
     await ctx.answerCbQuery();
   });
 
-  bot.action("stock_text", async (ctx) => {
-    const report = await getLowStockAlertMessage();
-    await ctx.editMessageText(report, { parse_mode: "HTML", ...backToMenu() });
-    await ctx.answerCbQuery();
-  });
-
   // ─── Generate reports (Excel) ──────────────────────────────
   bot.action("daily_excel", async (ctx) => {
     const data = await getDailyReportData();
@@ -165,9 +144,9 @@ Use the buttons below to explore, or type /help for a list of commands.
     await ctx.replyWithDocument(
       {
         source: buffer,
-        filename: `daily_${new Date().toISOString().slice(0, 10)}.xlsx`,
+        filename: `daily_po_${new Date().toISOString().slice(0, 10)}.xlsx`,
       },
-      { caption: "📊 Daily Sales Report" },
+      { caption: "📊 Daily PO Snapshot" },
     );
     await ctx.editMessageText("✅ Excel sent!", { ...backToMenu() });
     await ctx.answerCbQuery();
@@ -179,9 +158,9 @@ Use the buttons below to explore, or type /help for a list of commands.
     await ctx.replyWithDocument(
       {
         source: buffer,
-        filename: `weekly_${new Date().toISOString().slice(0, 10)}.xlsx`,
+        filename: `weekly_rankings_${new Date().toISOString().slice(0, 10)}.xlsx`,
       },
-      { caption: "📈 Weekly Sales Report" },
+      { caption: "📈 Weekly Employee Rankings" },
     );
     await ctx.editMessageText("✅ Excel sent!", { ...backToMenu() });
     await ctx.answerCbQuery();
@@ -193,29 +172,15 @@ Use the buttons below to explore, or type /help for a list of commands.
     await ctx.replyWithDocument(
       {
         source: buffer,
-        filename: `monthly_${new Date().toISOString().slice(0, 7)}.xlsx`,
+        filename: `monthly_depot_kpi_${new Date().toISOString().slice(0, 7)}.xlsx`,
       },
-      { caption: "📋 Monthly KPI Report" },
+      { caption: "📋 Monthly Depot KPI" },
     );
     await ctx.editMessageText("✅ Excel sent!", { ...backToMenu() });
     await ctx.answerCbQuery();
   });
 
-  bot.action("stock_excel", async (ctx) => {
-    const data = await getLowStockData();
-    const buffer = await generateLowStockExcel(data);
-    await ctx.replyWithDocument(
-      {
-        source: buffer,
-        filename: `low_stock_${new Date().toISOString().slice(0, 10)}.xlsx`,
-      },
-      { caption: "🚨 Low Stock Report" },
-    );
-    await ctx.editMessageText("✅ Excel sent!", { ...backToMenu() });
-    await ctx.answerCbQuery();
-  });
-
-  // ─── Text commands (also support old style) ────────────────
+  // ─── Text commands ─────────────────────────────────────────
   bot.command("daily", async (ctx) => {
     const report = await generateDailyReport();
     await ctx.reply(report, { parse_mode: "HTML", ...backToMenu() });
@@ -228,11 +193,6 @@ Use the buttons below to explore, or type /help for a list of commands.
 
   bot.command("monthly", async (ctx) => {
     const report = await generateMonthlyKPIReport();
-    await ctx.reply(report, { parse_mode: "HTML", ...backToMenu() });
-  });
-
-  bot.command("stock", async (ctx) => {
-    const report = await getLowStockAlertMessage();
     await ctx.reply(report, { parse_mode: "HTML", ...backToMenu() });
   });
 
@@ -253,25 +213,14 @@ Use the buttons below to explore, or type /help for a list of commands.
     await ctx.reply(data, { parse_mode: "HTML", ...backToMenu() });
   });
 
-  // ─── Handle cancel / fallback ──────────────────────────────
-  bot.action(/^menu$/, async (ctx) => {
-    // already handled above
-  });
-
-  bot.command('test_reports', async (ctx) => {
-    await ctx.reply('🧪 Running scheduled reports manually...');
-    // Daily
+  bot.command("test_reports", async (ctx) => {
+    await ctx.reply("🧪 Running scheduled reports manually...");
     const daily = await generateDailyReport();
-    await ctx.reply(daily, { parse_mode: 'HTML' });
-    // Weekly
+    await ctx.reply(daily, { parse_mode: "HTML" });
     const weekly = await generateWeeklyReport();
-    await ctx.reply(weekly, { parse_mode: 'HTML' });
-    // Monthly
+    await ctx.reply(weekly, { parse_mode: "HTML" });
     const monthly = await generateMonthlyKPIReport();
-    await ctx.reply(monthly, { parse_mode: 'HTML' });
-    // Low stock
-    const stock = await getLowStockAlertMessage();
-    await ctx.reply(stock, { parse_mode: 'HTML' });
-    await ctx.reply('✅ All reports sent.');
+    await ctx.reply(monthly, { parse_mode: "HTML" });
+    await ctx.reply("✅ All reports sent.");
   });
 }

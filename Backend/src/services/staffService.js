@@ -23,11 +23,10 @@ class StaffService {
     if (isNaN(id)) throw new Error("Invalid depot ID");
 
     const name = data?.name?.trim();
-    const email = data?.email?.trim()?.toLowerCase();
+    const email = data?.email?.trim()?.toLowerCase() || null;
     const phone = data?.phone?.trim() || null;
 
     if (!name) throw new Error("Staff name is required");
-    if (!email) throw new Error("Staff email is required");
 
     const depot = await prisma.depot.findUnique({
       where: { id },
@@ -35,8 +34,10 @@ class StaffService {
     });
     if (!depot) throw new Error("Depot not found");
 
-    const existing = await prisma.staff.findUnique({ where: { email } });
-    if (existing) throw new Error("A staff member with this email already exists");
+    if (email) {
+      const existing = await prisma.staff.findUnique({ where: { email } });
+      if (existing) throw new Error("A staff member with this email already exists");
+    }
 
     const staff = await prisma.staff.create({
       data: {
@@ -68,12 +69,13 @@ class StaffService {
       updateData.name = name;
     }
     if (data.email !== undefined) {
-      const email = String(data.email).trim().toLowerCase();
-      if (!email) throw new Error("Staff email is required");
-      const existing = await prisma.staff.findFirst({
-        where: { email, NOT: { id: sId } },
-      });
-      if (existing) throw new Error("A staff member with this email already exists");
+      const email = data.email ? String(data.email).trim().toLowerCase() : null;
+      if (email) {
+        const existing = await prisma.staff.findFirst({
+          where: { email, NOT: { id: sId } },
+        });
+        if (existing) throw new Error("A staff member with this email already exists");
+      }
       updateData.email = email;
     }
     if (data.phone !== undefined) {
