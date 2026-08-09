@@ -1,0 +1,48 @@
+# Keep the production API awake (Render Free sleeps after ~15 min idle).
+# Pings /health every 10 minutes so cold starts are rare.
+#
+# Setup:
+# 1. Push this file to the default branch (main/master).
+# 2. Optional: repo Settings → Secrets → Actions
+#      API_HEALTH_URL = https://your-api.onrender.com/health
+#    If unset, uses the default Render URL below.
+# 3. Actions → Keep API warm → Enable workflow / Run workflow once.
+#
+# Notes:
+# - GitHub cron can drift a few minutes; if cold starts return, use */5
+#   or an external pinger (UptimeRobot).
+# - Disable this workflow after upgrading Render off Free.
+
+name: Keep API warm
+
+on:
+  schedule:
+    # Every 10 minutes (UTC)
+    - cron: '*/10 * * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: keep-api-warm
+  cancel-in-progress: true
+
+jobs:
+  ping:
+    name: Ping /health
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+
+    steps:
+      - name: Health check
+        env:
+          API_HEALTH_URL: ${{ secrets.API_HEALTH_URL }}
+        run: |
+          set -euo pipefail
+          URL="${API_HEALTH_URL:-https://depo-system-tracking.onrender.com/health}"
+          echo "Pinging: $URL"
+          # Allow slow wake-up (cold start) up to 90s
+          curl -fsS --max-time 90 --retry 2 --retry-delay 5 "$URL"
+          echo ""
+          echo "OK $(date -u +%Y-%m-%dT%H:%M:%SZ)"
