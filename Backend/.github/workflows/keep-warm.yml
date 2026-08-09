@@ -1,0 +1,18 @@
+# Discoverability copy — GitHub only runs workflows from the monorepo root:
+#   ../../.github/workflows/keep-warm.yml
+# See PRODUCTION_PERFORMANCE.md
+
+name: Keep API warm (see repo root)
+
+on:
+  workflow_dispatch:
+
+jobs:
+  notice:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Point to active workflow
+        run: |
+          echo "Active keep-warm workflow lives at:"
+          echo "  .github/workflows/keep-warm.yml (repository root)"
+          exit 0

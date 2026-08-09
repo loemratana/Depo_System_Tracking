@@ -57,6 +57,10 @@
     "test": "jest --passWithNoTests --forceExit",
     "prisma:validate": "prisma validate",
     "prisma:generate": "prisma generate",
+    "prisma:migrate:status": "prisma migrate status",
+    "prisma:migrate:deploy": "prisma migrate deploy",
+    "prisma:migrate:status:prod": "node scripts/run-with-env.js .env.production -- npx prisma migrate status",
+    "prisma:migrate:deploy:prod": "node scripts/run-with-env.js .env.production -- npx prisma migrate deploy",
     "ci": "npm run prisma:validate && npm run prisma:generate && node --check src/server.js && npm test"
   }
 }

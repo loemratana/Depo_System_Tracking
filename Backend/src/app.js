@@ -36,7 +36,8 @@ const corsOptions = {
 };
 
 app.use(cors(corsOptions));
-app.set("trust proxy", 0);
+// Render / reverse proxies: trust X-Forwarded-* so rate-limit & IPs work correctly
+app.set('trust proxy', environment.isProduction || process.env.TRUST_PROXY === '1' ? 1 : 0);
 /* ========================
    SECURITY MIDDLEWARE
 ======================== */

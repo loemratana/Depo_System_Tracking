@@ -19,15 +19,26 @@ class Database {
         }
 
         // Create a pg Pool with SSL configuration to fix the "self-signed certificate" error
-        const pool = new Pool({ 
+        const isRemoteDb =
+            env.isProduction ||
+            env.databaseUrl.includes('supabase') ||
+            env.databaseUrl.includes('render') ||
+            env.databaseUrl.includes('pooler');
+
+        const pool = new Pool({
             connectionString: env.databaseUrl,
-            ssl: env.isProduction || env.databaseUrl.includes('supabase') || env.databaseUrl.includes('render') 
-                ? { rejectUnauthorized: false }
-                : false
+            ssl: isRemoteDb ? { rejectUnauthorized: false } : false,
+            // Keep pool small on hosted Postgres (Supabase pooler limits)
+            max: Number(process.env.DB_POOL_MAX || (env.isProduction ? 8 : 10)),
+            idleTimeoutMillis: Number(process.env.DB_POOL_IDLE_MS || 20_000),
+            connectionTimeoutMillis: Number(
+                process.env.DB_POOL_CONNECT_MS || (env.isProduction ? 10_000 : 5_000),
+            ),
+            allowExitOnIdle: true,
         });
 
         // Set this as a fallback for internal Node.js TLS checks if needed
-        if (env.databaseUrl.includes('supabase') || env.databaseUrl.includes('render')) {
+        if (isRemoteDb) {
             process.env.NODE_TLS_REJECT_UNAUTHORIZED = '0';
         }
 

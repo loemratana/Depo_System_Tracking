@@ -309,6 +309,7 @@ Suggested gate: only deploy `main` when Backend CI succeeds.
 |----------|--------|
 | `BACKEND_CI.md` | GitHub Actions CI |
 | `SERVER_CAPACITY.md` | How to calculate CPU / RAM / disk / DB capacity |
+| `MIGRATE_PRODUCTION.md` | Apply Prisma migrations to production DB |
 | `.env.example` | Environment template |
 | `KPI_ARCHITECTURE.md` / `KPI_CALCULATION.md` | Domain logic |
 | `ANALYTICS_DASHBOARD.md` | Analytics cards |

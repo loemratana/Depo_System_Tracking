@@ -4,6 +4,7 @@ node_modules/
 # Environment — keep secrets local; commit only .env.example
 .env
 .env.local
+.env.production
 .env.*.local
 !.env.example
 
