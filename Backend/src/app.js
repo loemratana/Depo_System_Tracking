@@ -15,10 +15,15 @@ import db from './config/db.js';
 import brandRoutes from "./routes/brandRoutes.js";
 import path from 'path';
 import environment from './config/env.js';
+import { stream } from './config/logger.js';
 import reportRoutes from "./routes/reportRoutes.js";
 import kpiSystemRoutes from "./routes/kpiSystemRoutes.js";
 import userRoutes from "./routes/userRoutes.js";
 import telegramRoutes from "./routes/telegramRoutes.js";
+import {
+  metricsHandler,
+  metricsMiddleware,
+} from './middleware/metrics.js';
 
 const app = express();
 
@@ -69,12 +74,23 @@ app.use('/uploads',(req,res,next)=>{
 app.use(compression());
 
 /* ========================
+   METRICS (Prometheus)
+======================== */
+if (environment.metricsEnabled) {
+  app.use(metricsMiddleware);
+  app.get('/metrics', metricsHandler);
+}
+
+/* ========================
    LOGGING
 ======================== */
 app.use(
   morgan(
-    environment.isDevelopment ? 'dev' : 'combined',
-  )
+    environment.isDevelopment && environment.logFormat !== 'json'
+      ? 'dev'
+      : 'combined',
+    { stream },
+  ),
 );
 
 /* ========================
@@ -140,6 +156,7 @@ app.get('/', (req, res) => {
     timestamp: new Date().toISOString(),
     endpoints: {
       health: '/health',
+      metrics: '/metrics',
       api: '/api',
     },
   });

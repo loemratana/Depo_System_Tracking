@@ -1,0 +1,41 @@
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+
+rule_files:
+  - /etc/prometheus/alerts.yml
+
+scrape_configs:
+  - job_name: prometheus
+    static_configs:
+      - targets: ["localhost:9090"]
+
+  # Backend running on the host (npm run dev / npm start)
+  - job_name: depot-api
+    metrics_path: /metrics
+    scrape_interval: 10s
+    static_configs:
+      - targets: ["host.docker.internal:5000"]
+        labels:
+          service: depot-api
+          env: local
+
+  # Production API on Render
+  - job_name: depot-api-render
+    scheme: https
+    metrics_path: /metrics
+    scrape_interval: 30s
+    scrape_timeout: 20s
+    static_configs:
+      - targets: ["depo-system-tracking.onrender.com"]
+        labels:
+          service: depot-api
+          env: production
+
+  # Started with postgres-exporter service
+  - job_name: postgres
+    static_configs:
+      - targets: ["postgres-exporter:9187"]
+        labels:
+          service: postgres
+          env: local

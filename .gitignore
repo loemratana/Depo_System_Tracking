@@ -21,6 +21,7 @@ build/
 
 # Logs & debug
 logs/
+!Backend/logs/.gitkeep
 *.log
 npm-debug.log*
 yarn-debug.log*

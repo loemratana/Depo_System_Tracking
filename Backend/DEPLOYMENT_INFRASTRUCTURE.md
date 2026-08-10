@@ -313,14 +313,36 @@ Suggested gate: only deploy `main` when Backend CI succeeds.
 | `.env.example` | Environment template |
 | `KPI_ARCHITECTURE.md` / `KPI_CALCULATION.md` | Domain logic |
 | `ANALYTICS_DASHBOARD.md` | Analytics cards |
+| `../monitoring/README.md` | Grafana + Prometheus + Loki local stack |
 
 ---
 
-## 15. Quick production checklist
+## 15. Observability (local)
+
+See **`monitoring/README.md`** at the repo root.
+
+| Endpoint / UI | Purpose |
+|---------------|---------|
+| `GET /health` | Liveness + DB check |
+| `GET /metrics` | Prometheus metrics |
+| Grafana `:3001` | Dashboards (metrics + Loki logs) |
+| Prometheus `:9090` | Metric store / targets |
+| Loki `:3100` | Log store |
+
+```powershell
+cd monitoring
+copy .env.example .env
+docker compose up -d
+```
+
+---
+
+## 16. Quick production checklist
 
 - [ ] Backend env vars set on host
 - [ ] `prisma migrate deploy` succeeded
 - [ ] `/health` returns OK
+- [ ] `/metrics` reachable only on private network
 - [ ] Frontend rewrites point to correct API
 - [ ] CORS includes frontend origin
 - [ ] Login + KPI pages work
@@ -328,3 +350,4 @@ Suggested gate: only deploy `main` when Backend CI succeeds.
 - [ ] Telegram test report + Excel arrives
 - [ ] Rate limit / Arcjet enabled
 - [ ] Backups enabled on Supabase
+- [ ] Grafana alerts → Telegram (optional)
