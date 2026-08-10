@@ -81,6 +81,12 @@ model Depot {
   sex           Sex?          @default(male)
   DepotIdNumber String?       @map("Depot_id_number") @db.VarChar(20)
   note          String?
+  /// Depot owner (person on the depot form — separate from sale supervisor)
+  ownerPhotoUrl String?       @map("owner_photo_url") @db.VarChar(500)
+  /// Free-text manager on the depot (not login UserRole.manager)
+  managerName   String?       @map("manager_name") @db.VarChar(100)
+  managerPhone  String?       @map("manager_phone") @db.VarChar(20)
+  managerPhotoUrl String?     @map("manager_photo_url") @db.VarChar(500)
   district      District      @relation(fields: [districtId], references: [id])
   employee      Employee?     @relation(fields: [employeeId], references: [id])
   brand         Brand?        @relation(fields: [brandId], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_brand")

@@ -33,6 +33,20 @@ function monthRange(periodMonth) {
   return { start, end };
 }
 
+/** Optional province filter on BrandDepotMonthKpi via depot relation. */
+function withProvinceOnKpi(where, provinceId) {
+  if (!provinceId) return where;
+  const id = Number(provinceId);
+  if (!id) return where;
+  return {
+    ...where,
+    depot: {
+      ...(where.depot || {}),
+      provinceId: id,
+    },
+  };
+}
+
 function monthLabel(date) {
   return date.toISOString().slice(0, 7);
 }
@@ -242,6 +256,7 @@ class BrandMonthlyKpiService {
 
   async listMonthlyKpis({
     brandId,
+    provinceId,
     month,
     search,
     includeMissing,
@@ -303,6 +318,7 @@ class BrandMonthlyKpiService {
 
       const where = {
         brandId: brandFilter ? brandFilter : { not: null },
+        ...(provinceId ? { provinceId: Number(provinceId) } : {}),
         ...(search?.trim()
           ? { name: { contains: search.trim(), mode: "insensitive" } }
           : {}),
@@ -372,26 +388,29 @@ class BrandMonthlyKpiService {
       return paginateRows(mapped, total);
     }
 
-    const where = {
-      periodMonth: { gte: start, lt: end },
-      ...(brandId ? { brandId: Number(brandId) } : {}),
-      ...(search?.trim()
-        ? {
-            OR: [
-              {
-                depot: {
-                  name: { contains: search.trim(), mode: "insensitive" },
+    const where = withProvinceOnKpi(
+      {
+        periodMonth: { gte: start, lt: end },
+        ...(brandId ? { brandId: Number(brandId) } : {}),
+        ...(search?.trim()
+          ? {
+              OR: [
+                {
+                  depot: {
+                    name: { contains: search.trim(), mode: "insensitive" },
+                  },
                 },
-              },
-              {
-                brand: {
-                  name: { contains: search.trim(), mode: "insensitive" },
+                {
+                  brand: {
+                    name: { contains: search.trim(), mode: "insensitive" },
+                  },
                 },
-              },
-            ],
-          }
-        : {}),
-    };
+              ],
+            }
+          : {}),
+      },
+      provinceId,
+    );
 
     const total = await prisma.brandDepotMonthKpi.count({ where });
     const totalPages = Math.max(1, Math.ceil(total / size));
@@ -813,7 +832,7 @@ class BrandMonthlyKpiService {
     return rows;
   }
 
-  async getBrandMonthlyReport({ brandId, year, month }) {
+  async getBrandMonthlyReport({ brandId, provinceId, year, month }) {
     const now = new Date();
     const selectedYear = Number(year) || now.getFullYear();
     const selectedMonth = Number(month) || now.getMonth() + 1;
@@ -821,10 +840,13 @@ class BrandMonthlyKpiService {
     const { start, end } = monthRange(periodMonth);
 
     const rows = await prisma.brandDepotMonthKpi.findMany({
-      where: {
-        periodMonth: { gte: start, lt: end },
-        ...(brandId ? { brandId: Number(brandId) } : {}),
-      },
+      where: withProvinceOnKpi(
+        {
+          periodMonth: { gte: start, lt: end },
+          ...(brandId ? { brandId: Number(brandId) } : {}),
+        },
+        provinceId,
+      ),
       select: {
         id: true,
         depotId: true,
@@ -879,16 +901,19 @@ class BrandMonthlyKpiService {
     };
   }
 
-  async getBrandYearlyReport({ brandId, year }) {
+  async getBrandYearlyReport({ brandId, provinceId, year }) {
     const selectedYear = Number(year) || new Date().getFullYear();
     const start = utcMonthStart(new Date(Date.UTC(selectedYear, 0, 1)));
     const end = utcMonthEnd(new Date(Date.UTC(selectedYear, 11, 1)));
 
     const rows = await prisma.brandDepotMonthKpi.findMany({
-      where: {
-        periodMonth: { gte: start, lte: end },
-        ...(brandId ? { brandId: Number(brandId) } : {}),
-      },
+      where: withProvinceOnKpi(
+        {
+          periodMonth: { gte: start, lte: end },
+          ...(brandId ? { brandId: Number(brandId) } : {}),
+        },
+        provinceId,
+      ),
       include: {
         brand: { select: { id: true, name: true } },
         depot: { select: { id: true, name: true, code: true } },
@@ -994,12 +1019,13 @@ class BrandMonthlyKpiService {
     };
   }
 
-    async getDashboardBrand({ year, month, brandId } = {}) {
+    async getDashboardBrand({ year, month, brandId, provinceId } = {}) {
     const now = new Date();
     const selectedYear = Number(year) || now.getFullYear();
     const selectedMonth = Number(month) || now.getMonth() + 1;
     const periodMonth = new Date(Date.UTC(selectedYear, selectedMonth - 1, 1));
     const { start, end } = monthRange(periodMonth);
+    const provinceFilter = provinceId ? Number(provinceId) : null;
 
     const brands = await prisma.brand.findMany({
       where: {
@@ -1007,10 +1033,16 @@ class BrandMonthlyKpiService {
       },
       include: {
         depots: {
+          where: provinceFilter ? { provinceId: provinceFilter } : undefined,
           select: { id: true, status: true, expiryDate: true },
         },
         brandMonthKpis: {
-          where: { periodMonth: { gte: start, lt: end } },
+          where: {
+            periodMonth: { gte: start, lt: end },
+            ...(provinceFilter
+              ? { depot: { provinceId: provinceFilter } }
+              : {}),
+          },
           select: {
             depotId: true,
             poActual: true,
@@ -1074,7 +1106,7 @@ class BrandMonthlyKpiService {
    * Actionable dashboard slice: Target vs Actual + attention items
    * for the selected brand/month.
    */
-  async getDashboardInsights({ year, month, brandId, limit = 25 } = {}) {
+  async getDashboardInsights({ year, month, brandId, provinceId, limit = 25 } = {}) {
     const now = new Date();
     const selectedYear = Number(year) || now.getFullYear();
     const selectedMonth = Number(month) || now.getMonth() + 1;
@@ -1085,16 +1117,20 @@ class BrandMonthlyKpiService {
     const periodMonth = new Date(Date.UTC(selectedYear, selectedMonth - 1, 1));
     const { start, end } = monthRange(periodMonth);
     const brandFilter = brandId ? Number(brandId) : null;
+    const provinceFilter = provinceId ? Number(provinceId) : null;
     const maxItems = Math.min(Math.max(Number(limit) || 25, 1), 50);
     const today = new Date();
     today.setHours(0, 0, 0, 0);
 
     const [kpiRows, problemDepots] = await Promise.all([
       prisma.brandDepotMonthKpi.findMany({
-        where: {
-          periodMonth: { gte: start, lt: end },
-          ...(brandFilter ? { brandId: brandFilter } : {}),
-        },
+        where: withProvinceOnKpi(
+          {
+            periodMonth: { gte: start, lt: end },
+            ...(brandFilter ? { brandId: brandFilter } : {}),
+          },
+          provinceFilter,
+        ),
         select: {
           depotId: true,
           brandId: true,
@@ -1109,6 +1145,7 @@ class BrandMonthlyKpiService {
       prisma.depot.findMany({
         where: {
           ...(brandFilter ? { brandId: brandFilter } : { brandId: { not: null } }),
+          ...(provinceFilter ? { provinceId: provinceFilter } : {}),
           OR: [
             { status: "vacancy" },
             { expiryDate: { lt: today } },

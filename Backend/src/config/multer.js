@@ -47,5 +47,12 @@ export const uploadBrandLogo = multer({
   fileFilter,
 });
 
+/** Memory storage for Cloudinary uploads (no local disk write). */
+export const uploadImageMemory = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 5 * 1024 * 1024 },
+  fileFilter,
+});
+
 // Default export kept for existing profile upload imports
 export default uploadProfile;

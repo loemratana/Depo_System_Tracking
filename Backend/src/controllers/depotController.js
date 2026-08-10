@@ -157,7 +157,7 @@ class DepotController {
 
   getSummary = async (req, res) => {
     try {
-      const { brandId, brandIds } = req.query;
+      const { brandId, brandIds, provinceId } = req.query;
       const parsedBrandIds = brandIds
         ? String(brandIds)
             .split(",")
@@ -168,6 +168,7 @@ class DepotController {
       const summary = await depotService.getDepotSummary({
         brandId: brandId ? parseInt(brandId, 10) : undefined,
         brandIds: parsedBrandIds?.length ? parsedBrandIds : undefined,
+        provinceId: provinceId ? parseInt(provinceId, 10) : undefined,
       });
 
       res.status(200).json({ success: true, data: summary });

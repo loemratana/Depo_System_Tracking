@@ -119,6 +119,10 @@ class DepotService {
               data.DepotIdNumber?.trim?.() ||
               data.depotNumber?.trim?.() ||
               null,
+            ownerPhotoUrl: data.ownerPhotoUrl?.trim?.() || null,
+            managerName: data.managerName?.trim?.() || null,
+            managerPhone: data.managerPhone?.trim?.() || null,
+            managerPhotoUrl: data.managerPhotoUrl?.trim?.() || null,
           },
           include: {
             district: { include: { province: true } },
@@ -126,23 +130,12 @@ class DepotService {
           },
         });
 
-        // // ---------- Handle DepotBrands (fixed condition) ----------
-        // if (
-        //   data.brandIds &&
-        //   Array.isArray(data.brandIds) &&
-        //   data.brandIds.length > 0
-        // ) {
-        //   await tx.depotBrand.createMany({
-        //     data: data.brandIds.map((brandId) => ({
-        //       depotId: depot.id,
-        //       brandId: Number(brandId),
-        //       assignedDate: new Date(),
-        //       status: "active",
-        //       provinceId: province.id,
-        //     })),
-        //     skipDuplicates: true,
-        //   });
-        // }
+        if (employeeId && data.saleSupervisorPhotoUrl?.trim?.()) {
+          await tx.employee.update({
+            where: { id: employeeId },
+            data: { images: data.saleSupervisorPhotoUrl.trim() },
+          });
+        }
 
         // ---------- Return depot with brands (optional) ----------
         // Fetch the complete depot with its brand relations
@@ -319,10 +312,18 @@ class DepotService {
       if (data.note !== undefined) {
         updateData.note = data.note?.trim() || null;
       }
-
-
-      console.log("brand updated", updateData);
-
+      if (data.ownerPhotoUrl !== undefined) {
+        updateData.ownerPhotoUrl = data.ownerPhotoUrl?.trim?.() || null;
+      }
+      if (data.managerName !== undefined) {
+        updateData.managerName = data.managerName?.trim?.() || null;
+      }
+      if (data.managerPhone !== undefined) {
+        updateData.managerPhone = data.managerPhone?.trim?.() || null;
+      }
+      if (data.managerPhotoUrl !== undefined) {
+        updateData.managerPhotoUrl = data.managerPhotoUrl?.trim?.() || null;
+      }
 
       // 5. Update depot
       const updatedDepot = await prisma.depot.update({
@@ -333,6 +334,13 @@ class DepotService {
           employee: true,
         },
       });
+
+      if (employeeId && data.saleSupervisorPhotoUrl?.trim?.()) {
+        await prisma.employee.update({
+          where: { id: employeeId },
+          data: { images: data.saleSupervisorPhotoUrl.trim() },
+        });
+      }
 
       logger.info(`Depot updated: ${updatedDepot.code} - ${updatedDepot.name}`);
       return updatedDepot;
@@ -390,6 +398,14 @@ class DepotService {
           createdAt: true,
           expiryDate: true,
           note: true,
+          khmerName: true,
+          dateOfBirth: true,
+          sex: true,
+          DepotIdNumber: true,
+          ownerPhotoUrl: true,
+          managerName: true,
+          managerPhone: true,
+          managerPhotoUrl: true,
           employee: {
             //direct relation (singular)
             select: {
@@ -431,8 +447,8 @@ class DepotService {
         throw new Error(`Depot not found`);
       }
 
-      // Owner is the directly linked employee (could be null)
-      const owner = depot.employee
+      // Sale supervisor = linked Employee (separate from depot owner)
+      const saleSupervisor = depot.employee
         ? {
           id: depot.employee.id,
           khmerName: depot.employee.khmerName,
@@ -440,10 +456,28 @@ class DepotService {
           employeeCode: depot.employee.employeeCode,
           phone: depot.employee.phone,
           email: depot.employee.email,
-          position: depot.employee.position,
+          position: depot.employee.position || "Sale Supervisor",
           images: depot.employee.images,
         }
         : null;
+
+      // Owner = person fields on the depot itself
+      const owner = {
+        khmerName: depot.khmerName,
+        dateOfBirth: depot.dateOfBirth,
+        sex: depot.sex,
+        depotIdNumber: depot.DepotIdNumber,
+        photoUrl: depot.ownerPhotoUrl,
+      };
+
+      const manager =
+        depot.managerName || depot.managerPhone || depot.managerPhotoUrl
+          ? {
+            name: depot.managerName,
+            phone: depot.managerPhone,
+            photoUrl: depot.managerPhotoUrl,
+          }
+          : null;
 
       // Staff from staffs table
       const staffs = (depot.staffs || []).map((s) => ({
@@ -454,12 +488,12 @@ class DepotService {
       }));
 
       // Keep employees as supervisor for backward compatibility
-      const employeesFormatted = owner
+      const employeesFormatted = saleSupervisor
         ? [
           {
-            id: owner.id,
-            name: owner.englishName || owner.khmerName,
-            position: owner.position || "Sale Supervisor",
+            id: saleSupervisor.id,
+            name: saleSupervisor.englishName || saleSupervisor.khmerName,
+            position: saleSupervisor.position || "Sale Supervisor",
             assignmentType: "permanent",
           },
         ]
@@ -489,6 +523,10 @@ class DepotService {
           province: depot.district?.province?.name,
         },
         owner,
+        saleSupervisor,
+        // legacy alias — previously employee was labeled owner
+        supervisor: saleSupervisor,
+        manager,
         brands: depot.brand
           ? [{ id: depot.brand.id, name: depot.brand.name }]
           : [],
@@ -498,6 +536,16 @@ class DepotService {
         counts: {
           staffs: depot._count.staffs,
         },
+        khmerName: depot.khmerName,
+        dateOfBirth: depot.dateOfBirth,
+        sex: depot.sex,
+        DepotIdNumber: depot.DepotIdNumber,
+        depotIdNumber: depot.DepotIdNumber,
+        expiryDate: depot.expiryDate,
+        managerName: depot.managerName,
+        managerPhone: depot.managerPhone,
+        managerPhotoUrl: depot.managerPhotoUrl,
+        ownerPhotoUrl: depot.ownerPhotoUrl,
         timeline,
       };
     } catch (error) {
@@ -507,13 +555,14 @@ class DepotService {
   }
 
   /**
-   * Get depot counts, optionally filtered by brand(s).
+   * Get depot counts, optionally filtered by brand(s) and province.
    * @param {Object} filters
    * @param {number} [filters.brandId]
    * @param {number[]} [filters.brandIds]
+   * @param {number} [filters.provinceId]
    */
   async getDepotSummary(filters = {}) {
-    const { brandId, brandIds } = filters;
+    const { brandId, brandIds, provinceId } = filters;
     const now = new Date();
     const thirtyDaysLater = new Date(now);
     thirtyDaysLater.setDate(now.getDate() + 30);
@@ -523,6 +572,9 @@ class DepotService {
       where.brandId = parseInt(brandId, 10);
     } else if (brandIds?.length) {
       where.brandId = { in: brandIds.map((id) => parseInt(id, 10)) };
+    }
+    if (provinceId) {
+      where.provinceId = parseInt(provinceId, 10);
     }
 
     const [total, vacancy, active, expired, expiringSoon] = await Promise.all([
@@ -895,6 +947,13 @@ class DepotService {
       commune: includeAddress,
       address: true,
       note: true,
+      ownerPhotoUrl: true,
+      managerName: true,
+      managerPhone: true,
+      managerPhotoUrl: true,
+      dateOfBirth: true,
+      sex: true,
+      DepotIdNumber: true,
       district: {
         select: {
           id: true,
@@ -938,7 +997,7 @@ class DepotService {
 
     // Format the response
     const formattedData = depots.map((depot) => {
-      const owner = depot.employee;
+      const saleSupervisor = depot.employee;
       const result = {
         id: depot.id,
         code: depot.code,
@@ -952,15 +1011,41 @@ class DepotService {
         city: depot.district?.province?.name,
         address: depot.address,
         note: depot.note,
-        owner: owner
+        ownerPhotoUrl: depot.ownerPhotoUrl,
+        managerName: depot.managerName,
+        managerPhone: depot.managerPhone,
+        managerPhotoUrl: depot.managerPhotoUrl,
+        dateOfBirth: depot.dateOfBirth,
+        sex: depot.sex,
+        depotIdNumber: depot.DepotIdNumber,
+        // Sale supervisor (linked employee) — kept as `owner` for legacy table columns
+        owner: saleSupervisor
           ? {
-            id: owner.id,
-            name: owner.khmerName || owner.englishName,
-            code: owner.employeeCode,
-            phone: owner.phone,
-            email: owner.email,
-            position: owner.position,
-            image: owner.images,
+            id: saleSupervisor.id,
+            name: saleSupervisor.khmerName || saleSupervisor.englishName,
+            code: saleSupervisor.employeeCode,
+            phone: saleSupervisor.phone,
+            email: saleSupervisor.email,
+            position: saleSupervisor.position || "Sale Supervisor",
+            image: saleSupervisor.images,
+          }
+          : null,
+        saleSupervisor: saleSupervisor
+          ? {
+            id: saleSupervisor.id,
+            name: saleSupervisor.khmerName || saleSupervisor.englishName,
+            code: saleSupervisor.employeeCode,
+            phone: saleSupervisor.phone,
+            email: saleSupervisor.email,
+            position: saleSupervisor.position || "Sale Supervisor",
+            image: saleSupervisor.images,
+          }
+          : null,
+        manager: depot.managerName || depot.managerPhone || depot.managerPhotoUrl
+          ? {
+            name: depot.managerName,
+            phone: depot.managerPhone,
+            photoUrl: depot.managerPhotoUrl,
           }
           : null,
         brand: depot.brand ? { id: depot.brand.id, name: depot.brand.name } : null,
