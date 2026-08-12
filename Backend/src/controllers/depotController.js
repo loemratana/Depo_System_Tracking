@@ -216,6 +216,29 @@ class DepotController {
     }
   };
 
+  uploadOwnerPhoto = async (req, res) => {
+    try {
+      if (!req.file || !req.file.buffer) {
+        return res.status(400).json({ success: false, message: "No file uploaded" });
+      }
+      const depot = await depotService.uploadOwnerPhoto(req.params.id, req.file.buffer);
+      res.json({ success: true, data: depot, message: "Owner photo uploaded successfully" });
+    } catch (error) {
+      logger.error(`Error uploading owner photo: ${error.message}`);
+      res.status(500).json({ success: false, message: error.message });
+    }
+  };
+
+  removeOwnerPhoto = async (req, res) => {
+    try {
+      const depot = await depotService.removeOwnerPhoto(req.params.id);
+      res.json({ success: true, data: depot, message: "Owner photo removed successfully" });
+    } catch (error) {
+      logger.error(`Error removing owner photo: ${error.message}`);
+      res.status(500).json({ success: false, message: error.message });
+    }
+  };
+
   //generate report
 
   getDepotReport = async (req, res, next) => {

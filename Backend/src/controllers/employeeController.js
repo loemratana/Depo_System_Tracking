@@ -204,6 +204,27 @@ class EmployeeController {
     //         res.status(500).json({ success: false, message: error.message });
     //     }
     // }
+
+    async uploadImage(req, res) {
+        try {
+            if (!req.file || !req.file.buffer) {
+                return res.status(400).json({ success: false, message: "No file uploaded" });
+            }
+            const employee = await employeeService.uploadImage(req.params.id, req.file.buffer);
+            res.json({ success: true, data: employee, message: "Employee image uploaded successfully" });
+        } catch (error) {
+            res.status(500).json({ success: false, message: error.message });
+        }
+    }
+
+    async removeImage(req, res) {
+        try {
+            const employee = await employeeService.removeImage(req.params.id);
+            res.json({ success: true, data: employee, message: "Employee image removed successfully" });
+        } catch (error) {
+            res.status(500).json({ success: false, message: error.message });
+        }
+    }
 }
 
 export default new EmployeeController();

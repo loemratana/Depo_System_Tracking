@@ -4,6 +4,7 @@ import authMiddleware from '../middleware/auth.js';
 import multer from 'multer';
 
 const { authenticate, authorize } = authMiddleware;
+import { uploadImageMemory } from '../config/multer.js';
 const upload = multer({ storage: multer.memoryStorage() });
 
 const router = express.Router();
@@ -17,6 +18,9 @@ router.get('/:employeeId/employeeDepotDetails', authenticate, employeeController
 router.post('/', authenticate, employeeController.create);
 router.put('/:id', authenticate, employeeController.update);
 router.delete('/:id', authenticate, employeeController.delete);
+
+router.post('/:id/image', authenticate, uploadImageMemory.single('image'), employeeController.uploadImage);
+router.delete('/:id/image', authenticate, employeeController.removeImage);
 
 
 router.get('/bulk/template', authenticate, employeeController.downloadTemplate);

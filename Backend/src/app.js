@@ -20,6 +20,7 @@ import reportRoutes from "./routes/reportRoutes.js";
 import kpiSystemRoutes from "./routes/kpiSystemRoutes.js";
 import userRoutes from "./routes/userRoutes.js";
 import telegramRoutes from "./routes/telegramRoutes.js";
+import managerRoutes from "./routes/managerRoutes.js";
 import {
   metricsHandler,
   metricsMiddleware,
@@ -121,6 +122,7 @@ app.use('/api/v1/brands', brandRoutes);
 app.use("/api/v1/kpis", kpiSystemRoutes);
 app.use('/api/v1/users', userRoutes);
 app.use('/api/v1/telegram', telegramRoutes);
+app.use('/api/v1/managers', managerRoutes);
 
 
 /* ========================

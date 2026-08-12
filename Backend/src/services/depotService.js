@@ -120,9 +120,7 @@ class DepotService {
               data.depotNumber?.trim?.() ||
               null,
             ownerPhotoUrl: data.ownerPhotoUrl?.trim?.() || null,
-            managerName: data.managerName?.trim?.() || null,
-            managerPhone: data.managerPhone?.trim?.() || null,
-            managerPhotoUrl: data.managerPhotoUrl?.trim?.() || null,
+            managerId: data.managerId ? Number(data.managerId) : null,
           },
           include: {
             district: { include: { province: true } },
@@ -315,14 +313,8 @@ class DepotService {
       if (data.ownerPhotoUrl !== undefined) {
         updateData.ownerPhotoUrl = data.ownerPhotoUrl?.trim?.() || null;
       }
-      if (data.managerName !== undefined) {
-        updateData.managerName = data.managerName?.trim?.() || null;
-      }
-      if (data.managerPhone !== undefined) {
-        updateData.managerPhone = data.managerPhone?.trim?.() || null;
-      }
-      if (data.managerPhotoUrl !== undefined) {
-        updateData.managerPhotoUrl = data.managerPhotoUrl?.trim?.() || null;
+      if (data.managerId !== undefined) {
+        updateData.managerId = data.managerId === null || data.managerId === "" ? null : Number(data.managerId);
       }
 
       // 5. Update depot
@@ -349,6 +341,41 @@ class DepotService {
       throw error;
     }
   }
+  async uploadOwnerPhoto(id, fileBuffer) {
+    try {
+      const numericId = parseInt(id, 10);
+      if (isNaN(numericId)) throw new Error("Invalid depot ID");
+      
+      const { uploadImageBuffer, isCloudinaryConfigured } = await import('../config/cloudinary.js');
+      if (!isCloudinaryConfigured()) throw new Error("Cloudinary not configured");
+
+      const result = await uploadImageBuffer(fileBuffer, { folder: "depot-system/owners" });
+
+      return await prisma.depot.update({
+        where: { id: numericId },
+        data: { ownerPhotoUrl: result.url },
+      });
+    } catch (error) {
+      logger.error(`Failed to upload owner photo for depot: ${id} - ${error.message}`);
+      throw error;
+    }
+  }
+
+  async removeOwnerPhoto(id) {
+    try {
+      const numericId = parseInt(id, 10);
+      if (isNaN(numericId)) throw new Error("Invalid depot ID");
+
+      return await prisma.depot.update({
+        where: { id: numericId },
+        data: { ownerPhotoUrl: null },
+      });
+    } catch (error) {
+      logger.error(`Failed to remove owner photo for depot: ${id} - ${error.message}`);
+      throw error;
+    }
+  }
+
   async delete(id) {
     try {
       // Convert string to integer
@@ -403,9 +430,7 @@ class DepotService {
           sex: true,
           DepotIdNumber: true,
           ownerPhotoUrl: true,
-          managerName: true,
-          managerPhone: true,
-          managerPhotoUrl: true,
+          manager: true,
           employee: {
             //direct relation (singular)
             select: {
@@ -470,14 +495,14 @@ class DepotService {
         photoUrl: depot.ownerPhotoUrl,
       };
 
-      const manager =
-        depot.managerName || depot.managerPhone || depot.managerPhotoUrl
-          ? {
-            name: depot.managerName,
-            phone: depot.managerPhone,
-            photoUrl: depot.managerPhotoUrl,
+      const manager = depot.manager
+        ? {
+            id: depot.manager.id,
+            name: depot.manager.name,
+            phone: depot.manager.phone,
+            photoUrl: depot.manager.photoUrl,
           }
-          : null;
+        : null;
 
       // Staff from staffs table
       const staffs = (depot.staffs || []).map((s) => ({
@@ -542,9 +567,9 @@ class DepotService {
         DepotIdNumber: depot.DepotIdNumber,
         depotIdNumber: depot.DepotIdNumber,
         expiryDate: depot.expiryDate,
-        managerName: depot.managerName,
-        managerPhone: depot.managerPhone,
-        managerPhotoUrl: depot.managerPhotoUrl,
+        managerName: depot.manager?.name || null,
+        managerPhone: depot.manager?.phone || null,
+        managerPhotoUrl: depot.manager?.photoUrl || null,
         ownerPhotoUrl: depot.ownerPhotoUrl,
         timeline,
       };
@@ -948,9 +973,14 @@ class DepotService {
       address: true,
       note: true,
       ownerPhotoUrl: true,
-      managerName: true,
-      managerPhone: true,
-      managerPhotoUrl: true,
+      manager: {
+        select: {
+          id: true,
+          name: true,
+          phone: true,
+          photoUrl: true,
+        },
+      },
       dateOfBirth: true,
       sex: true,
       DepotIdNumber: true,
@@ -1012,9 +1042,10 @@ class DepotService {
         address: depot.address,
         note: depot.note,
         ownerPhotoUrl: depot.ownerPhotoUrl,
-        managerName: depot.managerName,
-        managerPhone: depot.managerPhone,
-        managerPhotoUrl: depot.managerPhotoUrl,
+        managerId: depot.manager?.id || null,
+        managerName: depot.manager?.name || null,
+        managerPhone: depot.manager?.phone || null,
+        managerPhotoUrl: depot.manager?.photoUrl || null,
         dateOfBirth: depot.dateOfBirth,
         sex: depot.sex,
         depotIdNumber: depot.DepotIdNumber,
@@ -1041,11 +1072,12 @@ class DepotService {
             image: saleSupervisor.images,
           }
           : null,
-        manager: depot.managerName || depot.managerPhone || depot.managerPhotoUrl
+        manager: depot.manager
           ? {
-            name: depot.managerName,
-            phone: depot.managerPhone,
-            photoUrl: depot.managerPhotoUrl,
+            id: depot.manager.id,
+            name: depot.manager.name,
+            phone: depot.manager.phone,
+            photoUrl: depot.manager.photoUrl,
           }
           : null,
         brand: depot.brand ? { id: depot.brand.id, name: depot.brand.name } : null,

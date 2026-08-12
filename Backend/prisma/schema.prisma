@@ -30,76 +30,75 @@ model District {
 }
 
 model Employee {
-  id                  Int                  @id @default(autoincrement())
-  employeeCode        String?              @unique @map("employee_code") @db.VarChar(50)
-  position            String?              @db.VarChar(100)
-  phone               String?              @db.VarChar(20)
-  email               String?              @db.VarChar(100)
-  hireDate            DateTime?            @map("hire_date") @db.Date
-  status              EmployeeStatus       @default(active)
-  createdAt           DateTime             @default(now()) @map("created_at")
-  address             String?
-  dateOfBirth         DateTime?            @map("date_of_birth") @db.Date
-  department          String?              @db.VarChar(100)
-  englishName         String?              @map("english_name") @db.VarChar(100)
-  gender              String?
-  images              String?
-  khmerName           String?              @map("khmer_name") @db.VarChar(100)
-  salary              Float?               @db.Real
-  updatedAt           DateTime?            @updatedAt @map("updated_at")
-  remarks             String?
-  depots              Depot[]
-  documents           EmployeeDocument[]
-  kpis                EmployeeKPI[]
-  kpiValues           KpiValue[]
-  user                User?
+  id           Int                @id @default(autoincrement())
+  employeeCode String?            @unique @map("employee_code") @db.VarChar(50)
+  position     String?            @db.VarChar(100)
+  phone        String?            @db.VarChar(20)
+  email        String?            @db.VarChar(100)
+  hireDate     DateTime?          @map("hire_date") @db.Date
+  status       EmployeeStatus     @default(active)
+  createdAt    DateTime           @default(now()) @map("created_at")
+  address      String?
+  dateOfBirth  DateTime?          @map("date_of_birth") @db.Date
+  department   String?            @db.VarChar(100)
+  englishName  String?            @map("english_name") @db.VarChar(100)
+  gender       String?
+  images       String?
+  khmerName    String?            @map("khmer_name") @db.VarChar(100)
+  salary       Float?             @db.Real
+  updatedAt    DateTime?          @updatedAt @map("updated_at")
+  remarks      String?
+  depots       Depot[]
+  documents    EmployeeDocument[]
+  kpis         EmployeeKPI[]
+  kpiValues    KpiValue[]
+  user         User?
 
   @@index([khmerName, englishName], map: "idx_employees_names")
   @@map("employees")
 }
 
 model Depot {
-  id            Int           @id @default(autoincrement())
-  districtId    Int           @map("district_id")
-  name          String        @db.VarChar(100)
-  code          String?       @unique @db.VarChar(50)
-  address       String?
-  phone         String?       @db.VarChar(20)
-  status        DepotStatus   @default(active)
-  createdAt     DateTime      @default(now()) @map("created_at")
-  commune       String?       @db.VarChar(100)
-  employeeId    Int?          @map("employee_id")
-  expiryDate    DateTime?     @map("expiry_date") @db.Timestamptz(6)
-  houseNumber   String?       @map("house_number") @db.VarChar(50)
-  provinceId    Int?          @map("province_id")
-  street        String?       @db.VarChar(100)
-  village       String?       @db.VarChar(100)
-  brandId       Int?          @map("brand_id")
-  assignedAt    DateTime?     @map("assigned_at")
-  khmerName     String?       @map("khmer_name") @db.VarChar(100)
-  dateOfBirth   DateTime?     @map("date_of_birth") @db.Date
-  sex           Sex?          @default(male)
-  DepotIdNumber String?       @map("Depot_id_number") @db.VarChar(20)
-  note          String?
+  id             Int                  @id @default(autoincrement())
+  districtId     Int                  @map("district_id")
+  name           String               @db.VarChar(100)
+  code           String?              @unique @db.VarChar(50)
+  address        String?
+  phone          String?              @db.VarChar(20)
+  status         DepotStatus          @default(active)
+  createdAt      DateTime             @default(now()) @map("created_at")
+  commune        String?              @db.VarChar(100)
+  employeeId     Int?                 @map("employee_id")
+  expiryDate     DateTime?            @map("expiry_date") @db.Timestamptz(6)
+  houseNumber    String?              @map("house_number") @db.VarChar(50)
+  provinceId     Int?                 @map("province_id")
+  street         String?              @db.VarChar(100)
+  village        String?              @db.VarChar(100)
+  brandId        Int?                 @map("brand_id")
+  assignedAt     DateTime?            @map("assigned_at")
+  khmerName      String?              @map("khmer_name") @db.VarChar(100)
+  dateOfBirth    DateTime?            @map("date_of_birth") @db.Date
+  sex            Sex?                 @default(male)
+  DepotIdNumber  String?              @map("Depot_id_number") @db.VarChar(20)
+  note           String?
   /// Depot owner (person on the depot form — separate from sale supervisor)
-  ownerPhotoUrl String?       @map("owner_photo_url") @db.VarChar(500)
-  /// Free-text manager on the depot (not login UserRole.manager)
-  managerName   String?       @map("manager_name") @db.VarChar(100)
-  managerPhone  String?       @map("manager_phone") @db.VarChar(20)
-  managerPhotoUrl String?     @map("manager_photo_url") @db.VarChar(500)
-  district      District      @relation(fields: [districtId], references: [id])
-  employee      Employee?     @relation(fields: [employeeId], references: [id])
-  brand         Brand?        @relation(fields: [brandId], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_brand")
-  province      Province?     @relation(fields: [provinceId], references: [id], map: "fk_depot_province")
-  kpis          EmployeeKPI[]
-  staffs        Staff[]
-  kpiValues     KpiValue[]
+  ownerPhotoUrl  String?              @map("owner_photo_url") @db.VarChar(500)
+  managerId      Int?                 @map("manager_id")
+  district       District             @relation(fields: [districtId], references: [id])
+  employee       Employee?            @relation(fields: [employeeId], references: [id])
+  manager        Manager?             @relation(fields: [managerId], references: [id])
+  brand          Brand?               @relation(fields: [brandId], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_brand")
+  province       Province?            @relation(fields: [provinceId], references: [id], map: "fk_depot_province")
+  kpis           EmployeeKPI[]
+  staffs         Staff[]
+  kpiValues      KpiValue[]
   brandMonthKpis BrandDepotMonthKpi[]
 
   @@index([createdAt], map: "idx_depots_created_at")
   @@index([districtId], map: "idx_depots_district_id")
   @@index([provinceId], map: "idx_depots_province_id")
   @@index([employeeId], map: "idx_depots_employee_id")
+  @@index([managerId], map: "idx_depots_manager_id")
   @@index([name], map: "idx_name_depot")
   @@map("depots")
 }
@@ -115,18 +114,31 @@ model Staff {
   @@map("staffs")
 }
 
+model Manager {
+  id        Int      @id @default(autoincrement())
+  name      String   @db.VarChar(100)
+  phone     String?  @db.VarChar(20)
+  photoUrl  String?  @map("photo_url") @db.VarChar(500)
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  depots Depot[]
+
+  @@map("managers")
+}
+
 model Brand {
-  id          Int         @id @default(autoincrement())
-  name        String      @db.VarChar(100)
-  code        String?     @unique @db.VarChar(50)
-  description String?
-  logoUrl     String?     @map("logo_url") @db.VarChar(500)
-  status      BrandStatus @default(active)
-  createdAt   DateTime    @default(now()) @map("created_at")
-  depots      Depot[]
-  kpiValues   KpiValue[]
+  id                 Int                  @id @default(autoincrement())
+  name               String               @db.VarChar(100)
+  code               String?              @unique @db.VarChar(50)
+  description        String?
+  logoUrl            String?              @map("logo_url") @db.VarChar(500)
+  status             BrandStatus          @default(active)
+  createdAt          DateTime             @default(now()) @map("created_at")
+  depots             Depot[]
+  kpiValues          KpiValue[]
   kpiPackAssignments KpiPackAssignment[]
-  brandMonthKpis BrandDepotMonthKpi[]
+  brandMonthKpis     BrandDepotMonthKpi[]
 
   @@map("brands")
 }
@@ -224,16 +236,16 @@ enum ImportBatchStatus {
 }
 
 model KpiDefinition {
-  id          Int          @id @default(autoincrement())
-  code        String       @unique @db.VarChar(50)
-  name        String       @db.VarChar(150)
+  id          Int           @id @default(autoincrement())
+  code        String        @unique @db.VarChar(50)
+  name        String        @db.VarChar(150)
   description String?
-  unit        String?      @db.VarChar(30)
-  valueType   KpiValueType @default(number) @map("value_type")
-  direction   KpiDirection @default(higher_better)
-  isActive    Boolean      @default(true) @map("is_active")
-  sortOrder   Int          @default(0) @map("sort_order")
-  createdAt   DateTime     @default(now()) @map("created_at")
+  unit        String?       @db.VarChar(30)
+  valueType   KpiValueType  @default(number) @map("value_type")
+  direction   KpiDirection  @default(higher_better)
+  isActive    Boolean       @default(true) @map("is_active")
+  sortOrder   Int           @default(0) @map("sort_order")
+  createdAt   DateTime      @default(now()) @map("created_at")
   values      KpiValue[]
   packItems   KpiPackItem[]
 

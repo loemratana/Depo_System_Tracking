@@ -312,6 +312,44 @@ class EmployeeService {
         }
     }
 
+    async uploadImage(id, fileBuffer) {
+        try {
+            const parsedId = Number(id);
+            if (isNaN(parsedId)) throw new Error("Invalid employee ID");
+            
+            // Assume uploadImageBuffer is imported or we use it here... wait, I need to import it!
+            // I should use a helper or import it.
+            // But wait, the previous `ManagerService` imported it. I need to make sure I import it at the top of `employeeService.js`.
+            const { uploadImageBuffer, isCloudinaryConfigured } = await import('../config/cloudinary.js');
+            if (!isCloudinaryConfigured()) throw new Error("Cloudinary not configured");
+
+            const result = await uploadImageBuffer(fileBuffer, { folder: "depot-system/profiles" });
+            
+            return await prisma.employee.update({
+                where: { id: parsedId },
+                data: { images: result.url },
+            });
+        } catch (error) {
+            logger.error(`EmployeeService uploadImage error for id ${id}:`, error);
+            throw error;
+        }
+    }
+
+    async removeImage(id) {
+        try {
+            const parsedId = Number(id);
+            if (isNaN(parsedId)) throw new Error("Invalid employee ID");
+
+            return await prisma.employee.update({
+                where: { id: parsedId },
+                data: { images: null },
+            });
+        } catch (error) {
+            logger.error(`EmployeeService removeImage error for id ${id}:`, error);
+            throw error;
+        }
+    }
+
     // ========== DELETE (hard delete) ==========
     async delete(id) {
         try {

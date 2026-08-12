@@ -11,6 +11,8 @@ import {
 
 const { authenticate } = authMiddleware;
 
+import { uploadImageMemory } from "../config/multer.js";
+
 const upload = multer({
   storage: multer.memoryStorage(),
   limits: { fileSize: 10 * 1024 * 1024 }, // 10 MB
@@ -75,6 +77,10 @@ router.get("/unassigned", depotController.findDepotNotAssigned);
 router.get("/:id", depotController.getDepotById);
 router.delete("/:id", depotController.deleteDepot);
 router.patch("/:id", depotController.updateDepot);
+
+// Image endpoints
+router.post("/:id/image", uploadImageMemory.single("image"), depotController.uploadOwnerPhoto);
+router.delete("/:id/image", depotController.removeOwnerPhoto);
 
 router.get("/:id/staffs", staffController.listByDepot);
 router.post("/:id/staffs", staffController.create);
