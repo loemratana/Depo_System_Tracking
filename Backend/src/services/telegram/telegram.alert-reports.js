@@ -9,6 +9,7 @@ import {
   getWeeklyReportData,
   getMonthlyKPIData,
 } from './telegram.reports.js';
+import { escapeHtml } from './telegram.formatters.js';
 import {
   generateDailyExcel,
   generateWeeklyExcel,
@@ -56,11 +57,13 @@ function monthStamp() {
   return format(new Date(), 'yyyy-MM');
 }
 
-/** Telegram caption max is 1024 chars */
+/** Telegram caption max is 1024 chars. Cut on a line boundary so an HTML tag never gets split. */
 function asCaption(text, max = 1000) {
   const clean = String(text || '').trim();
   if (clean.length <= max) return clean;
-  return `${clean.slice(0, max - 20)}\n… (see Excel)`;
+  let cut = clean.lastIndexOf('\n', max - 20);
+  if (cut < max * 0.5) cut = max - 20;
+  return `${clean.slice(0, cut)}\n… (see Excel)`;
 }
 
 async function loadDepotsForLicense() {

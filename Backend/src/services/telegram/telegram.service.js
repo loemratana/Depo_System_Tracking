@@ -37,11 +37,14 @@ class TelegramService {
     const buffer = Buffer.isBuffer(documentBuffer)
       ? documentBuffer
       : Buffer.from(documentBuffer);
-    // Telegram caption hard limit is 1024
-    const safeCaption =
-      String(caption || '').length > 1024
-        ? `${String(caption).slice(0, 1000)}\n… (see Excel)`
-        : String(caption || '');
+    // Telegram caption hard limit is 1024; cut on a line boundary so an HTML tag never gets split
+    const rawCaption = String(caption || '');
+    let safeCaption = rawCaption;
+    if (rawCaption.length > 1024) {
+      let cut = rawCaption.lastIndexOf('\n', 1000);
+      if (cut < 500) cut = 1000;
+      safeCaption = `${rawCaption.slice(0, cut)}\n… (see Excel)`;
+    }
 
     const errors = [];
     let sent = 0;
