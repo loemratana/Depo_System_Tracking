@@ -20,7 +20,7 @@ export const DEFAULT_ASSESSMENT_CRITERIA = [
   },
   {
     code: "VISIT",
-    labelKm: "ពេលវេលាចុះមើលកូនចៅ",
+    labelKm: "ពេលវេលាចុះមើលកូនចៅឬអត់",
     labelEn: "Time Visiting / Overseeing Staff",
     category: "behavioral",
     isStructural: false,
@@ -38,7 +38,7 @@ export const DEFAULT_ASSESSMENT_CRITERIA = [
   },
   {
     code: "WAREHOUSE",
-    labelKm: "ភាពគ្រប់គ្រាន់នៃឃ្លាំង",
+    labelKm: "មានឃ្លាំងគ្រប់គ្រាន់ឬអត់?",
     labelEn: "Warehouse Sufficiency",
     category: "objective",
     isStructural: true,
@@ -56,7 +56,7 @@ export const DEFAULT_ASSESSMENT_CRITERIA = [
   },
   {
     code: "ADMIN",
-    labelKm: "មាន Admin",
+    labelKm: "មាន Admin​​​ ឬអត់?",
     labelEn: "Has Admin Staff",
     category: "objective",
     isStructural: false,
@@ -65,7 +65,7 @@ export const DEFAULT_ASSESSMENT_CRITERIA = [
   },
   {
     code: "SKILL",
-    labelKm: "ជំនាញកែច្នៃរបស់បុគ្គលិក",
+    labelKm: "ជំនាញពូកែរបស់បុគ្គលិក",
     labelEn: "Staff Processing Skill",
     category: "subjective",
     isStructural: false,
@@ -74,7 +74,7 @@ export const DEFAULT_ASSESSMENT_CRITERIA = [
   },
   {
     code: "LEADERSHIP",
-    labelKm: "ភាពជាអ្នកឈ្នះរបស់មេឃ្លាំង",
+    labelKm: "មេពូកែឬអត់​ មានភាពជាអ្នកឈ្នះឬអត់?",
     labelEn: "Warehouse Head Leadership",
     category: "subjective",
     isStructural: false,
@@ -83,7 +83,7 @@ export const DEFAULT_ASSESSMENT_CRITERIA = [
   },
   {
     code: "OPTIMISM",
-    labelKm: "សុទិដ្ឋិនិយមដេប៉ូ",
+    labelKm: "សុច្ចរិតភាពដេប៉ូ",
     labelEn: "Depot Optimism",
     category: "subjective",
     isStructural: false,
@@ -93,7 +93,7 @@ export const DEFAULT_ASSESSMENT_CRITERIA = [
   },
   {
     code: "ABOVE_OPTIMISM",
-    labelKm: "សុទិដ្ឋិនិយមលើសដេប៉ូ",
+    labelKm: "សុច្ចរិតភាពស៊ែលដេប៉ូ",
     labelEn: "Above-Depot Optimism",
     category: "subjective",
     isStructural: false,
