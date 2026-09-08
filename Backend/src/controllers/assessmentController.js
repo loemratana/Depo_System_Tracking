@@ -81,7 +81,7 @@ class AssessmentController {
 
   createAssessment = async (req, res, next) => {
     try {
-      const { depotId, cycleId, assessmentDate } = req.body;
+      const { depotId, cycleId, assessmentDate, evaluatorName } = req.body;
       if (!depotId || !cycleId || !assessmentDate) {
         return res.status(400).json({
           success: false,
@@ -93,6 +93,10 @@ class AssessmentController {
         cycleId,
         assessmentDate,
         evaluatorId: req.user.id,
+        // Free-typed name of whoever actually performed the evaluation
+        // (may not have a login of their own); falls back to the account
+        // username when not given.
+        evaluatorName,
       });
       res.status(201).json({ success: true, data });
     } catch (error) {

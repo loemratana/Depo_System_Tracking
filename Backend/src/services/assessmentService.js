@@ -189,7 +189,13 @@ class AssessmentService {
     });
   }
 
-  async createAssessment({ depotId, cycleId, evaluatorId, assessmentDate }) {
+  async createAssessment({
+    depotId,
+    cycleId,
+    evaluatorId,
+    evaluatorName,
+    assessmentDate,
+  }) {
     await this.ensureCriteriaCatalog();
     const criteria = await prisma.assessmentCriterion.findMany({
       where: { isActive: true },
@@ -201,6 +207,7 @@ class AssessmentService {
           depotId: Number(depotId),
           cycleId: Number(cycleId),
           evaluatorId: Number(evaluatorId),
+          evaluatorName: evaluatorName?.trim() || null,
           assessmentDate: new Date(assessmentDate),
           status: "draft",
           items: {

@@ -45,6 +45,12 @@ export const createAssessmentValidator = [
   body("assessmentDate")
     .isISO8601()
     .withMessage("assessmentDate must be a valid date"),
+  body("evaluatorName")
+    .optional({ nullable: true })
+    .isString()
+    .trim()
+    .isLength({ max: 150 })
+    .withMessage("evaluatorName must be at most 150 characters"),
   validate,
 ];
 

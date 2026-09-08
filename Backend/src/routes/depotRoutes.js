@@ -71,6 +71,7 @@ router.post("/report", depotController.getDepotReport);
 router.post("/", createDepotValidator, depotController.createDepot);
 router.get("/", depotController.getAllDepots);
 router.get("/counts", depotController.getCounts);
+router.get("/counts-by-brand", depotController.getCountsByBrand);
 router.get("/summary", depotController.getSummary);
 
 router.get("/unassigned", depotController.findDepotNotAssigned);

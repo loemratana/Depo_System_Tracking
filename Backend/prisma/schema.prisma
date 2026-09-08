@@ -430,6 +430,10 @@ model DepotAssessment {
   depotId              Int                    @map("depot_id")
   cycleId              Int                    @map("cycle_id")
   evaluatorId          Int                    @map("evaluator_id")
+  /// Free-typed evaluator name shown in place of the account username
+  /// (evaluatorId stays the logged-in user who created/owns the record for
+  /// permissions and audit; this is display-only and not tied to a User row).
+  evaluatorName        String?                @map("evaluator_name") @db.VarChar(150)
   status               DepotAssessmentStatus  @default(draft)
   version              Int                    @default(1)
   isSuperseded         Boolean                @default(false) @map("is_superseded")

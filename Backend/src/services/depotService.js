@@ -625,6 +625,31 @@ class DepotService {
     return this.getDepotSummary();
   }
 
+  /**
+   * Depot counts grouped by brand, computed in the DB (not a paginated
+   * fetch) so the number is correct no matter how many depots a brand has.
+   */
+  async getDepotCountsByBrand() {
+    const rows = await prisma.depot.groupBy({
+      by: ["brandId"],
+      _count: { id: true },
+    });
+
+    const byBrandId = {};
+    let unassigned = 0;
+    let total = 0;
+    for (const row of rows) {
+      const count = row._count.id;
+      total += count;
+      if (row.brandId == null) {
+        unassigned += count;
+      } else {
+        byBrandId[row.brandId] = count;
+      }
+    }
+    return { total, unassigned, byBrandId };
+  }
+
 
   async getDepotsGroupByProvince(filters) {
     try {
@@ -812,7 +837,7 @@ class DepotService {
     filters = {},
   }) {
     const safePage = Math.max(1, Number(page) || 1);
-    const safePageSize = Math.min(1000, Math.max(1, Number(pageSize) || 20));
+    const safePageSize = Math.min(5000, Math.max(1, Number(pageSize) || 20));
     const skip = (safePage - 1) * safePageSize;
     const orderBy = sortBy === "id"
       ? { id: sortOrder }

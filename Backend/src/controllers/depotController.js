@@ -155,6 +155,19 @@ class DepotController {
     }
   }
 
+  getCountsByBrand = async (req, res) => {
+    try {
+      const data = await depotService.getDepotCountsByBrand();
+      res.status(200).json({ success: true, data });
+    } catch (error) {
+      logger.error(`Error fetching depot counts by brand: ${error.message}`);
+      res.status(500).json({
+        success: false,
+        message: error.message || "Failed to fetch depot counts by brand",
+      });
+    }
+  };
+
   getSummary = async (req, res) => {
     try {
       const { brandId, brandIds, provinceId } = req.query;
