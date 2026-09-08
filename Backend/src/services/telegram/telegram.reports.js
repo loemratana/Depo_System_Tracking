@@ -47,22 +47,23 @@ function poStatus(poPercent) {
 // ──────────────────────────────────────────────────────────────
 
 /** Daily = month-to-date PO / attention snapshot */
-export async function getDailyReportData() {
+export async function getDailyReportData({ brandId } = {}) {
   const { year, month, periodLabel } = currentMonthParams();
   const insights = await brandMonthlyKpiService.getDashboardInsights({
     year,
     month,
+    brandId,
     limit: 25,
   });
   return { periodLabel, ...insights };
 }
 
 /** Weekly = employee PO % rankings for current month */
-export async function getWeeklyReportData() {
+export async function getWeeklyReportData({ brandId } = {}) {
   const { fromDate, toDate, periodLabel } = currentMonthParams();
   const [summary, rankings] = await Promise.all([
-    kpiSystemService.getSummary({ fromDate, toDate }),
-    kpiSystemService.getRankings({ fromDate, toDate }),
+    kpiSystemService.getSummary({ fromDate, toDate, brandId }),
+    kpiSystemService.getRankings({ fromDate, toDate, brandId }),
   ]);
   return {
     periodLabel,
@@ -74,11 +75,12 @@ export async function getWeeklyReportData() {
 }
 
 /** Monthly = depot × brand KPI scorecard */
-export async function getMonthlyKPIData() {
+export async function getMonthlyKPIData({ brandId } = {}) {
   const { year, month, periodLabel } = currentMonthParams();
   const report = await brandMonthlyKpiService.getBrandMonthlyReport({
     year,
     month,
+    brandId,
   });
 
   const rows = (report.rows || []).map((row) => ({
@@ -114,15 +116,16 @@ export async function getMonthlyKPIData() {
   };
 }
 
-export async function getEmployeePerformance(employeeId) {
+export async function getEmployeePerformance(employeeId, { brandId } = {}) {
   const { fromDate, toDate, periodLabel, monthKey } = currentMonthParams();
   const id = Number(employeeId);
 
   const [rankings, wide] = await Promise.all([
-    kpiSystemService.getRankings({ fromDate, toDate }),
+    kpiSystemService.getRankings({ fromDate, toDate, brandId }),
     kpiSystemService.getWideMonth({
       month: monthKey,
       employeeId: id,
+      brandId,
     }),
   ]);
 
@@ -159,8 +162,8 @@ export async function getEmployeePerformance(employeeId) {
 // TEXT REPORTS
 // ──────────────────────────────────────────────────────────────
 
-export async function generateDailyReport() {
-  const data = await getDailyReportData();
+export async function generateDailyReport({ brandId } = {}) {
+  const data = await getDailyReportData({ brandId });
   const now = new Date().toLocaleString('en-US', {
     hour: '2-digit',
     minute: '2-digit',
@@ -196,8 +199,8 @@ export async function generateDailyReport() {
   return msg;
 }
 
-export async function generateWeeklyReport() {
-  const data = await getWeeklyReportData();
+export async function generateWeeklyReport({ brandId } = {}) {
+  const data = await getWeeklyReportData({ brandId });
   const now = new Date().toLocaleString('en-US', {
     hour: '2-digit',
     minute: '2-digit',
@@ -239,8 +242,8 @@ export async function generateWeeklyReport() {
   return msg;
 }
 
-export async function generateMonthlyKPIReport() {
-  const data = await getMonthlyKPIData();
+export async function generateMonthlyKPIReport({ brandId } = {}) {
+  const data = await getMonthlyKPIData({ brandId });
   const now = new Date().toLocaleString('en-US', {
     hour: '2-digit',
     minute: '2-digit',

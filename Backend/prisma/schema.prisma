@@ -93,6 +93,7 @@ model Depot {
   staffs         Staff[]
   kpiValues      KpiValue[]
   brandMonthKpis BrandDepotMonthKpi[]
+  assessments    DepotAssessment[]
 
   @@index([createdAt], map: "idx_depots_created_at")
   @@index([districtId], map: "idx_depots_district_id")
@@ -139,8 +140,23 @@ model Brand {
   kpiValues          KpiValue[]
   kpiPackAssignments KpiPackAssignment[]
   brandMonthKpis     BrandDepotMonthKpi[]
+  telegramChats      TelegramChat[]
 
   @@map("brands")
+}
+
+model TelegramChat {
+  id        Int      @id @default(autoincrement())
+  chatId    String   @unique @map("chat_id") @db.VarChar(50)
+  brandId   Int      @map("brand_id")
+  isActive  Boolean  @default(true) @map("is_active")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+  brand     Brand    @relation(fields: [brandId], references: [id], onDelete: Cascade)
+
+  @@index([brandId])
+  @@index([brandId, isActive])
+  @@map("telegram_chats")
 }
 
 model User {
@@ -155,8 +171,32 @@ model User {
   refreshToken RefreshToken[]
   reports      Report[]
   employee     Employee?      @relation(fields: [employeeId], references: [id])
+  assessmentsEvaluated DepotAssessment[]      @relation("AssessmentEvaluator")
+  assessmentAuditEvents AssessmentAuditEvent[] @relation("AssessmentAuditActor")
 
   @@map("users")
+}
+
+model Permission {
+  id          Int              @id @default(autoincrement())
+  code        String           @unique @db.VarChar(100)
+  description String?
+  createdAt   DateTime         @default(now()) @map("created_at")
+  roles       RolePermission[]
+
+  @@map("permissions")
+}
+
+model RolePermission {
+  id           Int        @id @default(autoincrement())
+  role         UserRole
+  permissionId Int        @map("permission_id")
+  createdAt    DateTime   @default(now()) @map("created_at")
+  permission   Permission @relation(fields: [permissionId], references: [id], onDelete: Cascade)
+
+  @@unique([role, permissionId])
+  @@index([role])
+  @@map("role_permissions")
 }
 
 model Report {
@@ -353,6 +393,142 @@ model BrandDepotMonthKpi {
   @@index([brandId, periodMonth], map: "idx_brand_depot_month_kpis_brand_period")
   @@index([depotId, periodMonth], map: "idx_brand_depot_month_kpis_depot_period")
   @@map("brand_depot_month_kpis")
+}
+
+// ── Depot Assessment ──────────────────────────────────────
+
+model AssessmentCycle {
+  id          Int                 @id @default(autoincrement())
+  type        AssessmentCycleType
+  label       String              @db.VarChar(100)
+  periodStart DateTime            @map("period_start") @db.Date
+  periodEnd   DateTime            @map("period_end") @db.Date
+  createdAt   DateTime            @default(now()) @map("created_at")
+  assessments DepotAssessment[]
+
+  @@map("assessment_cycles")
+}
+
+model AssessmentCriterion {
+  id                 Int                          @id @default(autoincrement())
+  code               String                       @unique @db.VarChar(50)
+  labelKm            String                       @map("label_km")
+  labelEn            String                       @map("label_en")
+  category           AssessmentCriterionCategory
+  isStructural       Boolean                      @default(false) @map("is_structural")
+  isComparable       Boolean                      @default(true) @map("is_comparable")
+  needsClarification Boolean                      @default(false) @map("needs_clarification")
+  sortOrder          Int                          @default(0) @map("sort_order")
+  isActive           Boolean                      @default(true) @map("is_active")
+  items              DepotAssessmentItem[]
+
+  @@map("assessment_criteria")
+}
+
+model DepotAssessment {
+  id                   Int                    @id @default(autoincrement())
+  depotId              Int                    @map("depot_id")
+  cycleId              Int                    @map("cycle_id")
+  evaluatorId          Int                    @map("evaluator_id")
+  status               DepotAssessmentStatus  @default(draft)
+  version              Int                    @default(1)
+  isSuperseded         Boolean                @default(false) @map("is_superseded")
+  reopenedFromId       Int?                   @unique @map("reopened_from_id")
+  reopenReason         String?                @map("reopen_reason")
+  assessmentDate       DateTime               @map("assessment_date") @db.Date
+  submittedAt          DateTime?              @map("submitted_at")
+  finalizedAt          DateTime?              @map("finalized_at")
+  overallScore         Decimal?               @map("overall_score") @db.Decimal(5, 2)
+  ourWinsCount         Int                    @default(0) @map("our_wins_count")
+  competitorWinsCount  Int                    @default(0) @map("competitor_wins_count")
+  notComparedCount     Int                    @default(0) @map("not_compared_count")
+  qualificationStatus  QualificationStatus?   @map("qualification_status")
+  qualificationReason  String?                @map("qualification_reason")
+  createdAt            DateTime               @default(now()) @map("created_at")
+  updatedAt            DateTime?              @updatedAt @map("updated_at")
+
+  depot        Depot                  @relation(fields: [depotId], references: [id])
+  cycle        AssessmentCycle        @relation(fields: [cycleId], references: [id])
+  evaluator    User                   @relation("AssessmentEvaluator", fields: [evaluatorId], references: [id])
+  reopenedFrom DepotAssessment?       @relation("AssessmentReopen", fields: [reopenedFromId], references: [id])
+  reopenedInto DepotAssessment?       @relation("AssessmentReopen")
+  items        DepotAssessmentItem[]
+  auditEvents  AssessmentAuditEvent[]
+
+  @@index([depotId, cycleId], map: "idx_depot_assessments_depot_cycle")
+  @@index([cycleId], map: "idx_depot_assessments_cycle_id")
+  @@index([evaluatorId], map: "idx_depot_assessments_evaluator_id")
+  @@index([status], map: "idx_depot_assessments_status")
+  @@map("depot_assessments")
+}
+
+model DepotAssessmentItem {
+  id           Int                  @id @default(autoincrement())
+  assessmentId Int                  @map("assessment_id")
+  criterionId  Int                  @map("criterion_id")
+  score        Int?
+  result       AssessmentItemResult @default(none)
+  remarks      String?
+
+  assessment DepotAssessment     @relation(fields: [assessmentId], references: [id], onDelete: Cascade)
+  criterion  AssessmentCriterion @relation(fields: [criterionId], references: [id])
+
+  @@unique([assessmentId, criterionId], map: "depot_assessment_items_assessment_criterion_key")
+  @@index([criterionId], map: "idx_depot_assessment_items_criterion_id")
+  @@map("depot_assessment_items")
+}
+
+model AssessmentAuditEvent {
+  id           Int                   @id @default(autoincrement())
+  assessmentId Int                   @map("assessment_id")
+  action       AssessmentAuditAction
+  actorId      Int                   @map("actor_id")
+  note         String?
+  createdAt    DateTime              @default(now()) @map("created_at")
+
+  assessment DepotAssessment @relation(fields: [assessmentId], references: [id], onDelete: Cascade)
+  actor      User            @relation("AssessmentAuditActor", fields: [actorId], references: [id])
+
+  @@index([assessmentId], map: "idx_assessment_audit_events_assessment_id")
+  @@map("assessment_audit_events")
+}
+
+enum AssessmentCycleType {
+  mid_year
+  year_end
+  ad_hoc
+}
+
+enum AssessmentCriterionCategory {
+  objective
+  subjective
+  behavioral
+}
+
+enum DepotAssessmentStatus {
+  draft
+  submitted
+  finalized
+}
+
+enum AssessmentItemResult {
+  our_side
+  competitor
+  none
+}
+
+enum QualificationStatus {
+  qualified
+  needs_review
+  not_qualified
+}
+
+enum AssessmentAuditAction {
+  created
+  submitted
+  finalized
+  reopened
+  edited
 }
 
 enum Sex {

@@ -1,5 +1,6 @@
 // src/services/telegram/telegram.commands.js
 import { telegramService } from "./telegram.service.js";
+import { chatAuthMiddleware } from "./telegram.auth.js";
 import {
   generateDailyReport,
   generateWeeklyReport,
@@ -25,12 +26,18 @@ export function setupCommands() {
   const bot = telegramService.getBot();
   if (!bot) return;
 
+  // Every command/action below runs only for chats registered in
+  // TelegramChat (isActive = true). ctx.state.brandId is the ONLY source of
+  // brand scoping for everything that follows — never derive it from
+  // command arguments.
+  bot.use(chatAuthMiddleware());
+
   // ─── /start ────────────────────────────────────────────────
   bot.command("start", async (ctx) => {
     const welcome = `
 👋 Welcome to the <b>Depot Management Bot</b>!
 
-I provide <b>PO / KPI</b> depot performance snapshots and employee rankings — same data as KPI Management.
+I provide <b>PO / KPI</b> depot performance snapshots and employee rankings for <b>${ctx.state.brandName || "your brand"}</b> — same data as KPI Management.
 
 Use the buttons below, or type /help for commands.
     `;
@@ -120,26 +127,26 @@ Use the buttons below, or type /help for commands.
 
   // ─── Generate reports (text) ──────────────────────────────
   bot.action("daily_text", async (ctx) => {
-    const report = await generateDailyReport();
+    const report = await generateDailyReport({ brandId: ctx.state.brandId });
     await ctx.editMessageText(report, { parse_mode: "HTML", ...backToMenu() });
     await ctx.answerCbQuery();
   });
 
   bot.action("weekly_text", async (ctx) => {
-    const report = await generateWeeklyReport();
+    const report = await generateWeeklyReport({ brandId: ctx.state.brandId });
     await ctx.editMessageText(report, { parse_mode: "HTML", ...backToMenu() });
     await ctx.answerCbQuery();
   });
 
   bot.action("monthly_text", async (ctx) => {
-    const report = await generateMonthlyKPIReport();
+    const report = await generateMonthlyKPIReport({ brandId: ctx.state.brandId });
     await ctx.editMessageText(report, { parse_mode: "HTML", ...backToMenu() });
     await ctx.answerCbQuery();
   });
 
   // ─── Generate reports (Excel) ──────────────────────────────
   bot.action("daily_excel", async (ctx) => {
-    const data = await getDailyReportData();
+    const data = await getDailyReportData({ brandId: ctx.state.brandId });
     const buffer = await generateDailyExcel(data);
     await ctx.replyWithDocument(
       {
@@ -153,7 +160,7 @@ Use the buttons below, or type /help for commands.
   });
 
   bot.action("weekly_excel", async (ctx) => {
-    const data = await getWeeklyReportData();
+    const data = await getWeeklyReportData({ brandId: ctx.state.brandId });
     const buffer = await generateWeeklyExcel(data);
     await ctx.replyWithDocument(
       {
@@ -167,7 +174,7 @@ Use the buttons below, or type /help for commands.
   });
 
   bot.action("monthly_excel", async (ctx) => {
-    const data = await getMonthlyKPIData();
+    const data = await getMonthlyKPIData({ brandId: ctx.state.brandId });
     const buffer = await generateMonthlyKPIExcel(data);
     await ctx.replyWithDocument(
       {
@@ -182,17 +189,17 @@ Use the buttons below, or type /help for commands.
 
   // ─── Text commands ─────────────────────────────────────────
   bot.command("daily", async (ctx) => {
-    const report = await generateDailyReport();
+    const report = await generateDailyReport({ brandId: ctx.state.brandId });
     await ctx.reply(report, { parse_mode: "HTML", ...backToMenu() });
   });
 
   bot.command("weekly", async (ctx) => {
-    const report = await generateWeeklyReport();
+    const report = await generateWeeklyReport({ brandId: ctx.state.brandId });
     await ctx.reply(report, { parse_mode: "HTML", ...backToMenu() });
   });
 
   bot.command("monthly", async (ctx) => {
-    const report = await generateMonthlyKPIReport();
+    const report = await generateMonthlyKPIReport({ brandId: ctx.state.brandId });
     await ctx.reply(report, { parse_mode: "HTML", ...backToMenu() });
   });
 
@@ -209,17 +216,21 @@ Use the buttons below, or type /help for commands.
       await ctx.reply("Invalid employee ID.", { ...backToMenu() });
       return;
     }
-    const data = await getEmployeePerformance(empId);
+    // brandId comes from the authorized chat, never from the command text —
+    // an employee outside this chat's brand yields "no records found" below,
+    // not another brand's data.
+    const data = await getEmployeePerformance(empId, { brandId: ctx.state.brandId });
     await ctx.reply(data, { parse_mode: "HTML", ...backToMenu() });
   });
 
   bot.command("test_reports", async (ctx) => {
+    const { brandId } = ctx.state;
     await ctx.reply("🧪 Running scheduled reports manually...");
-    const daily = await generateDailyReport();
+    const daily = await generateDailyReport({ brandId });
     await ctx.reply(daily, { parse_mode: "HTML" });
-    const weekly = await generateWeeklyReport();
+    const weekly = await generateWeeklyReport({ brandId });
     await ctx.reply(weekly, { parse_mode: "HTML" });
-    const monthly = await generateMonthlyKPIReport();
+    const monthly = await generateMonthlyKPIReport({ brandId });
     await ctx.reply(monthly, { parse_mode: "HTML" });
     await ctx.reply("✅ All reports sent.");
   });

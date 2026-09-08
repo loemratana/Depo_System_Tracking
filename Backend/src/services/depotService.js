@@ -151,7 +151,7 @@ class DepotService {
 
       return result;
     } catch (error) {
-      console.error("Error creating depot:", error);
+      logger.error("Error creating depot", { err: error });
       throw error;
     }
   }
@@ -1542,6 +1542,7 @@ class DepotService {
         province: true,
         district: true,
         brand: true,
+        employee: true,
       },
       orderBy: {createdAt: 'desc'},
     });
@@ -1549,8 +1550,11 @@ class DepotService {
     const mapped = depots.map((d) => ({
       code: d.code || '—',
       name: d.name,
+      brandName: d.brand?.name || '—',
       provinceName: d.province?.name || '—',
       districtName: d.district?.name || '—',
+      ownerName: d.khmerName || '—',
+      saleSupervisorName: d.employee?.englishName || d.employee?.khmerName || '—',
       status: d.status,
       expiryDate: d.expiryDate ? new Date(d.expiryDate).toLocaleDateString('en-GB') : '—',
     }));

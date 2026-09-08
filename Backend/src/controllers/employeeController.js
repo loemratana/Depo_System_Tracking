@@ -131,7 +131,7 @@ class EmployeeController {
             );
             res.send(buffer);
         } catch (error) {
-            console.error(error);
+            logger.error("Failed to generate employee template", { err: error });
             res.status(500).json({success: false, message: error.message});
         }
     }
@@ -147,7 +147,7 @@ class EmployeeController {
             const result = await employeeService.verifyImport(req.file.buffer);
             res.json({success: true, ...result});
         } catch (error) {
-            console.error(error);
+            logger.error("Failed to verify employee import file", { err: error });
             res.status(500).json({success: false, message: error.message});
         }
     }
@@ -173,7 +173,10 @@ class EmployeeController {
                 ...result,
             });
         } catch (error) {
-            console.error(error);
+            logger.error("Employee import failed", {
+                err: error,
+                action: "employee.bulk_import.failed",
+            });
             res.status(400).json({success: false, message: error.message});
         }
     }

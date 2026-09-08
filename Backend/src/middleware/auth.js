@@ -1,6 +1,8 @@
 import jwtConfig from '../config/jwt.js';
 import logger from '../config/logger.js';
 import { prisma } from '../config/db.js';
+import { setContextUserId } from '../config/requestContext.js';
+import permissionService from '../services/permissionService.js';
 
 
 const authenticate = async (req, res, next) => {
@@ -73,6 +75,7 @@ const authenticate = async (req, res, next) => {
 
         req.user = user;
         req.accessToken = token;
+        setContextUserId(user.id);
 
         next();
     }
@@ -110,9 +113,10 @@ const authorize = (...roles) => {
     };
 };
 
-// Permission middleware
-const hasPermission = (permission) => {
-    return (req, res, next) => {
+// Permission middleware — checks the requesting user's role against the
+// role_permissions table (admin always passes; see permissionService.js)
+const hasPermission = (permissionCode) => {
+    return async (req, res, next) => {
         if (!req.user) {
             return res.status(401).json({
                 success: false,
@@ -120,22 +124,24 @@ const hasPermission = (permission) => {
             });
         }
 
-        const permissions = {
-            ADMIN: ['*'],
-            USER: ['read', 'create'],
-            EMPLOYEE: ['read:own', 'update:own']
-        };
+        try {
+            const allowed = await permissionService.roleHasPermission(req.user.role, permissionCode);
+            if (allowed) {
+                return next();
+            }
 
-        const userPermissions = permissions[req.user.role] || [];
-
-        if (userPermissions.includes('*') || userPermissions.includes(permission)) {
-            return next();
+            return res.status(403).json({
+                success: false,
+                error: 'No permission',
+                message: `Missing permission: ${permissionCode}`
+            });
+        } catch (error) {
+            logger.error('Permission check error:', error);
+            return res.status(500).json({
+                success: false,
+                error: 'Permission check failed'
+            });
         }
-
-        return res.status(403).json({
-            success: false,
-            error: 'No permission'
-        });
     };
 };
 

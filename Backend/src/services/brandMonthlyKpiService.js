@@ -114,7 +114,11 @@ class BrandMonthlyKpiService {
         },
         brand: { select: { id: true, name: true } },
         district: {
-          select: { name: true, province: { select: { name: true } } },
+          select: {
+            id: true,
+            name: true,
+            province: { select: { id: true, name: true } },
+          },
         },
       },
     });
@@ -166,7 +170,18 @@ class BrandMonthlyKpiService {
 
     for (const metric of metrics) {
       const def = defMap[metric.code];
-      if (!def || metric.actualValue == null) continue;
+      if (!def) continue;
+      if (metric.actualValue == null) {
+        await prisma.kpiValue.deleteMany({
+          where: {
+            employeeId,
+            depotId: depot.id,
+            kpiDefinitionId: def.id,
+            periodMonth,
+          },
+        });
+        continue;
+      }
       await prisma.kpiValue.upsert({
         where: {
           employeeId_depotId_kpiDefinitionId_periodMonth: {
@@ -239,6 +254,15 @@ class BrandMonthlyKpiService {
       id: row.id,
       depotId: row.depotId,
       depotName: row.depot?.name ?? "",
+      districtId: row.depot?.district?.id ?? null,
+      districtName: row.depot?.district?.name ?? null,
+      provinceId: row.depot?.province?.id ?? null,
+      provinceName: row.depot?.province?.name ?? null,
+      employeeId: row.depot?.employee?.id ?? null,
+      employeeName:
+        row.depot?.employee?.englishName ||
+        row.depot?.employee?.khmerName ||
+        null,
       brandId: row.brandId,
       brandName: row.brand?.name ?? "",
       month: monthLabel(row.periodMonth),
@@ -252,6 +276,56 @@ class BrandMonthlyKpiService {
       volumeDisplayPct:
         row.volumeDisplayPct == null ? null : Number(row.volumeDisplayPct),
     };
+  }
+
+  /** Shape returned for a depot/brand/month with no BrandDepotMonthKpi row. */
+  mapEmptyRow(depot, brand, periodMonth) {
+    return {
+      id: null,
+      depotId: depot.id,
+      depotName: depot.name,
+      districtId: depot.district?.id ?? null,
+      districtName: depot.district?.name ?? null,
+      provinceId: depot.district?.province?.id ?? null,
+      provinceName: depot.district?.province?.name ?? null,
+      employeeId: depot.employee?.id ?? null,
+      employeeName:
+        depot.employee?.englishName || depot.employee?.khmerName || null,
+      brandId: brand.id,
+      brandName: brand.name,
+      month: monthLabel(periodMonth),
+      poActual: 0,
+      poTarget: null,
+      poPercent: null,
+      productAvailablePct: null,
+      volumeDisplayPct: null,
+    };
+  }
+
+  /** Remove mirrored KpiValue/EmployeeKPI rows for a depot's employee for one month. */
+  async clearMirrorValues({ depot, periodMonth }) {
+    const employeeId = depot.employeeId ?? null;
+    if (!employeeId) return;
+
+    const defMap = await this.getDefinitionMap();
+    const defIds = [CODE_PO_COUNT, CODE_PO_TARGET, CODE_AVAILABLE, CODE_DISPLAY]
+      .map((code) => defMap[code]?.id)
+      .filter(Boolean);
+
+    if (defIds.length) {
+      await prisma.kpiValue.deleteMany({
+        where: {
+          employeeId,
+          depotId: depot.id,
+          kpiDefinitionId: { in: defIds },
+          periodMonth,
+        },
+      });
+    }
+
+    await prisma.employeeKPI.deleteMany({
+      where: { employeeId, depotId: depot.id, month: periodMonth },
+    });
   }
 
   async listMonthlyKpis({
@@ -335,6 +409,9 @@ class BrandMonthlyKpiService {
           name: true,
           brandId: true,
           brand: { select: { id: true, name: true } },
+          district: { select: { id: true, name: true } },
+          province: { select: { id: true, name: true } },
+          employee: { select: { id: true, englishName: true, khmerName: true } },
           brandMonthKpis: {
             where: {
               periodMonth: { gte: start, lt: end },
@@ -367,13 +444,26 @@ class BrandMonthlyKpiService {
             return this.mapMonthlyRow({
               ...row,
               brand: depot.brand,
-              depot: { id: depot.id, name: depot.name },
+              depot: {
+                id: depot.id,
+                name: depot.name,
+                district: depot.district,
+                province: depot.province,
+                employee: depot.employee,
+              },
             });
           }
           return {
             id: null,
             depotId: depot.id,
             depotName: depot.name,
+            districtId: depot.district?.id ?? null,
+            districtName: depot.district?.name ?? null,
+            provinceId: depot.province?.id ?? null,
+            provinceName: depot.province?.name ?? null,
+            employeeId: depot.employee?.id ?? null,
+            employeeName:
+              depot.employee?.englishName || depot.employee?.khmerName || null,
             brandId: depot.brand.id,
             brandName: depot.brand.name,
             month: monthLabel(periodMonth),
@@ -428,7 +518,15 @@ class BrandMonthlyKpiService {
         productAvailablePct: true,
         volumeDisplayPct: true,
         brand: { select: { id: true, name: true } },
-        depot: { select: { id: true, name: true } },
+        depot: {
+          select: {
+            id: true,
+            name: true,
+            district: { select: { id: true, name: true } },
+            province: { select: { id: true, name: true } },
+            employee: { select: { id: true, englishName: true, khmerName: true } },
+          },
+        },
       },
       orderBy: [{ brand: { name: "asc" } }, { depot: { name: "asc" } }],
       ...(returnAll ? {} : { skip: (safePage - 1) * size, take: size }),
@@ -466,6 +564,41 @@ class BrandMonthlyKpiService {
     const volumeDisplayPct = hasDisplay
       ? asNullableNumber(input.volumeDisplayPct)
       : undefined;
+
+    const existing = await prisma.brandDepotMonthKpi.findUnique({
+      where: {
+        depotId_brandId_periodMonth: {
+          depotId: depot.id,
+          brandId,
+          periodMonth,
+        },
+      },
+    });
+
+    const finalPoActual = hasPoActual ? poActual : (existing?.poActual ?? 0);
+    const finalPoTarget = hasPoTarget
+      ? poTarget
+      : (existing?.poTarget ?? null);
+    const finalAvailable = hasAvailable
+      ? productAvailablePct
+      : (existing?.productAvailablePct ?? null);
+    const finalDisplay = hasDisplay
+      ? volumeDisplayPct
+      : (existing?.volumeDisplayPct ?? null);
+
+    const isEmpty =
+      Number(finalPoActual || 0) === 0 &&
+      finalPoTarget == null &&
+      finalAvailable == null &&
+      finalDisplay == null;
+
+    if (isEmpty) {
+      if (existing) {
+        await prisma.brandDepotMonthKpi.delete({ where: { id: existing.id } });
+        await this.clearMirrorValues({ depot, periodMonth });
+      }
+      return this.mapEmptyRow(depot, depot.brand, periodMonth);
+    }
 
     const row = await prisma.brandDepotMonthKpi.upsert({
       where: {
@@ -507,6 +640,46 @@ class BrandMonthlyKpiService {
     });
 
     return this.mapMonthlyRow(row);
+  }
+
+  async deleteMonthlyKpi(id) {
+    const numericId = Number(id);
+    if (!numericId) throw new Error("Invalid id");
+
+    const existing = await prisma.brandDepotMonthKpi.findUnique({
+      where: { id: numericId },
+      include: {
+        brand: { select: { id: true, name: true } },
+        depot: {
+          include: {
+            employee: {
+              select: {
+                id: true,
+                englishName: true,
+                khmerName: true,
+                employeeCode: true,
+              },
+            },
+            district: {
+              select: {
+                id: true,
+                name: true,
+                province: { select: { id: true, name: true } },
+              },
+            },
+          },
+        },
+      },
+    });
+    if (!existing) throw new Error("Monthly KPI record not found");
+
+    await prisma.brandDepotMonthKpi.delete({ where: { id: numericId } });
+    await this.clearMirrorValues({
+      depot: existing.depot,
+      periodMonth: existing.periodMonth,
+    });
+
+    return this.mapEmptyRow(existing.depot, existing.brand, existing.periodMonth);
   }
 
   async setBrandTarget({ depotId, brandId, month, targetPo }) {
@@ -748,27 +921,37 @@ class BrandMonthlyKpiService {
     const workbook = new ExcelJS.Workbook();
     const sheet = workbook.addWorksheet("Depot Monthly KPI");
     sheet.columns = [
-      { header: "depot_id", key: "depot_id", width: 12 },
-      { header: "depot_name", key: "depot_name", width: 28 },
-      { header: "brand_id", key: "brand_id", width: 12 },
-      { header: "brand", key: "brand", width: 22 },
-      { header: "month", key: "month", width: 12 },
-      { header: "target_po", key: "target_po", width: 12 },
-      { header: "po_actual", key: "po_actual", width: 12 },
-      { header: "po_percent", key: "po_percent", width: 12 },
+      { header: "Depot", key: "depot_name", width: 28 },
+      { header: "Brand", key: "brand", width: 22 },
+      { header: "District", key: "district", width: 20 },
+      { header: "Province", key: "province", width: 20 },
+      { header: "Sale Supervisor", key: "sale_supervisor", width: 24 },
+      { header: "Month", key: "month", width: 12 },
+      { header: "Target PO", key: "target_po", width: 12 },
+      { header: "PO Actual", key: "po_actual", width: 12 },
+      { header: "PO %", key: "po_percent", width: 12 },
       {
-        header: "product_available_pct",
+        header: "Product Available %",
         key: "product_available_pct",
         width: 20,
       },
-      { header: "volume_display_pct", key: "volume_display_pct", width: 18 },
+      { header: "Volume Display %", key: "volume_display_pct", width: 18 },
     ];
+    const headerRow = sheet.getRow(1);
+    headerRow.font = { bold: true, color: { argb: "FFFFFFFF" } };
+    headerRow.fill = {
+      type: "pattern",
+      pattern: "solid",
+      fgColor: { argb: "FF2C3E50" },
+    };
+    // names only — never raw depot/brand IDs
     rows.forEach((row) => {
       sheet.addRow({
-        depot_id: row.depotId,
-        depot_name: row.depotName,
-        brand_id: row.brandId,
-        brand: row.brandName,
+        depot_name: row.depotName || "—",
+        brand: row.brandName || "—",
+        district: row.districtName || "—",
+        province: row.provinceName || "—",
+        sale_supervisor: row.employeeName || "—",
         month: row.month,
         target_po: row.poTarget ?? "",
         po_actual: row.poActual ?? 0,
@@ -857,7 +1040,15 @@ class BrandMonthlyKpiService {
         productAvailablePct: true,
         volumeDisplayPct: true,
         brand: { select: { id: true, name: true } },
-        depot: { select: { id: true, name: true } },
+        depot: {
+          select: {
+            id: true,
+            name: true,
+            district: { select: { id: true, name: true } },
+            province: { select: { id: true, name: true } },
+            employee: { select: { id: true, englishName: true, khmerName: true } },
+          },
+        },
       },
       orderBy: [{ brand: { name: "asc" } }, { depot: { name: "asc" } }],
     });
@@ -884,6 +1075,54 @@ class BrandMonthlyKpiService {
       },
     );
 
+    const brandMap = new Map();
+    for (const row of rows) {
+      const key = row.brandId;
+      if (!brandMap.has(key)) {
+        brandMap.set(key, {
+          brandId: row.brandId,
+          brandName: row.brand?.name ?? "Unknown",
+          depotIds: new Set(),
+          totalPoActual: 0,
+          totalPoTarget: 0,
+          availableSum: 0,
+          availableCount: 0,
+          displaySum: 0,
+          displayCount: 0,
+        });
+      }
+      const acc = brandMap.get(key);
+      acc.depotIds.add(row.depotId);
+      acc.totalPoActual += Number(row.poActual || 0);
+      acc.totalPoTarget += Number(row.poTarget || 0);
+      if (row.productAvailablePct != null) {
+        acc.availableSum += Number(row.productAvailablePct);
+        acc.availableCount += 1;
+      }
+      if (row.volumeDisplayPct != null) {
+        acc.displaySum += Number(row.volumeDisplayPct);
+        acc.displayCount += 1;
+      }
+    }
+
+    const byBrand = [...brandMap.values()]
+      .map((acc) => ({
+        brandId: acc.brandId,
+        brandName: acc.brandName,
+        depotCount: acc.depotIds.size,
+        totalPoActual: Number(acc.totalPoActual.toFixed(1)),
+        totalPoTarget: Number(acc.totalPoTarget.toFixed(1)),
+        avgAvailable:
+          acc.availableCount > 0
+            ? Number((acc.availableSum / acc.availableCount).toFixed(1))
+            : null,
+        avgDisplay:
+          acc.displayCount > 0
+            ? Number((acc.displaySum / acc.displayCount).toFixed(1))
+            : null,
+      }))
+      .sort((a, b) => b.totalPoActual - a.totalPoActual);
+
     return {
       period: monthLabel(periodMonth),
       rows: rows.map((row) => this.mapMonthlyRow(row)),
@@ -898,6 +1137,7 @@ class BrandMonthlyKpiService {
             ? Number((summary.displaySum / summary.displayCount).toFixed(1))
             : null,
       },
+      byBrand,
     };
   }
 
@@ -916,7 +1156,16 @@ class BrandMonthlyKpiService {
       ),
       include: {
         brand: { select: { id: true, name: true } },
-        depot: { select: { id: true, name: true, code: true } },
+        depot: {
+          select: {
+            id: true,
+            name: true,
+            code: true,
+            district: { select: { id: true, name: true } },
+            province: { select: { id: true, name: true } },
+            employee: { select: { id: true, englishName: true, khmerName: true } },
+          },
+        },
       },
       orderBy: [
         { brand: { name: "asc" } },
@@ -935,6 +1184,12 @@ class BrandMonthlyKpiService {
           depotId: row.depotId,
           depotName: row.depot.name,
           depotCode: row.depot.code ?? null,
+          districtName: row.depot.district?.name ?? null,
+          provinceName: row.depot.province?.name ?? null,
+          saleSupervisor:
+            row.depot.employee?.englishName ||
+            row.depot.employee?.khmerName ||
+            null,
           totalPo: 0,
           availableSum: 0,
           availableCount: 0,
@@ -1139,7 +1394,15 @@ class BrandMonthlyKpiService {
           productAvailablePct: true,
           volumeDisplayPct: true,
           brand: { select: { id: true, name: true } },
-          depot: { select: { id: true, name: true } },
+          depot: {
+            select: {
+              id: true,
+              name: true,
+              district: { select: { id: true, name: true } },
+              province: { select: { id: true, name: true } },
+              employee: { select: { id: true, englishName: true, khmerName: true } },
+            },
+          },
         },
       }),
       prisma.depot.findMany({
@@ -1158,6 +1421,9 @@ class BrandMonthlyKpiService {
           expiryDate: true,
           brandId: true,
           brand: { select: { id: true, name: true } },
+          district: { select: { id: true, name: true } },
+          province: { select: { id: true, name: true } },
+          employee: { select: { id: true, englishName: true, khmerName: true } },
         },
         orderBy: { name: "asc" },
         take: 200,
@@ -1181,6 +1447,12 @@ class BrandMonthlyKpiService {
         depotName: row.depot?.name ?? `Depot #${row.depotId}`,
         brandId: row.brandId,
         brandName: row.brand?.name ?? "",
+        districtName: row.depot?.district?.name ?? null,
+        provinceName: row.depot?.province?.name ?? null,
+        saleSupervisor:
+          row.depot?.employee?.englishName ||
+          row.depot?.employee?.khmerName ||
+          null,
       };
 
       if (poTarget != null && poTarget > 0) {
@@ -1231,6 +1503,10 @@ class BrandMonthlyKpiService {
         depotName: depot.name,
         brandId: depot.brandId,
         brandName: depot.brand?.name ?? "",
+        districtName: depot.district?.name ?? null,
+        provinceName: depot.province?.name ?? null,
+        saleSupervisor:
+          depot.employee?.englishName || depot.employee?.khmerName || null,
       };
 
       if (depot.status === "vacancy") {

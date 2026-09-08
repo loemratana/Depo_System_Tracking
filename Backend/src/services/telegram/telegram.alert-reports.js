@@ -66,9 +66,20 @@ function asCaption(text, max = 1000) {
   return `${clean.slice(0, cut)}\n… (see Excel)`;
 }
 
-async function loadDepotsForLicense() {
+function requireBrandId(brandId) {
+  const id = Number(brandId);
+  if (!brandId || Number.isNaN(id)) {
+    throw new Error('brandId is required to build a brand-scoped Telegram report');
+  }
+  return id;
+}
+
+async function loadDepotsForLicense({ brandId } = {}) {
   return prisma.depot.findMany({
     where: {
+      // Unassigned depots (brandId = null) are intentionally excluded from
+      // every brand-scoped report — there is no chat that owns them.
+      brandId: requireBrandId(brandId),
       OR: [
         { expiryDate: { not: null } },
         { status: 'vacancy' },
@@ -82,6 +93,8 @@ async function loadDepotsForLicense() {
       expiryDate: true,
       employeeId: true,
       brand: { select: { name: true } },
+      district: { select: { name: true } },
+      province: { select: { name: true } },
       employee: {
         select: { englishName: true, khmerName: true, phone: true },
       },
@@ -90,8 +103,8 @@ async function loadDepotsForLicense() {
   });
 }
 
-async function getLicenseAlertData(title = 'License Alert') {
-  const depots = await loadDepotsForLicense();
+async function getLicenseAlertData(title = 'License Alert', { brandId } = {}) {
+  const depots = await loadDepotsForLicense({ brandId });
   const today = startOfDay(new Date());
   const in7 = addDays(today, 7);
   const in14 = addDays(today, 14);
@@ -109,7 +122,10 @@ async function getLicenseAlertData(title = 'License Alert') {
     const line = {
       name: d.name,
       brand: d.brand?.name || '—',
-      owner: d.employee?.englishName || d.employee?.khmerName || 'Unassigned',
+      district: d.district?.name || '—',
+      province: d.province?.name || '—',
+      saleSupervisor:
+        d.employee?.englishName || d.employee?.khmerName || 'Unassigned',
       days: daysUntil(d.expiryDate),
       expiry: format(exp, 'dd MMM yyyy'),
     };
@@ -141,13 +157,14 @@ function formatLicenseText(data) {
   return msg + footer();
 }
 
-export async function generateLicenseDailyReport() {
-  return formatLicenseText(await getLicenseAlertData('License Alert'));
+export async function generateLicenseDailyReport({ brandId } = {}) {
+  return formatLicenseText(await getLicenseAlertData('License Alert', { brandId }));
 }
 
-export async function generateVacancyDailyReport() {
-  const depots = await prisma.depot.findMany({
+async function loadDepotsForVacancy({ brandId }) {
+  return prisma.depot.findMany({
     where: {
+      brandId: requireBrandId(brandId),
       OR: [{ status: 'vacancy' }, { employeeId: null }],
     },
     select: {
@@ -156,9 +173,16 @@ export async function generateVacancyDailyReport() {
       status: true,
       employeeId: true,
       brand: { select: { name: true } },
+      district: { select: { name: true } },
+      province: { select: { name: true } },
+      employee: { select: { englishName: true, khmerName: true } },
     },
     orderBy: { name: 'asc' },
   });
+}
+
+export async function generateVacancyDailyReport({ brandId } = {}) {
+  const depots = await loadDepotsForVacancy({ brandId });
 
   let msg = `🏚️ <b>Vacancy Alert</b>\n`;
   msg += `<i>${format(new Date(), 'dd MMM yyyy')}  •  ${nowLabel()}</i>\n\n`;
@@ -167,11 +191,12 @@ export async function generateVacancyDailyReport() {
   return msg + footer();
 }
 
-export async function generateMissingKpiDailyReport() {
+export async function generateMissingKpiDailyReport({ brandId } = {}) {
   const now = new Date();
   const insights = await brandMonthlyKpiService.getDashboardInsights({
     year: now.getFullYear(),
     month: now.getMonth() + 1,
+    brandId,
     limit: 50,
   });
   const missing = (insights.attention || []).filter((a) =>
@@ -185,12 +210,12 @@ export async function generateMissingKpiDailyReport() {
   return msg + footer();
 }
 
-export async function generateWeeklyBrandSnapshot() {
-  return generateDailyReport();
+export async function generateWeeklyBrandSnapshot({ brandId } = {}) {
+  return generateDailyReport({ brandId });
 }
 
-export async function generateUnderPerformersReport() {
-  const report = await brandMonthlyKpiService.getBrandMonthlyReport({});
+export async function generateUnderPerformersReport({ brandId } = {}) {
+  const report = await brandMonthlyKpiService.getBrandMonthlyReport({ brandId });
   const under = (report.rows || [])
     .filter((r) => r.poTarget != null && r.poTarget > 0 && (r.poPercent ?? 0) < 80)
     .sort((a, b) => (a.poPercent ?? 0) - (b.poPercent ?? 0));
@@ -202,13 +227,14 @@ export async function generateUnderPerformersReport() {
   return msg + footer();
 }
 
-export async function generateLicenseWeeklyReport() {
-  return formatLicenseText(await getLicenseAlertData('License Week Digest'));
+export async function generateLicenseWeeklyReport({ brandId } = {}) {
+  return formatLicenseText(await getLicenseAlertData('License Week Digest', { brandId }));
 }
 
-export async function generateMonthlyBrandReport() {
-  const brands = await brandMonthlyKpiService.getDashboardBrand({});
+export async function generateMonthlyBrandReport({ brandId } = {}) {
+  const brands = await brandMonthlyKpiService.getDashboardBrand({ brandId });
   const insights = await brandMonthlyKpiService.getDashboardInsights({
+    brandId,
     limit: 20,
   });
   const tva = insights.targetVsActual || {};
@@ -225,13 +251,13 @@ export async function generateMonthlyBrandReport() {
   return msg + footer();
 }
 
-export async function generateMonthlyDepotScorecard() {
-  return generateMonthlyKPIReport();
+export async function generateMonthlyDepotScorecard({ brandId } = {}) {
+  return generateMonthlyKPIReport({ brandId });
 }
 
-export async function generateYearlyBrandReport() {
+export async function generateYearlyBrandReport({ brandId } = {}) {
   const year = new Date().getFullYear();
-  const report = await brandMonthlyKpiService.getBrandYearlyReport({ year });
+  const report = await brandMonthlyKpiService.getBrandYearlyReport({ year, brandId });
   const rows = report.rows || [];
 
   let msg = `📅 <b>Year Rollup ${year}</b>\n`;
@@ -257,23 +283,27 @@ export const REPORT_GENERATORS = {
   'kpi.monthly.scorecard': generateMonthlyKPIReport,
 };
 
-export async function generateReportById(reportId) {
+export async function generateReportById(reportId, { brandId } = {}) {
   const fn = REPORT_GENERATORS[reportId];
   if (!fn) throw new Error(`Unknown report id: ${reportId}`);
-  return fn();
+  return fn({ brandId });
 }
 
 /**
- * Build caption + Excel attachment for scheduled / Test sends.
+ * Build caption + Excel attachment for one brand, for scheduled / test sends.
+ * `brandId` is required — every report is generated pre-filtered to a single
+ * brand before it is ever handed to the Telegram transport layer.
  * @returns {{ caption: string, filename: string, buffer: Buffer }}
  */
-export async function buildReportPackage(reportId) {
+export async function buildReportPackage(reportId, { brandId } = {}) {
+  requireBrandId(brandId);
+
   switch (reportId) {
     case 'license.daily':
     case 'license.weekly': {
       const title =
         reportId === 'license.weekly' ? 'License Week Digest' : 'License Alert';
-      const data = await getLicenseAlertData(title);
+      const data = await getLicenseAlertData(title, { brandId });
       return {
         caption: asCaption(formatLicenseText(data)),
         filename: `${reportId.replace(/\./g, '_')}_${dateStamp()}.xlsx`,
@@ -282,25 +312,18 @@ export async function buildReportPackage(reportId) {
     }
 
     case 'vacancy.daily': {
-      const depots = await prisma.depot.findMany({
-        where: {
-          OR: [{ status: 'vacancy' }, { employeeId: null }],
-        },
-        select: {
-          name: true,
-          status: true,
-          employeeId: true,
-          brand: { select: { name: true } },
-        },
-        orderBy: { name: 'asc' },
-      });
+      const depots = await loadDepotsForVacancy({ brandId });
       const rows = depots.map((d) => ({
         name: d.name,
         brand: d.brand?.name || '—',
+        district: d.district?.name || '—',
+        province: d.province?.name || '—',
+        saleSupervisor:
+          d.employee?.englishName || d.employee?.khmerName || 'Unassigned',
         status: d.status,
         reason: d.status === 'vacancy' ? 'status=vacancy' : 'no supervisor',
       }));
-      const caption = asCaption(await generateVacancyDailyReport());
+      const caption = asCaption(await generateVacancyDailyReport({ brandId }));
       return {
         caption,
         filename: `vacancy_daily_${dateStamp()}.xlsx`,
@@ -316,6 +339,7 @@ export async function buildReportPackage(reportId) {
       const insights = await brandMonthlyKpiService.getDashboardInsights({
         year: now.getFullYear(),
         month: now.getMonth() + 1,
+        brandId,
         limit: 50,
       });
       const rows = (insights.attention || []).filter((a) =>
@@ -324,7 +348,7 @@ export async function buildReportPackage(reportId) {
         ),
       );
       return {
-        caption: asCaption(await generateMissingKpiDailyReport()),
+        caption: asCaption(await generateMissingKpiDailyReport({ brandId })),
         filename: `kpi_missing_daily_${dateStamp()}.xlsx`,
         buffer: await generateMissingKpiExcel({
           period: insights.period || '',
@@ -335,16 +359,16 @@ export async function buildReportPackage(reportId) {
 
     case 'kpi.weekly.brand':
     case 'kpi.daily.po': {
-      const data = await getDailyReportData();
+      const data = await getDailyReportData({ brandId });
       return {
-        caption: asCaption(await generateDailyReport()),
+        caption: asCaption(await generateDailyReport({ brandId })),
         filename: `kpi_weekly_brand_${dateStamp()}.xlsx`,
         buffer: await generateDailyExcel(data),
       };
     }
 
     case 'kpi.weekly.under': {
-      const report = await brandMonthlyKpiService.getBrandMonthlyReport({});
+      const report = await brandMonthlyKpiService.getBrandMonthlyReport({ brandId });
       const rows = (report.rows || [])
         .filter(
           (r) =>
@@ -352,7 +376,7 @@ export async function buildReportPackage(reportId) {
         )
         .sort((a, b) => (a.poPercent ?? 0) - (b.poPercent ?? 0));
       return {
-        caption: asCaption(await generateUnderPerformersReport()),
+        caption: asCaption(await generateUnderPerformersReport({ brandId })),
         filename: `kpi_under_performers_${dateStamp()}.xlsx`,
         buffer: await generateUnderPerformersExcel({
           period: report.period,
@@ -362,24 +386,25 @@ export async function buildReportPackage(reportId) {
     }
 
     case 'kpi.weekly.rankings': {
-      const data = await getWeeklyReportData();
+      const data = await getWeeklyReportData({ brandId });
       return {
-        caption: asCaption(await generateWeeklyReport()),
+        caption: asCaption(await generateWeeklyReport({ brandId })),
         filename: `weekly_rankings_${dateStamp()}.xlsx`,
         buffer: await generateWeeklyExcel(data),
       };
     }
 
     case 'kpi.monthly.brand': {
-      const brands = await brandMonthlyKpiService.getDashboardBrand({});
+      const brands = await brandMonthlyKpiService.getDashboardBrand({ brandId });
       const insights = await brandMonthlyKpiService.getDashboardInsights({
+        brandId,
         limit: 50,
       });
       const under = (insights.attention || []).filter(
         (a) => a.type === 'under_target',
       );
       return {
-        caption: asCaption(await generateMonthlyBrandReport()),
+        caption: asCaption(await generateMonthlyBrandReport({ brandId })),
         filename: `kpi_monthly_brand_${monthStamp()}.xlsx`,
         buffer: await generateMonthlyBrandExcel({
           period: insights.period,
@@ -392,9 +417,9 @@ export async function buildReportPackage(reportId) {
 
     case 'kpi.monthly.depot':
     case 'kpi.monthly.scorecard': {
-      const data = await getMonthlyKPIData();
+      const data = await getMonthlyKPIData({ brandId });
       return {
-        caption: asCaption(await generateMonthlyKPIReport()),
+        caption: asCaption(await generateMonthlyKPIReport({ brandId })),
         filename: `kpi_monthly_depot_${monthStamp()}.xlsx`,
         buffer: await generateMonthlyKPIExcel(data),
       };
@@ -402,12 +427,12 @@ export async function buildReportPackage(reportId) {
 
     case 'kpi.yearly.brand': {
       const year = new Date().getFullYear();
-      const report = await brandMonthlyKpiService.getBrandYearlyReport({ year });
+      const report = await brandMonthlyKpiService.getBrandYearlyReport({ year, brandId });
       const rows = [...(report.rows || [])].sort(
         (a, b) => Number(b.totalPo || 0) - Number(a.totalPo || 0),
       );
       return {
-        caption: asCaption(await generateYearlyBrandReport()),
+        caption: asCaption(await generateYearlyBrandReport({ brandId })),
         filename: `kpi_yearly_brand_${year}.xlsx`,
         buffer: await generateYearlyExcel({ year, rows }),
       };

@@ -325,16 +325,20 @@ class DepotController {
         });
       }
 
-      console.log(
-        `[BulkImport] Parsed ${records.length} rows from "${req.file.originalname}"`,
-      );
+      logger.info("Depot bulk import parsed", {
+        action: "depot.bulk_import.parsed",
+        fileName: req.file.originalname,
+        rowCount: records.length,
+      });
 
       // ── 2. Process rows via service ───────────────────────────────────────
       const { results, errors } = await depotService.bulkCreateDepots(records);
 
-      console.log(
-        `[BulkImport] Done — ${results.length} created, ${errors.length} failed`,
-      );
+      logger.info("Depot bulk import completed", {
+        action: "depot.bulk_import.completed",
+        created: results.length,
+        failed: errors.length,
+      });
 
       // ── 3. Respond ────────────────────────────────────────────────────────
       return res.status(207).json({
@@ -349,7 +353,10 @@ class DepotController {
         errors,
       });
     } catch (err) {
-      console.error("[BulkImport] Unexpected error:", err);
+      logger.error("Depot bulk import failed", {
+        err,
+        action: "depot.bulk_import.failed",
+      });
       return res.status(500).json({
         success: false,
         message: "Internal server error during bulk import.",
@@ -374,7 +381,10 @@ class DepotController {
         });
       }
 
-      console.log(`[BulkImportJson] Received ${records.length} rows`);
+      logger.info("Depot bulk import (JSON) received", {
+        action: "depot.bulk_import.parsed",
+        rowCount: records.length,
+      });
 
       const { results, errors } = await depotService.bulkCreateDepots(records);
 
@@ -382,7 +392,12 @@ class DepotController {
       const updated = results.filter((r) => r.action === "updated").length;
       const imported = created + updated;
 
-      console.log(`[BulkImportJson] Done — ${created} created, ${updated} updated, ${errors.length} failed`);
+      logger.info("Depot bulk import (JSON) completed", {
+        action: "depot.bulk_import.completed",
+        created,
+        updated,
+        failed: errors.length,
+      });
 
       return res.status(207).json({
         success: true,
@@ -398,7 +413,10 @@ class DepotController {
         errors,
       });
     } catch (err) {
-      console.error('[BulkImportJson] Unexpected error:', err);
+      logger.error("Depot bulk import (JSON) failed", {
+        err,
+        action: "depot.bulk_import.failed",
+      });
       return res.status(500).json({
         success: false,
         message: `Internal server error during bulk import: ${err.message}`,

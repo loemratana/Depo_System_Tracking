@@ -72,7 +72,7 @@ class DistrictController {
             res.setHeader('Content-Disposition', 'attachment; filename=district_template.xlsx');
             res.send(buffer);   // NOT res.json()
         } catch (error) {
-            console.error(error);
+            logger.error("Failed to generate district template", { err: error });
             res.status(500).json({ success: false, message: error.message });
         }
     };

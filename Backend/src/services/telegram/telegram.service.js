@@ -1,88 +1,40 @@
 import { Telegraf } from 'telegraf';
+import logger from '../../config/logger.js';
 
 const BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN;
-const ALLOWED_CHATS =
-  process.env.ALLOWED_CHAT_IDS?.split(',')
-    .map((s) => s.trim())
-    .filter(Boolean)
-    .map(Number)
-    .filter((n) => !Number.isNaN(n)) || [];
 
+/**
+ * Thin Telegraf wrapper. Every send here targets exactly ONE chat — this
+ * service has no concept of "all configured chats" any more. Routing
+ * (which chat(s) a report goes to) is decided by the caller using
+ * telegramChatService, never here.
+ */
 class TelegramService {
   constructor() {
     if (!BOT_TOKEN) {
-      console.warn('Telegram bot token missing. Notifications disabled.');
+      logger.warn('Telegram bot token missing, notifications disabled');
       this.bot = null;
       return;
     }
     this.bot = new Telegraf(BOT_TOKEN);
   }
 
+  /** Bot is configured (token present). Does NOT imply any chat is registered. */
   get enabled() {
-    return Boolean(this.bot && ALLOWED_CHATS.length > 0);
+    return Boolean(this.bot);
   }
 
-  getChatIds() {
-    return [...ALLOWED_CHATS];
-  }
-
-  async sendDocument(documentBuffer, filename, caption = '') {
-    if (!this.bot) {
-      return { sent: 0, errors: ['TELEGRAM_BOT_TOKEN is missing'] };
-    }
-    if (!ALLOWED_CHATS.length) {
-      return { sent: 0, errors: ['ALLOWED_CHAT_IDS is missing'] };
-    }
-
-    const buffer = Buffer.isBuffer(documentBuffer)
-      ? documentBuffer
-      : Buffer.from(documentBuffer);
-    // Telegram caption hard limit is 1024; cut on a line boundary so an HTML tag never gets split
+  /** Telegram caption hard limit is 1024 chars; cut on a line boundary. */
+  #safeCaption(caption) {
     const rawCaption = String(caption || '');
-    let safeCaption = rawCaption;
-    if (rawCaption.length > 1024) {
-      let cut = rawCaption.lastIndexOf('\n', 1000);
-      if (cut < 500) cut = 1000;
-      safeCaption = `${rawCaption.slice(0, cut)}\n… (see Excel)`;
-    }
-
-    const errors = [];
-    let sent = 0;
-    for (const chatId of ALLOWED_CHATS) {
-      try {
-        await this.bot.telegram.sendDocument(
-          chatId,
-          { source: buffer, filename },
-          {
-            caption: safeCaption || undefined,
-            parse_mode: safeCaption ? 'HTML' : undefined,
-          },
-        );
-        sent += 1;
-      } catch (err) {
-        console.error(`Telegram document send error (chat ${chatId}):`, err.message);
-        errors.push(`chat ${chatId}: ${err.message}`);
-      }
-    }
-    return { sent, errors };
+    if (rawCaption.length <= 1024) return rawCaption || undefined;
+    let cut = rawCaption.lastIndexOf('\n', 1000);
+    if (cut < 500) cut = 1000;
+    return `${rawCaption.slice(0, cut)}\n… (see Excel)`;
   }
 
-  /** Send report package: Excel file + summary caption */
-  async sendReportPackage({ buffer, filename, caption }) {
-    return this.sendDocument(buffer, filename, caption);
-  }
-
-  async sendMessage(text, parseMode = 'HTML') {
-    if (!this.bot) {
-      return { sent: 0, errors: ['TELEGRAM_BOT_TOKEN is missing'] };
-    }
-    if (!ALLOWED_CHATS.length) {
-      return { sent: 0, errors: ['ALLOWED_CHAT_IDS is missing'] };
-    }
-
-    // Telegram hard limit is 4096 characters per message
+  #chunkMessage(text, max = 4000) {
     const chunks = [];
-    const max = 4000;
     let remaining = String(text || '');
     while (remaining.length > max) {
       let cut = remaining.lastIndexOf('\n', max);
@@ -91,23 +43,59 @@ class TelegramService {
       remaining = remaining.slice(cut).replace(/^\n+/, '');
     }
     if (remaining) chunks.push(remaining);
+    return chunks;
+  }
 
-    const errors = [];
-    let sent = 0;
-    for (const chatId of ALLOWED_CHATS) {
-      try {
-        for (const chunk of chunks) {
-          await this.bot.telegram.sendMessage(chatId, chunk, {
-            parse_mode: parseMode,
-          });
-        }
-        sent += 1;
-      } catch (err) {
-        console.error(`Telegram send error (chat ${chatId}):`, err.message);
-        errors.push(`chat ${chatId}: ${err.message}`);
-      }
+  /** Send a text message to exactly one chat. */
+  async sendMessageToChat(chatId, text, parseMode = 'HTML') {
+    if (!this.bot) {
+      return { sent: false, error: 'TELEGRAM_BOT_TOKEN is missing' };
     }
-    return { sent, errors };
+    if (!chatId) {
+      return { sent: false, error: 'chatId is required' };
+    }
+
+    try {
+      for (const chunk of this.#chunkMessage(text)) {
+        await this.bot.telegram.sendMessage(chatId, chunk, { parse_mode: parseMode });
+      }
+      return { sent: true };
+    } catch (err) {
+      logger.error(`Telegram send error (chat ${chatId}): ${err.message}`);
+      return { sent: false, error: err.message };
+    }
+  }
+
+  /** Send a document to exactly one chat. */
+  async sendDocumentToChat(chatId, documentBuffer, filename, caption = '') {
+    if (!this.bot) {
+      return { sent: false, error: 'TELEGRAM_BOT_TOKEN is missing' };
+    }
+    if (!chatId) {
+      return { sent: false, error: 'chatId is required' };
+    }
+
+    const buffer = Buffer.isBuffer(documentBuffer)
+      ? documentBuffer
+      : Buffer.from(documentBuffer);
+    const safeCaption = this.#safeCaption(caption);
+
+    try {
+      await this.bot.telegram.sendDocument(
+        chatId,
+        { source: buffer, filename },
+        { caption: safeCaption, parse_mode: safeCaption ? 'HTML' : undefined },
+      );
+      return { sent: true };
+    } catch (err) {
+      logger.error(`Telegram document send error (chat ${chatId}): ${err.message}`);
+      return { sent: false, error: err.message };
+    }
+  }
+
+  /** Send a { buffer, filename, caption } report package to exactly one chat. */
+  async sendReportPackageToChat(chatId, { buffer, filename, caption }) {
+    return this.sendDocumentToChat(chatId, buffer, filename, caption);
   }
 
   getBot() {
@@ -116,10 +104,21 @@ class TelegramService {
 
   launch() {
     if (this.bot) {
-      this.bot.launch();
-      console.log('🤖 Telegram bot started.');
+      this.bot
+        .launch({ dropPendingUpdates: true })
+        .then(() => logger.info('Telegram bot started'))
+        .catch((err) => {
+          logger.error('Telegram bot failed to start', { err });
+        });
+    }
+  }
+
+  stop(reason = 'SIGTERM') {
+    if (this.bot) {
+      this.bot.stop(reason);
     }
   }
 }
 
 export const telegramService = new TelegramService();
+export { TelegramService };

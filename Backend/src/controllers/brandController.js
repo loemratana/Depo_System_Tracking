@@ -88,7 +88,7 @@ export class BrandController {
         data,
       });
     } catch (error) {
-      console.error("Error getting brand depot count:", error);
+      logger.error("Error getting brand depot count", { err: error });
 
       return res.status(500).json({
         success: false,

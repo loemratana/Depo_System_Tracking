@@ -1,4 +1,5 @@
 import redis from "../config/redis.js";
+import logger from "../config/logger.js";
 
 /**
  * Cache middleware — caches GET responses in Redis.
@@ -16,7 +17,7 @@ export const cache = (ttl = 60) => async (req, res, next) => {
             return res.json(cached);
         }
     } catch (err) {
-        console.warn("Cache read error:", err.message);
+        logger.warn("Cache read error", { err, key });
     }
 
     // Intercept res.json to store in Redis

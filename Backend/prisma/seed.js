@@ -20,6 +20,10 @@ function daysFromNow(n) {
 
 async function clearDemoData() {
   console.log("Clearing existing demo rows...");
+  await prisma.assessmentAuditEvent.deleteMany();
+  await prisma.depotAssessmentItem.deleteMany();
+  await prisma.depotAssessment.deleteMany();
+  await prisma.assessmentCycle.deleteMany();
   await prisma.brandDepotMonthKpi.deleteMany();
   await prisma.kpiValue.deleteMany();
   await prisma.importBatch.deleteMany();
@@ -273,6 +277,20 @@ async function main() {
   }
   console.log(`Employee KPIs: ${kpiCount}`);
 
+  // ── Permission catalog + default role assignments ──────
+  const { seedPermissionCatalog } = await import(
+    "../src/services/permissionCatalog.js"
+  );
+  const permSeed = await seedPermissionCatalog(prisma);
+  console.log(`Permissions: ${permSeed.permissions}`);
+
+  // ── Depot Assessment criteria catalog ───────────────────
+  const { seedAssessmentCriteria } = await import(
+    "../src/services/assessmentCriteriaCatalog.js"
+  );
+  const criteriaSeed = await seedAssessmentCriteria(prisma);
+  console.log(`Assessment criteria: ${criteriaSeed.criteria}`);
+
   // ── Dynamic KPI catalog + backfill + Excel-style metrics ─
   const { seedKpiCatalog, backfillKpiValuesFromEmployeeKpi } =
     await import("../src/services/kpiCatalog.js");
@@ -394,6 +412,90 @@ async function main() {
       employeeId: employees[0].id,
     },
   });
+
+  // ── Depot Evaluations (assessment cycles + 20 records) ──
+  const { assessmentService } = await import(
+    "../src/services/assessmentService.js"
+  );
+  const cycles = await Promise.all(
+    [
+      {
+        type: "mid_year",
+        label: "Mid-Year 2025",
+        periodStart: new Date(Date.UTC(2025, 0, 1)),
+        periodEnd: new Date(Date.UTC(2025, 5, 30)),
+      },
+      {
+        type: "year_end",
+        label: "Year-End 2025",
+        periodStart: new Date(Date.UTC(2025, 6, 1)),
+        periodEnd: new Date(Date.UTC(2025, 11, 31)),
+      },
+      {
+        type: "mid_year",
+        label: "Mid-Year 2026",
+        periodStart: new Date(Date.UTC(2026, 0, 1)),
+        periodEnd: new Date(Date.UTC(2026, 5, 30)),
+      },
+    ].map((data) => prisma.assessmentCycle.create({ data })),
+  );
+
+  const evaluationCriteria = await prisma.assessmentCriterion.findMany({
+    where: { isActive: true },
+    orderBy: { sortOrder: "asc" },
+  });
+
+  const evaluationStatusPlan = [
+    ...Array(8).fill("finalized"),
+    ...Array(6).fill("submitted"),
+    ...Array(3).fill("draft-scored"),
+    ...Array(3).fill("draft-empty"),
+  ];
+
+  let evaluationCount = 0;
+  for (let i = 0; i < evaluationStatusPlan.length; i++) {
+    const depot = depots[i % depots.length];
+    const cycle = cycles[i % cycles.length];
+    const plan = evaluationStatusPlan[i];
+
+    const created = await assessmentService.createAssessment({
+      depotId: depot.id,
+      cycleId: cycle.id,
+      assessmentDate: daysFromNow(-(10 + i * 5)),
+      evaluatorId: admin.id,
+    });
+
+    if (plan !== "draft-empty") {
+      const items = evaluationCriteria.map((criterion, idx) => {
+        let score = 4 + ((i + idx * 2) % 7); // spread across 4..10
+        if (criterion.isStructural && i % 6 === 0 && idx === 0) {
+          score = 2; // critical structural failure -> not_qualified
+        } else if (criterion.isStructural && i % 4 === 0 && idx === 1) {
+          score = 3; // structural floor -> needs_review
+        }
+        const result =
+          idx % 3 === 0 ? "our_side" : idx % 3 === 1 ? "competitor" : "none";
+        return {
+          criterionId: criterion.id,
+          score,
+          result,
+          remarks: idx === 0 ? `Seed remark for ${depot.code}` : null,
+        };
+      });
+      await assessmentService.updateItems(created.id, items, admin.id);
+    }
+
+    if (plan === "submitted" || plan === "finalized") {
+      await assessmentService.submitAssessment(created.id, admin.id);
+    }
+    if (plan === "finalized") {
+      await assessmentService.finalizeAssessment(created.id, admin.id);
+    }
+    evaluationCount++;
+  }
+  console.log(
+    `Depot evaluations: ${evaluationCount} (cycles: ${cycles.length}, criteria: ${evaluationCriteria.length})`,
+  );
 
   // ── Sample report records ──────────────────────────────
   await prisma.report.createMany({

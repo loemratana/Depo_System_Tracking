@@ -16,5 +16,6 @@ router.get("/assignment-trend", dashboardController.getAssignmentTrend);
 router.get("/brand-distribution", dashboardController.getBrandDistribution);
 router.get("/brand-monthly", dashboardController.getBrandMonthlyReport);
 router.get("/brand-yearly", dashboardController.getBrandYearlyReport);
+router.get("/po-performance", dashboardController.getPoPerformanceTrend);
 
 export default router;

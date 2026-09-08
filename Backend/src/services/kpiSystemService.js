@@ -54,7 +54,7 @@ class KpiSystemService {
     return Object.fromEntries(defs.map((d) => [d.code, d]));
   }
 
-  buildValueWhere({ fromDate, toDate, depotId, search, definitionIds }) {
+  buildValueWhere({ fromDate, toDate, depotId, brandId, search, definitionIds }) {
     const monthRange = parseMonthRange(fromDate, toDate);
     const where = {
       periodMonth: monthRange,
@@ -62,6 +62,7 @@ class KpiSystemService {
     };
 
     if (depotId) where.depotId = Number(depotId);
+    if (brandId) where.brandId = Number(brandId);
 
     if (search?.trim()) {
       const term = search.trim();
@@ -77,7 +78,7 @@ class KpiSystemService {
   }
 
   async getRankings(params = {}) {
-    const { fromDate, toDate, depotId, search } = params;
+    const { fromDate, toDate, depotId, brandId, search } = params;
     const defMap = await this.getDefinitionMap([
       CODE_PO_COUNT,
       CODE_PO_TARGET,
@@ -100,6 +101,7 @@ class KpiSystemService {
         fromDate,
         toDate,
         depotId,
+        brandId,
         search,
         definitionIds,
       }),
@@ -187,10 +189,12 @@ class KpiSystemService {
 
   /** Legacy path — used only when kpi_values is empty */
   async getRankingsFromLegacy(params = {}) {
-    const { fromDate, toDate, depotId, search } = params;
+    const { fromDate, toDate, depotId, brandId, search } = params;
     const monthRange = parseMonthRange(fromDate, toDate);
     const where = { month: monthRange };
     if (depotId) where.depotId = Number(depotId);
+    // EmployeeKPI has no brandId column — filter through the depot relation instead
+    if (brandId) where.depot = { brandId: Number(brandId) };
     if (search?.trim()) {
       const term = search.trim();
       where.OR = [
@@ -411,7 +415,7 @@ class KpiSystemService {
   /**
    * Wide monthly scorecard (Excel-shaped) for one period.
    */
-  async getWideMonth({ month, depotId, employeeId } = {}) {
+  async getWideMonth({ month, depotId, employeeId, brandId } = {}) {
     await this.ensureCatalog();
     const periodStart = month
       ? utcMonthStart(parseISO(`${month}-01`))
@@ -433,6 +437,7 @@ class KpiSystemService {
         kpiDefinitionId: { in: defs.map((d) => d.id) },
         ...(depotId && { depotId: Number(depotId) }),
         ...(employeeId && { employeeId: Number(employeeId) }),
+        ...(brandId && { brandId: Number(brandId) }),
       },
       include: {
         employee: {

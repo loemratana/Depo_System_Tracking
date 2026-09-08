@@ -2,7 +2,6 @@ import express from 'express';
 import cors from 'cors';
 import helmet from 'helmet';
 import compression from 'compression';
-import morgan from 'morgan';
 import rateLimit from 'express-rate-limit';
 import cookieParser from 'cookie-parser';
 import depotRoutes from './routes/depotRoutes.js';
@@ -15,18 +14,31 @@ import db from './config/db.js';
 import brandRoutes from "./routes/brandRoutes.js";
 import path from 'path';
 import environment from './config/env.js';
-import { stream } from './config/logger.js';
 import reportRoutes from "./routes/reportRoutes.js";
 import kpiSystemRoutes from "./routes/kpiSystemRoutes.js";
 import userRoutes from "./routes/userRoutes.js";
 import telegramRoutes from "./routes/telegramRoutes.js";
 import managerRoutes from "./routes/managerRoutes.js";
+import permissionRoutes from "./routes/permissionRoutes.js";
+import assessmentRoutes from "./routes/assessmentRoutes.js";
 import {
   metricsHandler,
   metricsMiddleware,
 } from './middleware/metrics.js';
+import { requestIdMiddleware } from './middleware/requestId.js';
+import { httpLogger } from './middleware/httpLogger.js';
+import { errorHandler } from './middleware/errorHandler.js';
 
 const app = express();
+
+/* ========================
+   REQUEST ID / HTTP LOGGING
+======================== */
+// Runs first so every response carries X-Request-ID and every log line
+// produced further down the chain (including inside services/db calls,
+// via AsyncLocalStorage) is tagged with it.
+app.use(requestIdMiddleware);
+app.use(httpLogger);
 
 /* ========================
    CORS CONFIG
@@ -83,18 +95,6 @@ if (environment.metricsEnabled) {
 }
 
 /* ========================
-   LOGGING
-======================== */
-app.use(
-  morgan(
-    environment.isDevelopment && environment.logFormat !== 'json'
-      ? 'dev'
-      : 'combined',
-    { stream },
-  ),
-);
-
-/* ========================
    RATE LIMITING (optional — off in dev by default)
 ======================== */
 if (environment.enableRateLimit) {
@@ -123,6 +123,8 @@ app.use("/api/v1/kpis", kpiSystemRoutes);
 app.use('/api/v1/users', userRoutes);
 app.use('/api/v1/telegram', telegramRoutes);
 app.use('/api/v1/managers', managerRoutes);
+app.use('/api/v1/permissions', permissionRoutes);
+app.use('/api/v1/assessments', assessmentRoutes);
 
 
 /* ========================
@@ -177,5 +179,10 @@ app.use((req, res) => {
     message: 'Route not found',
   });
 });
+
+/* ========================
+   ERROR HANDLER (must be last)
+======================== */
+app.use(errorHandler);
 
 export default app;

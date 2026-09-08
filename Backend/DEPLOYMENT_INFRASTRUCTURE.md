@@ -19,7 +19,7 @@ Infrastructure and deployment guide for **Depot System Tracking** — Backend AP
            ┌────────────────┐       ┌─────────────────┐       ┌──────────────────┐
            │ PostgreSQL     │       │ Upstash Redis   │       │ Telegram Bot     │
            │ (Supabase)     │       │ (sessions/cache)│       │ (Telegraf + cron)│
-           │ DATABASE_URL   │       │ REST API        │       │ ALLOWED_CHAT_IDS │
+           │ DATABASE_URL   │       │ REST API        │       │ telegram_chats   │
            │ DIRECT_URL     │       └─────────────────┘       └──────────────────┘
            └────────────────┘
                     │
@@ -99,10 +99,11 @@ Optional but used for sessions / cache when configured:
 Runs in the same Node process as the API:
 
 - `TELEGRAM_BOT_TOKEN`
-- `ALLOWED_CHAT_IDS` (comma-separated; groups are usually negative)
 - Optional: `TELEGRAM_CRON_TZ` (default `Asia/Phnom_Penh`)
 
-Notification toggles are stored under `Backend/data/telegram-settings.json` (filesystem). On ephemeral hosts, prefer a persistent disk or move settings to the database later.
+Chat routing (which chat each brand's reports go to) is **not** an env var — it's the `telegram_chats` table, managed via `POST/GET/PATCH/DELETE /api/v1/telegram/chats(/:id)`. The legacy `ALLOWED_CHAT_IDS` var is retired; no runtime code reads it.
+
+Notification toggles (which reports run at all — separate from chat routing) are stored under `Backend/data/telegram-settings.json` (filesystem). On ephemeral hosts, prefer a persistent disk or move settings to the database later.
 
 ### 2.6 Security toggles
 
@@ -127,7 +128,7 @@ Copy from `Backend/.env.example` and set on the host (Render/env dashboard). Nev
 | Auth | `JWT_SECRET`, `JWT_REFRESH_SECRET`, expiry/issuer/audience as needed |
 | Session | `SESSION_SECRET`, Upstash URL/token |
 | Security | `ENABLE_RATE_LIMIT`, `ENABLE_ARCJET`, `ARCJET_*` |
-| Telegram | `TELEGRAM_BOT_TOKEN`, `ALLOWED_CHAT_IDS` |
+| Telegram | `TELEGRAM_BOT_TOKEN` (chat routing is DB-managed, not an env var) |
 | Branding | `COMPANY_LOGO_URL` (optional) |
 
 Also update Backend CORS (`src/app.js`) to include the production frontend origin (Vercel URL), not only `localhost`.

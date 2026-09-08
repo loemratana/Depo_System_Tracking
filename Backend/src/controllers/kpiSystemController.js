@@ -143,6 +143,21 @@ class KpiSystemController {
     }
   };
 
+  deleteBrandMonthly = async (req, res, next) => {
+    try {
+      const data = await brandMonthlyKpiService.deleteMonthlyKpi(
+        req.params.id,
+      );
+      res.json({
+        success: true,
+        message: "Monthly KPI deleted",
+        data,
+      });
+    } catch (error) {
+      next(error);
+    }
+  };
+
   importBrandMonthly = async (req, res, next) => {
     try {
       let rows = req.body?.rows;

@@ -10,7 +10,17 @@ export class ExcelExporter extends BaseExporter {
         });
 
         // ── Styled header ──
-        const headers = ['Code', 'Name', 'Province', 'District', 'Status', 'Expiry Date'];
+        const headers = [
+            'Code',
+            'Name',
+            'Brand',
+            'District',
+            'Province',
+            'Owner',
+            'Sale Supervisor',
+            'Status',
+            'Expiry Date',
+        ];
         const headerRow = worksheet.addRow(headers);
         headerRow.height = reportConfig.excel.headerHeight;
         headerRow.font = reportConfig.excel.headerFont;
@@ -18,19 +28,22 @@ export class ExcelExporter extends BaseExporter {
         headerRow.alignment = { horizontal: 'center', vertical: 'middle' };
         headerRow.font.color = { argb: 'FFFFFFFF' };
 
-        // ── Data rows ──
+        // ── Data rows ── (names only — never raw IDs)
         this.data.depots.forEach((depot) => {
             const row = worksheet.addRow([
                 depot.code || '—',
                 depot.name,
-                depot.provinceName || '—',
+                depot.brandName || '—',
                 depot.districtName || '—',
+                depot.provinceName || '—',
+                depot.ownerName || '—',
+                depot.saleSupervisorName || '—',
                 depot.status || '—',
                 depot.expiryDate || '—',
             ]);
             row.height = reportConfig.excel.rowHeight;
             row.font = reportConfig.excel.font;
-            row.getCell(6).numFmt = reportConfig.excel.dateFormat;
+            row.getCell(9).numFmt = reportConfig.excel.dateFormat;
         });
 
         // ── Totals row ──
@@ -40,10 +53,13 @@ export class ExcelExporter extends BaseExporter {
             '',
             '',
             '',
+            '',
+            '',
+            '',
             this.data.totalDepots,
         ]);
         totalRow.font = { bold: true };
-        totalRow.getCell(6).numFmt = '#,##0';
+        totalRow.getCell(9).numFmt = '#,##0';
 
         // ── Auto-width ──
         worksheet.columns.forEach((col) => {
@@ -61,7 +77,7 @@ export class ExcelExporter extends BaseExporter {
         // ── AutoFilter ──
         worksheet.autoFilter = {
             from: 'A1',
-            to: `F${worksheet.rowCount}`,
+            to: `I${worksheet.rowCount}`,
         };
 
         // ── Summary sheet ──

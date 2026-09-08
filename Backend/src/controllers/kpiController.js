@@ -9,7 +9,6 @@ class DashboardController {
         data: kpis,
       });
     } catch (error) {
-      console.error("Error fetching dashboard KPIs:", error);
       next(error);
     }
   };
@@ -28,7 +27,6 @@ class DashboardController {
         data: trend,
       });
     } catch (error) {
-      console.error("Error fetching monthly PO trend:", error);
       next(error);
     }
   };
@@ -42,7 +40,6 @@ class DashboardController {
         data,
       });
     } catch (error) {
-      console.error("Error fetching brand distribution:", error);
       next(error);
     }
   };
@@ -79,6 +76,23 @@ class DashboardController {
   getDashboardInsights = async (req, res, next) => {
     try {
       const data = await brandMonthlyKpiService.getDashboardInsights(req.query);
+      res.status(200).json({ success: true, data });
+    } catch (error) {
+      next(error);
+    }
+  };
+
+  getPoPerformanceTrend = async (req, res, next) => {
+    try {
+      const { from, to, brandId, depotId, ownerId, provinceId } = req.query;
+      const data = await dashboardKpi.getPoPerformanceTrend({
+        from,
+        to,
+        brandId,
+        depotId,
+        ownerId,
+        provinceId,
+      });
       res.status(200).json({ success: true, data });
     } catch (error) {
       next(error);

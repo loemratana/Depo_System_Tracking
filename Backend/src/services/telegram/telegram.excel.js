@@ -32,6 +32,11 @@ function addTitle(sheet, title, cols = 5) {
   sheet.getCell('A1').font = { size: 16, bold: true };
 }
 
+/** Sale supervisor name — accepts either field name used across report sources. */
+function saleSupervisorOf(r) {
+  return r.saleSupervisor || r.employeeName || '—';
+}
+
 /** Daily PO snapshot Excel (attention + MTD summary) */
 export async function generateDailyExcel(data) {
   const workbook = new ExcelJS.Workbook();
@@ -49,12 +54,26 @@ export async function generateDailyExcel(data) {
   sheet.addRow(['Under Target', tva.underTarget ?? '']);
   sheet.addRow([]);
 
-  styleHeader(sheet.addRow(['Depot', 'Brand', 'Type', 'Severity', 'Detail']));
+  styleHeader(
+    sheet.addRow([
+      'Depot',
+      'Brand',
+      'District',
+      'Province',
+      'Sale Supervisor',
+      'Type',
+      'Severity',
+      'Detail',
+    ]),
+  );
 
   (data.attention || []).forEach((item) => {
     sheet.addRow([
       item.depotName || '',
       item.brandName || '',
+      item.districtName || '—',
+      item.provinceName || '—',
+      saleSupervisorOf(item),
       item.type || '',
       item.severity || '',
       item.detail || '',
@@ -133,6 +152,9 @@ export async function generateMonthlyKPIExcel(data) {
     sheet.addRow([
       'Depot',
       'Brand',
+      'District',
+      'Province',
+      'Sale Supervisor',
       '# PO',
       '# Target',
       'PO %',
@@ -146,6 +168,9 @@ export async function generateMonthlyKPIExcel(data) {
     sheet.addRow([
       r.depotName,
       r.brandName,
+      r.districtName || '—',
+      r.provinceName || '—',
+      saleSupervisorOf(r),
       r.poActual,
       r.poTarget,
       r.poPercent,
@@ -174,12 +199,30 @@ export async function generateLicenseExcel(data) {
   sheet.addRow([]);
 
   styleHeader(
-    sheet.addRow(['Bucket', 'Depot', 'Brand', 'Owner', 'Expiry', 'Days']),
+    sheet.addRow([
+      'Bucket',
+      'Depot',
+      'Brand',
+      'District',
+      'Province',
+      'Sale Supervisor',
+      'Expiry',
+      'Days',
+    ]),
   );
 
   const push = (bucket, rows) => {
     (rows || []).forEach((r) => {
-      sheet.addRow([bucket, r.name, r.brand, r.owner, r.expiry, r.days]);
+      sheet.addRow([
+        bucket,
+        r.name,
+        r.brand,
+        r.district || '—',
+        r.province || '—',
+        r.saleSupervisor || '—',
+        r.expiry,
+        r.days,
+      ]);
     });
   };
   push('Expired', data.expired);
@@ -202,9 +245,27 @@ export async function generateVacancyExcel(data) {
   sheet.addRow(['Total', data.rows?.length ?? 0]);
   sheet.addRow([]);
 
-  styleHeader(sheet.addRow(['Depot', 'Brand', 'Status', 'Reason']));
+  styleHeader(
+    sheet.addRow([
+      'Depot',
+      'Brand',
+      'District',
+      'Province',
+      'Sale Supervisor',
+      'Status',
+      'Reason',
+    ]),
+  );
   (data.rows || []).forEach((r) => {
-    sheet.addRow([r.name, r.brand, r.status, r.reason]);
+    sheet.addRow([
+      r.name,
+      r.brand,
+      r.district || '—',
+      r.province || '—',
+      r.saleSupervisor || '—',
+      r.status,
+      r.reason,
+    ]);
   });
 
   autoWidth(sheet);
@@ -222,11 +283,25 @@ export async function generateMissingKpiExcel(data) {
   sheet.addRow(['Items', data.rows?.length ?? 0]);
   sheet.addRow([]);
 
-  styleHeader(sheet.addRow(['Depot', 'Brand', 'Type', 'Severity', 'Detail']));
+  styleHeader(
+    sheet.addRow([
+      'Depot',
+      'Brand',
+      'District',
+      'Province',
+      'Sale Supervisor',
+      'Type',
+      'Severity',
+      'Detail',
+    ]),
+  );
   (data.rows || []).forEach((r) => {
     sheet.addRow([
       r.depotName || '',
       r.brandName || '',
+      r.districtName || '—',
+      r.provinceName || '—',
+      saleSupervisorOf(r),
       r.type || '',
       r.severity || '',
       r.detail || '',
@@ -249,12 +324,25 @@ export async function generateUnderPerformersExcel(data) {
   sheet.addRow([]);
 
   styleHeader(
-    sheet.addRow(['Depot', 'Brand', '# PO', '# Target', 'PO %', 'Status']),
+    sheet.addRow([
+      'Depot',
+      'Brand',
+      'District',
+      'Province',
+      'Sale Supervisor',
+      '# PO',
+      '# Target',
+      'PO %',
+      'Status',
+    ]),
   );
   (data.rows || []).forEach((r) => {
     sheet.addRow([
       r.depotName,
       r.brandName,
+      r.districtName || '—',
+      r.provinceName || '—',
+      saleSupervisorOf(r),
       r.poActual,
       r.poTarget,
       r.poPercent,
@@ -305,9 +393,25 @@ export async function generateMonthlyBrandExcel(data) {
 
   if (data.under?.length) {
     sheet.addRow([]);
-    styleHeader(sheet.addRow(['Under Target Depot', 'Brand', 'Detail']));
+    styleHeader(
+      sheet.addRow([
+        'Under Target Depot',
+        'Brand',
+        'District',
+        'Province',
+        'Sale Supervisor',
+        'Detail',
+      ]),
+    );
     data.under.forEach((a) => {
-      sheet.addRow([a.depotName, a.brandName || '', a.detail || '']);
+      sheet.addRow([
+        a.depotName,
+        a.brandName || '',
+        a.districtName || '—',
+        a.provinceName || '—',
+        saleSupervisorOf(a),
+        a.detail || '',
+      ]);
     });
   }
 
@@ -329,6 +433,9 @@ export async function generateYearlyExcel(data) {
     sheet.addRow([
       'Depot',
       'Brand',
+      'District',
+      'Province',
+      'Sale Supervisor',
       'Total PO',
       'Avg Available %',
       'Avg Display %',
@@ -338,6 +445,9 @@ export async function generateYearlyExcel(data) {
     sheet.addRow([
       r.depotName,
       r.brandName,
+      r.districtName || '—',
+      r.provinceName || '—',
+      saleSupervisorOf(r),
       r.totalPo,
       r.avgAvailable,
       r.avgDisplay,

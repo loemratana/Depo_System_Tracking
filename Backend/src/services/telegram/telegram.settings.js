@@ -118,7 +118,6 @@ export function getTelegramSettings() {
         enabled: !!enabled[r.id],
       })),
       botConfigured: Boolean(process.env.TELEGRAM_BOT_TOKEN),
-      chatConfigured: Boolean(process.env.ALLOWED_CHAT_IDS?.trim()),
     };
   } catch {
     return {
@@ -128,7 +127,6 @@ export function getTelegramSettings() {
         enabled: !!r.defaultEnabled,
       })),
       botConfigured: Boolean(process.env.TELEGRAM_BOT_TOKEN),
-      chatConfigured: Boolean(process.env.ALLOWED_CHAT_IDS?.trim()),
     };
   }
 }

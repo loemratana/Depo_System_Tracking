@@ -1,6 +1,7 @@
 import { telegramService } from './telegram.service.js';
 import { setupCommands } from './telegram.commands.js';
 import { setupSchedulers } from './telegram.scheduler.js';
+import logger from '../../config/logger.js';
 
 export function startTelegramBot() {
   try {
@@ -8,6 +9,6 @@ export function startTelegramBot() {
     setupSchedulers();
     telegramService.launch();
   } catch (err) {
-    console.error('Failed to start Telegram bot:', err);
+    logger.error('Failed to start Telegram bot', { err });
   }
 }

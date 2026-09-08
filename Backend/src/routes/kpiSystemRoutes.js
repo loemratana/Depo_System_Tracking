@@ -29,6 +29,7 @@ router.get(
 router.get("/brand-monthly/export", kpiSystemController.exportBrandMonthly);
 router.get("/brand-monthly", kpiSystemController.listBrandMonthly);
 router.post("/brand-monthly", kpiSystemController.upsertBrandMonthly);
+router.delete("/brand-monthly/:id", kpiSystemController.deleteBrandMonthly);
 router.post(
   "/brand-monthly/import",
   excelUpload.single("file"),

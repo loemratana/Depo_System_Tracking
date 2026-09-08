@@ -347,12 +347,18 @@
         "sortOrder": "Descending",
         "wrapLogMessage": true
       },
+      "datasource": { "type": "loki", "uid": "loki" },
+      "description": "Local API logs from Backend/logs via Promtail. Requires LOG_TO_FILE=true. Render production logs are not shipped here unless you add a log drain.",
       "title": "API logs (Loki)",
       "type": "logs",
       "targets": [
         {
-          "expr": "{job=\"depot-api\"} |= ``",
-          "refId": "A"
+          "datasource": { "type": "loki", "uid": "loki" },
+          "editorMode": "code",
+          "expr": "{job=\"depot-api\"}",
+          "queryType": "range",
+          "refId": "A",
+          "maxLines": 200
         }
       ]
     }
@@ -361,7 +367,7 @@
   "schemaVersion": 39,
   "tags": ["depot", "api", "prometheus", "loki"],
   "templating": { "list": [] },
-  "time": { "from": "now-1h", "to": "now" },
+  "time": { "from": "now-6h", "to": "now" },
   "timepicker": {},
   "timezone": "browser",
   "title": "Depot API Overview",

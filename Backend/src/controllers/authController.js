@@ -35,12 +35,20 @@ class AuthController {
     login = async (req, res) => {
         try {
             const result = await authService.login(req.body);
+            logger.info('User logged in', {
+                action: 'auth.login.success',
+                userId: result.user.id,
+            });
             res.json({
                 success: true,
                 message: 'Login successful',
                 data: result,
             });
         } catch (error) {
+            logger.warn('Login failed', {
+                action: 'auth.login.failed',
+                reason: error.message,
+            });
             this.handleError(res, error, 'Failed to login');
         }
     };
@@ -66,6 +74,7 @@ class AuthController {
         try {
             const { refreshToken, accessToken } = req.body;
             const result = await authService.logout(accessToken, refreshToken);
+            logger.info('User logged out', { action: 'auth.logout' });
             return res.status(200).json({
                 success: true,
                 message: 'Logout successful',

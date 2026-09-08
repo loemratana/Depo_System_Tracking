@@ -1,5 +1,6 @@
 import aj from "../lib/arcjet.js";
 import environment from "../config/env.js";
+import logger from "../config/logger.js";
 
 export async function arcjetMiddleware(req, res, next) {
   if (!environment.enableArcjet) {
@@ -8,10 +9,13 @@ export async function arcjetMiddleware(req, res, next) {
 
   const decision = await aj.protect(req);
 
-  // Log the decision for observability
-  console.log("Arcjet decision:", decision.conclusion);
-
   if (decision.isDenied()) {
+    logger.warn("Arcjet request denied", {
+      action: "arcjet.denied",
+      conclusion: decision.conclusion,
+      path: req.path,
+    });
+
     // Check which rule triggered the denial
     for (const result of decision.results) {
       if (result.reason.isShield()) {
@@ -33,5 +37,6 @@ export async function arcjetMiddleware(req, res, next) {
     return;
   }
 
+  logger.debug("Arcjet decision", { conclusion: decision.conclusion });
   next();
 }

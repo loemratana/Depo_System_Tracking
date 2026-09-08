@@ -5,6 +5,7 @@ import { connectDB } from './config/db.js';
 import logger from './config/logger.js';
 import environment from './config/env.js';
 import { startTelegramBot } from './services/telegram/index.js';
+import { telegramService } from './services/telegram/telegram.service.js';
 
 
 class Server {
@@ -62,11 +63,23 @@ class Server {
     async stop() {
         logger.info('Shutting down server...');
 
+        telegramService.stop();
+
+        const forceExit = setTimeout(() => {
+            logger.error('Forced shutdown after timeout');
+            process.exit(1);
+        }, 5000);
+        forceExit.unref();
+
         if (this.server) {
             this.server.close(() => {
                 logger.info('HTTP server closed');
+                clearTimeout(forceExit);
                 process.exit(0);
             });
+        } else {
+            clearTimeout(forceExit);
+            process.exit(0);
         }
     }
 
@@ -76,6 +89,24 @@ class Server {
         process.on('SIGTERM', () => this.stop());
     }
 
+    // Fatal errors leave the process in an unknown state — log everything we
+    // have, then exit non-zero so Docker/the process manager restarts us
+    // with a clean slate instead of limping along.
+    fatalShutdown(exitCode) {
+        const forceExit = setTimeout(() => process.exit(exitCode), 5000);
+        forceExit.unref();
+
+        if (this.server) {
+            this.server.close(() => {
+                clearTimeout(forceExit);
+                process.exit(exitCode);
+            });
+        } else {
+            clearTimeout(forceExit);
+            process.exit(exitCode);
+        }
+    }
+
 }
 
 // Create instance
@@ -83,6 +114,26 @@ const server = new Server();
 
 // Setup shutdown
 server.setupGracefulShutdown();
+
+// Unrecoverable errors: log the full error, then exit non-zero. Node
+// already treats an unhandled rejection as fatal by default, so this just
+// makes sure it's logged via Winston (structured, redacted) before exiting
+// instead of only printing to stderr.
+process.on('unhandledRejection', (reason) => {
+    logger.error('Unhandled promise rejection', {
+        err: reason,
+        action: 'process.unhandled_rejection',
+    });
+    server.fatalShutdown(1);
+});
+
+process.on('uncaughtException', (error) => {
+    logger.error('Uncaught exception', {
+        err: error,
+        action: 'process.uncaught_exception',
+    });
+    server.fatalShutdown(1);
+});
 
 // Start only if not test
 if (environment.nodeEnv !== 'test') {
