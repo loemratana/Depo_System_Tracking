@@ -469,9 +469,9 @@ async function main() {
       const items = evaluationCriteria.map((criterion, idx) => {
         let score = 4 + ((i + idx * 2) % 7); // spread across 4..10
         if (criterion.isStructural && i % 6 === 0 && idx === 0) {
-          score = 2; // critical structural failure -> not_qualified
+          score = 2; // pulls the average down toward the "weak" tier
         } else if (criterion.isStructural && i % 4 === 0 && idx === 1) {
-          score = 3; // structural floor -> needs_review
+          score = 3; // pulls the average down toward "needs_improvement"
         }
         const result =
           idx % 3 === 0 ? "our_side" : idx % 3 === 1 ? "competitor" : "none";

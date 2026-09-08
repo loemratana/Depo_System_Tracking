@@ -518,9 +518,10 @@ enum AssessmentItemResult {
 }
 
 enum QualificationStatus {
-  qualified
-  needs_review
-  not_qualified
+  excellent
+  good
+  needs_improvement
+  weak
 }
 
 enum AssessmentAuditAction {

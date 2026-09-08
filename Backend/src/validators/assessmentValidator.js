@@ -29,7 +29,7 @@ export const listAssessmentsValidator = [
   query("status").optional().isIn(["draft", "submitted", "finalized"]),
   query("qualificationStatus")
     .optional()
-    .isIn(["qualified", "needs_review", "not_qualified"]),
+    .isIn(["excellent", "good", "needs_improvement", "weak"]),
   query("includeSuperseded").optional().isBoolean().toBoolean(),
   query("search").optional().isString().trim(),
   query("dateFrom").optional().isISO8601().withMessage("dateFrom must be a valid date"),

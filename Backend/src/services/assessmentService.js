@@ -2,16 +2,15 @@ import { prisma } from "../config/db.js";
 import { seedAssessmentCriteria } from "./assessmentCriteriaCatalog.js";
 
 /**
- * Qualification thresholds (V1: application constants, not a configurable
+ * Score Rank thresholds (V1: application constants, not a configurable
  * table — see "Deliberately simplified for V1" in the assessment ERD).
- * Values and branch order match the approved design prototype exactly
- * (Depot Assessment Design canvas, NewAssessment artboard scoring logic).
+ * The qualification status is a straight tier lookup on the overall
+ * average score (0–10 scale) — no structural/critical floor gates.
  */
-export const QUALIFICATION_THRESHOLDS = {
-  qualifiedAvg: 7, // Q_HIGH — overallScore >= this (and no gate below fires) -> qualified
-  lowAvg: 4, // Q_LOW — overallScore below this -> not_qualified outright
-  structuralFloor: 4, // FLOOR — a structural criterion at/below this caps the result at needs_review
-  criticalFloor: 2, // CRITICAL — a structural criterion at/below this -> not_qualified regardless of average
+export const SCORE_RANK_THRESHOLDS = {
+  excellent: 8, // overallScore >= this -> excellent
+  good: 6.5, // overallScore >= this -> good
+  needsImprovement: 5, // overallScore >= this -> needs_improvement; below it -> weak
 };
 
 const ITEM_INCLUDE = {
@@ -274,7 +273,7 @@ class AssessmentService {
     return this.getAssessmentById(assessmentId);
   }
 
-  /** Compute cached scores + qualification gate from the current items. */
+  /** Compute cached scores + score-rank tier from the current items. */
   scoreAssessment(items) {
     const scored = items.filter((i) => i.score != null);
 
@@ -282,6 +281,7 @@ class AssessmentService {
       rows.length ? rows.reduce((sum, r) => sum + r.score, 0) / rows.length : null;
 
     const overallScore = average(scored);
+    const avg = overallScore; // alias to mirror the design prototype's naming
 
     const ourWinsCount = items.filter((i) => i.result === "our_side").length;
     const competitorWinsCount = items.filter((i) => i.result === "competitor").length;
@@ -289,34 +289,24 @@ class AssessmentService {
       (i) => i.result === "none" && i.criterion.isComparable,
     ).length;
 
-    const { qualifiedAvg, lowAvg, structuralFloor, criticalFloor } =
-      QUALIFICATION_THRESHOLDS;
+    const { excellent, good, needsImprovement } = SCORE_RANK_THRESHOLDS;
 
-    const structuralScored = scored.filter((i) => i.criterion.isStructural);
-    const critFails = structuralScored.filter((i) => i.score <= criticalFloor);
-    const floorFails = structuralScored.filter((i) => i.score <= structuralFloor);
-    const avg = overallScore; // alias to mirror the design prototype's naming
-
-    let qualificationStatus;
-    let qualificationReason;
-    if (critFails.length > 0) {
-      qualificationStatus = "not_qualified";
-      qualificationReason = `Not Qualified — ${critFails.map((i) => i.criterion.labelEn).join(", ")} scored ${criticalFloor} or below, a critical structural failure regardless of the overall average (${avg != null ? round2(avg) : "n/a"}).`;
-    } else if (avg != null && avg < lowAvg) {
-      qualificationStatus = "not_qualified";
-      qualificationReason = `Not Qualified — overall average (${round2(avg)}) is below the minimum threshold of ${lowAvg}.`;
-    } else if (floorFails.length > 0) {
-      qualificationStatus = "needs_review";
-      const names = floorFails
-        .map((i) => `${i.criterion.labelEn} scored ${i.score}`)
-        .join(", ");
-      qualificationReason = `Needs Review — ${names}, below the structural threshold of ${structuralFloor}. Overall average (${avg != null ? round2(avg) : "n/a"}) would otherwise qualify, but a structural criterion capped the result.`;
-    } else if (avg != null && avg >= qualifiedAvg) {
-      qualificationStatus = "qualified";
-      qualificationReason = `Qualified — overall average (${round2(avg)}) meets the threshold of ${qualifiedAvg}, and all structural criteria are above the floor.`;
-    } else {
-      qualificationStatus = "needs_review";
-      qualificationReason = `Needs Review — overall average (${avg != null ? round2(avg) : "n/a"}) falls in the ${lowAvg}–${qualifiedAvg} range.`;
+    let qualificationStatus = null;
+    let qualificationReason = "Score at least one criterion to see a result.";
+    if (avg != null) {
+      if (avg >= excellent) {
+        qualificationStatus = "excellent";
+        qualificationReason = `Excellent — overall average (${round2(avg)}) is ${excellent} or above.`;
+      } else if (avg >= good) {
+        qualificationStatus = "good";
+        qualificationReason = `Good — overall average (${round2(avg)}) is in the ${good}–${excellent} range.`;
+      } else if (avg >= needsImprovement) {
+        qualificationStatus = "needs_improvement";
+        qualificationReason = `Needs Improvement — overall average (${round2(avg)}) is in the ${needsImprovement}–${good} range.`;
+      } else {
+        qualificationStatus = "weak";
+        qualificationReason = `Weak (Need to Review) — overall average (${round2(avg)}) is below ${needsImprovement}.`;
+      }
     }
 
     return {
