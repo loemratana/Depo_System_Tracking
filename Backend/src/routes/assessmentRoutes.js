@@ -5,6 +5,7 @@ import {
   assessmentIdParamValidator,
   listAssessmentsValidator,
   createAssessmentValidator,
+  updateAssessmentValidator,
   updateItemsValidator,
   reopenAssessmentValidator,
   createCycleValidator,
@@ -32,6 +33,11 @@ router.get(
   "/:id/previous",
   assessmentIdParamValidator,
   assessmentController.getPreviousAssessment,
+);
+router.patch(
+  "/:id",
+  updateAssessmentValidator,
+  assessmentController.updateAssessment,
 );
 router.patch(
   "/:id/items",

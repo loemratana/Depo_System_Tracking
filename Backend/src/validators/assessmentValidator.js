@@ -54,6 +54,21 @@ export const createAssessmentValidator = [
   validate,
 ];
 
+export const updateAssessmentValidator = [
+  param("id").isInt({ min: 1 }).withMessage("Valid assessment id is required").toInt(),
+  body("evaluatorName")
+    .optional({ nullable: true })
+    .isString()
+    .trim()
+    .isLength({ max: 150 })
+    .withMessage("evaluatorName must be at most 150 characters"),
+  body("assessmentDate")
+    .optional()
+    .isISO8601()
+    .withMessage("assessmentDate must be a valid date"),
+  validate,
+];
+
 export const updateItemsValidator = [
   param("id").isInt({ min: 1 }).withMessage("Valid assessment id is required").toInt(),
   body("items").isArray({ min: 1 }).withMessage("items must be a non-empty array"),

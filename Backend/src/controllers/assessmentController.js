@@ -104,6 +104,20 @@ class AssessmentController {
     }
   };
 
+  updateAssessment = async (req, res, next) => {
+    try {
+      const { evaluatorName, assessmentDate } = req.body;
+      const data = await assessmentService.updateAssessment(
+        req.params.id,
+        { evaluatorName, assessmentDate },
+        req.user.id,
+      );
+      res.json({ success: true, data });
+    } catch (error) {
+      next(error);
+    }
+  };
+
   updateItems = async (req, res, next) => {
     try {
       const items = req.body?.items;

@@ -235,6 +235,43 @@ class AssessmentService {
     return assessment;
   }
 
+  /**
+   * Edit an assessment's own fields (evaluator name, assessment date) —
+   * only while it's a draft. Kept separate from updateItems since it
+   * touches the DepotAssessment row, not its items.
+   */
+  async updateAssessment(id, { evaluatorName, assessmentDate }, actorId) {
+    const assessment = await prisma.depotAssessment.findUnique({
+      where: { id: Number(id) },
+    });
+    if (!assessment) {
+      const error = new Error("Assessment not found");
+      error.statusCode = 404;
+      throw error;
+    }
+    if (assessment.status !== "draft") {
+      const error = new Error("Only a draft assessment can be edited");
+      error.statusCode = 409;
+      throw error;
+    }
+
+    const data = {};
+    if (evaluatorName !== undefined) data.evaluatorName = evaluatorName?.trim() || null;
+    if (assessmentDate !== undefined) data.assessmentDate = new Date(assessmentDate);
+
+    return prisma.$transaction(async (tx) => {
+      const updated = await tx.depotAssessment.update({
+        where: { id: Number(id) },
+        data,
+        include: ASSESSMENT_INCLUDE,
+      });
+      await tx.assessmentAuditEvent.create({
+        data: { assessmentId: Number(id), action: "edited", actorId: Number(actorId) },
+      });
+      return updated;
+    });
+  }
+
   /** Bulk upsert of item scores/results/remarks — only while the assessment is a draft. */
   async updateItems(assessmentId, items, actorId) {
     const assessment = await prisma.depotAssessment.findUnique({
@@ -412,6 +449,7 @@ class AssessmentService {
           depotId: assessment.depotId,
           cycleId: assessment.cycleId,
           evaluatorId: Number(actorId),
+          evaluatorName: assessment.evaluatorName,
           assessmentDate: assessment.assessmentDate,
           status: "draft",
           version: assessment.version + 1,
