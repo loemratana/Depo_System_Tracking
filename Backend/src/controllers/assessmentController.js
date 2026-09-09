@@ -111,6 +111,7 @@ class AssessmentController {
         req.params.id,
         { evaluatorName, assessmentDate },
         req.user.id,
+        req.user.role,
       );
       res.json({ success: true, data });
     } catch (error) {
@@ -131,6 +132,7 @@ class AssessmentController {
         req.params.id,
         items,
         req.user.id,
+        req.user.role,
       );
       res.json({ success: true, data });
     } catch (error) {

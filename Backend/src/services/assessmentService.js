@@ -17,6 +17,11 @@ const ITEM_INCLUDE = {
   criterion: true,
 };
 
+// Editing a draft is open to whoever created it; editing a submitted or
+// finalized assessment in place (no status change, no reopen/new version)
+// is restricted the same way finalize/reopen already were.
+const MANAGE_ROLES = ["admin", "manager"];
+
 const ASSESSMENT_INCLUDE = {
   depot: {
     select: {
@@ -237,10 +242,11 @@ class AssessmentService {
 
   /**
    * Edit an assessment's own fields (evaluator name, assessment date) —
-   * only while it's a draft. Kept separate from updateItems since it
-   * touches the DepotAssessment row, not its items.
+   * in place, at any status. Never touches `status` itself; that's only
+   * ever changed by submit/finalize/reopen. Kept separate from updateItems
+   * since it touches the DepotAssessment row, not its items.
    */
-  async updateAssessment(id, { evaluatorName, assessmentDate }, actorId) {
+  async updateAssessment(id, { evaluatorName, assessmentDate }, actorId, role) {
     const assessment = await prisma.depotAssessment.findUnique({
       where: { id: Number(id) },
     });
@@ -249,9 +255,11 @@ class AssessmentService {
       error.statusCode = 404;
       throw error;
     }
-    if (assessment.status !== "draft") {
-      const error = new Error("Only a draft assessment can be edited");
-      error.statusCode = 409;
+    if (assessment.status !== "draft" && !MANAGE_ROLES.includes(role)) {
+      const error = new Error(
+        "Only admin/manager can edit a submitted or finalized assessment",
+      );
+      error.statusCode = 403;
       throw error;
     }
 
@@ -272,8 +280,14 @@ class AssessmentService {
     });
   }
 
-  /** Bulk upsert of item scores/results/remarks — only while the assessment is a draft. */
-  async updateItems(assessmentId, items, actorId) {
+  /**
+   * Bulk upsert of item scores/results/remarks — in place, at any status
+   * (see updateAssessment). Since submit is the only other place the
+   * cached score fields (overallScore, qualificationStatus, ...) get
+   * written, an edit after submit/finalize has to recompute and persist
+   * them here too or the list/detail views would show stale numbers.
+   */
+  async updateItems(assessmentId, items, actorId, role) {
     const assessment = await prisma.depotAssessment.findUnique({
       where: { id: Number(assessmentId) },
     });
@@ -282,11 +296,11 @@ class AssessmentService {
       error.statusCode = 404;
       throw error;
     }
-    if (assessment.status !== "draft") {
+    if (assessment.status !== "draft" && !MANAGE_ROLES.includes(role)) {
       const error = new Error(
-        "Only a draft assessment can have its items edited",
+        "Only admin/manager can edit a submitted or finalized assessment",
       );
-      error.statusCode = 409;
+      error.statusCode = 403;
       throw error;
     }
 
@@ -305,6 +319,17 @@ class AssessmentService {
         }),
       ),
     );
+
+    const refreshedItems = await prisma.depotAssessmentItem.findMany({
+      where: { assessmentId: Number(assessmentId) },
+      include: ITEM_INCLUDE,
+    });
+    const scores = this.scoreAssessment(refreshedItems);
+
+    await prisma.depotAssessment.update({
+      where: { id: Number(assessmentId) },
+      data: scores,
+    });
 
     await prisma.assessmentAuditEvent.create({
       data: {
