@@ -1133,8 +1133,39 @@ class DepotService {
     };
   }
 
+  // Minimal-field depot list for filter dropdowns / autocompletes — no
+  // employee, manager, address, or note fields, so it stays cheap even
+  // when every depot is loaded at once for client-side search.
+  async getDepotOptions({ limit = 5000 } = {}) {
+    const safeLimit = Math.min(5000, Math.max(1, Number(limit) || 5000));
 
+    const depots = await prisma.depot.findMany({
+      take: safeLimit,
+      orderBy: { name: "asc" },
+      select: {
+        id: true,
+        name: true,
+        brandId: true,
+        district: {
+          select: {
+            id: true,
+            name: true,
+            province: { select: { id: true, name: true } },
+          },
+        },
+      },
+    });
 
+    return depots.map((depot) => ({
+      id: depot.id,
+      name: depot.name,
+      brandId: depot.brandId,
+      districtId: depot.district?.id ?? null,
+      districtName: depot.district?.name ?? null,
+      provinceId: depot.district?.province?.id ?? null,
+      provinceName: depot.district?.province?.name ?? null,
+    }));
+  }
 
   // ─── Validate a single row ──────────────────────────────
   _validateRow(record, rowNumber) {

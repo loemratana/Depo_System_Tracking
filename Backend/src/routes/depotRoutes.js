@@ -73,6 +73,7 @@ router.get("/", depotController.getAllDepots);
 router.get("/counts", depotController.getCounts);
 router.get("/counts-by-brand", depotController.getCountsByBrand);
 router.get("/summary", depotController.getSummary);
+router.get("/options", depotController.getDepotOptions);
 
 router.get("/unassigned", depotController.findDepotNotAssigned);
 router.get("/:id", depotController.getDepotById);

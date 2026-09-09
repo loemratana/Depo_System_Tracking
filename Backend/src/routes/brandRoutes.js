@@ -8,6 +8,7 @@ const { authenticate } = authMiddleware;
 router.use(authenticate);
 
 router.get("/", BrandController.getAllBrands);
+router.get("/options", BrandController.getBrandOptions);
 router.get("/:id/summary", BrandController.getBrandSummary);
 router.get("/:id", BrandController.getBrandById);
 router.post("/", BrandController.createBrand);

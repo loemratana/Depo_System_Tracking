@@ -21,6 +21,15 @@ class BrandService {
     });
     return brands;
   }
+
+  // Minimal-field brand list for filter dropdowns / autocompletes
+  async getOptions() {
+    return prisma.brand.findMany({
+      select: { id: true, name: true },
+      orderBy: { name: "asc" },
+    });
+  }
+
   async getDepotsByBrand(brandId, options = {}) {
     try {
       const parsedId = parseInt(brandId, 10);

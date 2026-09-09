@@ -303,6 +303,23 @@ class DepotController {
       });
     }
   };
+  // Minimal-field depot list for filter dropdowns / autocompletes
+  getDepotOptions = async (req, res) => {
+    try {
+      const { limit } = req.query;
+      const data = await depotService.getDepotOptions({
+        limit: limit ? parseInt(limit, 10) : undefined,
+      });
+      res.status(200).json({ success: true, data });
+    } catch (error) {
+      logger.error(`Error fetching depot options: ${error.message}`);
+      res.status(500).json({
+        success: false,
+        message: "Internal server error",
+        error: error.message,
+      });
+    }
+  };
   /**
    * POST /api/depots/bulk-import
    * Expects multipart/form-data with field "file" (.xlsx template or .csv)

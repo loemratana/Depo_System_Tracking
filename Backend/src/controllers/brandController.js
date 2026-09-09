@@ -17,6 +17,18 @@ export class BrandController {
     }
   };
 
+  getBrandOptions = async (req, res) => {
+    try {
+      const brands = await brandService.getOptions();
+      res.json({ success: true, data: brands });
+    } catch (error) {
+      logger.error("Get brand options error:", error);
+      res
+        .status(500)
+        .json({ success: false, message: "Failed to fetch brand options" });
+    }
+  };
+
   getDepotByBrand = async (req, res) => {
     try {
       const { brandId } = req.params;
