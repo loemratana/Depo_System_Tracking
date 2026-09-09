@@ -85,10 +85,11 @@ export const updateItemsValidator = [
 export const reopenAssessmentValidator = [
   param("id").isInt({ min: 1 }).withMessage("Valid assessment id is required").toInt(),
   body("reason")
+    .optional({ nullable: true })
     .isString()
     .trim()
-    .isLength({ min: 1 })
-    .withMessage("reason is required to reopen an assessment"),
+    .isLength({ max: 500 })
+    .withMessage("reason must be at most 500 characters"),
   validate,
 ];
 

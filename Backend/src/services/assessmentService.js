@@ -420,23 +420,21 @@ class AssessmentService {
   }
 
   /**
-   * Reopen a finalized assessment: supersede it and create a new draft
-   * version (with copied items) that replaces it. Who is allowed to do
-   * this is an authorization rule, not a schema concern — every reopen is
-   * logged on both rows either way.
+   * Reopen a submitted or finalized assessment: supersede it and create a
+   * new draft version (with copied items) that replaces it. Who is allowed
+   * to do this is an authorization rule, not a schema concern — every
+   * reopen is logged on both rows either way. A reason is optional (falls
+   * back to a generic note) so this can be triggered directly from an Edit
+   * action without prompting for one.
    */
   async reopenAssessment(id, { reason, actorId }) {
     const assessment = await this.getAssessmentById(id);
-    if (assessment.status !== "finalized") {
-      const error = new Error("Only a finalized assessment can be reopened");
+    if (assessment.status === "draft") {
+      const error = new Error("Assessment is already a draft");
       error.statusCode = 409;
       throw error;
     }
-    if (!reason?.trim()) {
-      const error = new Error("reopenReason is required to reopen an assessment");
-      error.statusCode = 422;
-      throw error;
-    }
+    const reopenReason = reason?.trim() || "Reopened for editing";
 
     return prisma.$transaction(async (tx) => {
       await tx.depotAssessment.update({
@@ -454,7 +452,7 @@ class AssessmentService {
           status: "draft",
           version: assessment.version + 1,
           reopenedFromId: assessment.id,
-          reopenReason: reason.trim(),
+          reopenReason,
           items: {
             create: assessment.items.map((item) => ({
               criterionId: item.criterionId,
@@ -473,7 +471,7 @@ class AssessmentService {
             assessmentId: assessment.id,
             action: "reopened",
             actorId: Number(actorId),
-            note: reason.trim(),
+            note: reopenReason,
           },
           {
             assessmentId: reopened.id,
