@@ -68,13 +68,12 @@ class AssessmentController {
   };
 
   // Same filters as listAssessments (brandId/provinceId/districtId
-  // included), no pagination — every matching row goes into one sheet.
+  // included). With ?groupBy=brand|province|district the sheet mirrors
+  // the on-screen grouped view instead of one flat list.
   exportAssessments = async (req, res, next) => {
     try {
-      const assessments = await assessmentService.exportAssessments(
-        req.query,
-      );
-      const exporter = new AssessmentExcelExporter({ assessments });
+      const result = await assessmentService.exportAssessments(req.query);
+      const exporter = new AssessmentExcelExporter(result);
       const buffer = await exporter.export();
       res.setHeader("Content-Type", exporter.getContentType());
       res.setHeader(

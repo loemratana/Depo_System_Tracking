@@ -310,17 +310,28 @@ class AssessmentService {
    * Same filters as listAssessments (brand/province/district/cycle/status/
    * date range/search), no pagination — every matching row, for the Excel
    * export. Capped so a filterless export can't pull the entire table.
+   *
+   * When `groupBy` is set, the export mirrors the on-screen grouped view:
+   * bucketed by brand/province/district, each group's rows sorted highest
+   * score first, groups ranked by average score — instead of one flat
+   * sheet — via the same #listAssessmentsGrouped used by listAssessments.
    */
-  async exportAssessments(filters = {}) {
+  async exportAssessments({ groupBy, ...filters } = {}) {
     const where = this.#buildAssessmentWhere(filters);
-    const EXPORT_ROW_CAP = 20000;
 
-    return prisma.depotAssessment.findMany({
+    if (groupBy) {
+      const { groups } = await this.#listAssessmentsGrouped(where, groupBy);
+      return { groupBy, groups };
+    }
+
+    const EXPORT_ROW_CAP = 20000;
+    const assessments = await prisma.depotAssessment.findMany({
       where,
       include: ASSESSMENT_INCLUDE,
       orderBy: { assessmentDate: "desc" },
       take: EXPORT_ROW_CAP,
     });
+    return { groupBy: null, assessments };
   }
 
   async getAssessmentById(id) {
