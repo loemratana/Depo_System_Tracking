@@ -1,4 +1,5 @@
 import { assessmentService } from "../services/assessmentService.js";
+import { AssessmentExcelExporter } from "../exporters/assessment-excel.exporter.js";
 
 class AssessmentController {
   // ── Cycles ─────────────────────────────────────────────
@@ -49,10 +50,38 @@ class AssessmentController {
 
   listAssessments = async (req, res, next) => {
     try {
-      const { data, pagination } = await assessmentService.listAssessments(
+      const result = await assessmentService.listAssessments(req.query);
+      // ?groupBy=brand|province|district returns { groups, totalAssessments }
+      // instead of the flat { data, pagination } page.
+      if (result.groups) {
+        return res.json({
+          success: true,
+          groupBy: result.groupBy,
+          groups: result.groups,
+          totalAssessments: result.totalAssessments,
+        });
+      }
+      res.json({ success: true, data: result.data, pagination: result.pagination });
+    } catch (error) {
+      next(error);
+    }
+  };
+
+  // Same filters as listAssessments (brandId/provinceId/districtId
+  // included), no pagination — every matching row goes into one sheet.
+  exportAssessments = async (req, res, next) => {
+    try {
+      const assessments = await assessmentService.exportAssessments(
         req.query,
       );
-      res.json({ success: true, data, pagination });
+      const exporter = new AssessmentExcelExporter({ assessments });
+      const buffer = await exporter.export();
+      res.setHeader("Content-Type", exporter.getContentType());
+      res.setHeader(
+        "Content-Disposition",
+        `attachment; filename="${exporter.getFileName()}"`,
+      );
+      res.send(buffer);
     } catch (error) {
       next(error);
     }

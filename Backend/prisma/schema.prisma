@@ -425,6 +425,13 @@ model AssessmentCriterion {
   @@map("assessment_criteria")
 }
 
+/// At most one non-superseded row may exist per (depotId, cycleId) — enforced
+/// in the database by a partial unique index (migration
+/// 20260911090000_add_unique_active_assessment_per_depot_cycle:
+/// `idx_depot_assessments_active_unique` on (depot_id, cycle_id) WHERE
+/// is_superseded = false). Prisma's schema DSL can't express a partial/
+/// filtered unique index, so it isn't declared below with `@@unique` —
+/// this comment is the only place it's documented on the model side.
 model DepotAssessment {
   id                   Int                    @id @default(autoincrement())
   depotId              Int                    @map("depot_id")

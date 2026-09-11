@@ -27,6 +27,11 @@ router.post(
 router.get("/criteria", assessmentController.listCriteria);
 
 router.get("/", listAssessmentsValidator, assessmentController.listAssessments);
+router.get(
+  "/export",
+  listAssessmentsValidator,
+  assessmentController.exportAssessments,
+);
 router.post("/", createAssessmentValidator, assessmentController.createAssessment);
 router.get("/:id", assessmentIdParamValidator, assessmentController.getAssessment);
 router.get(

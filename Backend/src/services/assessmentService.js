@@ -1,4 +1,5 @@
 import { prisma } from "../config/db.js";
+import logger from "../config/logger.js";
 import { seedAssessmentCriteria } from "./assessmentCriteriaCatalog.js";
 
 /**
@@ -45,20 +46,81 @@ const ASSESSMENT_INCLUDE = {
   items: { include: ITEM_INCLUDE, orderBy: { criterion: { sortOrder: "asc" } } },
 };
 
+// createAssessment only needs to hand the caller an id to navigate/act on
+// (the frontend's create flow immediately follows up with updateItems and,
+// on submit, submitAssessment — never reads depot/cycle/evaluator/items off
+// the create response) — the full nested object is available via
+// GET /assessments/:id when actually needed. No joins, so this is a single
+// cheap row read with no extra query beyond the INSERT itself.
+const CREATE_ASSESSMENT_SELECT = {
+  id: true,
+  depotId: true,
+  cycleId: true,
+  evaluatorId: true,
+  evaluatorName: true,
+  status: true,
+  version: true,
+  assessmentDate: true,
+  createdAt: true,
+};
+
 function round2(n) {
   return Math.round(n * 100) / 100;
 }
 
+// Active criterion ids, cached for the process lifetime. The catalog is
+// fixed V1 reference data — 10 rows, seeded once (prisma/seed.js or the
+// ensureCriteriaCatalog fallback below), no create/update/delete-criterion
+// endpoint exists to mutate it at runtime — so there's nothing to
+// invalidate this for short of a deploy, which restarts the process anyway.
+let activeCriteriaIdsCache = null;
+
 class AssessmentService {
   #criteriaReady = false;
 
+  /**
+   * Defensive fallback only — `prisma/seed.js` already seeds the criteria
+   * catalog explicitly, so in a normal deploy this never has anything to
+   * do. `#criteriaReady` makes the check itself run at most once per
+   * process (not per request): the very first call after a cold start
+   * pays for one `count()` query (plus a seed insert on a bare/un-seeded
+   * DB); every call after that returns immediately with zero queries.
+   */
   async ensureCriteriaCatalog() {
     if (this.#criteriaReady) return;
+    const start = Date.now();
     const existing = await prisma.assessmentCriterion.count();
     if (existing === 0) {
       await seedAssessmentCriteria(prisma);
     }
     this.#criteriaReady = true;
+    logger.info("assessment.ensureCriteriaCatalog", {
+      durationMs: Date.now() - start,
+      seeded: existing === 0,
+    });
+  }
+
+  /**
+   * Active criterion ids for building a new assessment's items — cached
+   * after the first call (see `activeCriteriaIdsCache` above), so
+   * createAssessment/reopenAssessment normally pay zero extra queries for
+   * this beyond the one-time warm-up.
+   */
+  async #getActiveCriteriaIds() {
+    if (activeCriteriaIdsCache) return activeCriteriaIdsCache;
+    await this.ensureCriteriaCatalog();
+    const start = Date.now();
+    const rows = await prisma.assessmentCriterion.findMany({
+      where: { isActive: true },
+      select: { id: true },
+      orderBy: { sortOrder: "asc" },
+    });
+    activeCriteriaIdsCache = rows;
+    logger.info("assessment.loadActiveCriteria", {
+      durationMs: Date.now() - start,
+      count: rows.length,
+    });
+    return activeCriteriaIdsCache;
   }
 
   // ── Cycles ─────────────────────────────────────────────
@@ -90,7 +152,8 @@ class AssessmentService {
 
   // ── Assessments ────────────────────────────────────────
 
-  async listAssessments({
+  /** Shared filter-to-`where` mapping for listAssessments and exportAssessments. */
+  #buildAssessmentWhere({
     depotId,
     cycleId,
     status,
@@ -103,8 +166,6 @@ class AssessmentService {
     search,
     dateFrom,
     dateTo,
-    page = 1,
-    pageSize = 20,
   } = {}) {
     const where = {};
     if (depotId) where.depotId = Number(depotId);
@@ -136,6 +197,16 @@ class AssessmentService {
       ];
     }
 
+    return where;
+  }
+
+  async listAssessments({ page = 1, pageSize = 20, groupBy, ...filters } = {}) {
+    const where = this.#buildAssessmentWhere(filters);
+
+    if (groupBy) {
+      return this.#listAssessmentsGrouped(where, groupBy);
+    }
+
     const pageNum = Math.max(1, Number(page) || 1);
     const pageSizeNum = Math.min(100, Math.max(1, Number(pageSize) || 20));
 
@@ -159,6 +230,97 @@ class AssessmentService {
         totalPages: Math.max(1, Math.ceil(total / pageSizeNum)),
       },
     };
+  }
+
+  /** Which group an assessment falls into for a given groupBy dimension. */
+  #groupKeyOf(assessment, groupBy) {
+    if (groupBy === "brand") {
+      const brand = assessment.depot?.brand;
+      return { id: brand?.id ?? null, label: brand?.name ?? "Unassigned" };
+    }
+    if (groupBy === "province") {
+      const province = assessment.depot?.district?.province;
+      return { id: province?.id ?? null, label: province?.name ?? "Unassigned" };
+    }
+    if (groupBy === "district") {
+      const district = assessment.depot?.district;
+      return { id: district?.id ?? null, label: district?.name ?? "Unassigned" };
+    }
+    return { id: null, label: "Unassigned" };
+  }
+
+  /**
+   * Same filters as the flat list, but every matching row (capped, like
+   * export) is bucketed by brand/province/district instead of paginated.
+   * Each group's rows are sorted highest score first, and the groups
+   * themselves are ranked by average score, highest first.
+   */
+  async #listAssessmentsGrouped(where, groupBy) {
+    const GROUP_ROW_CAP = 5000;
+
+    const assessments = await prisma.depotAssessment.findMany({
+      where,
+      include: ASSESSMENT_INCLUDE,
+      orderBy: { assessmentDate: "desc" },
+      take: GROUP_ROW_CAP,
+    });
+
+    const byKey = new Map();
+    for (const assessment of assessments) {
+      const { id, label } = this.#groupKeyOf(assessment, groupBy);
+      const key = id ?? "unassigned";
+      if (!byKey.has(key)) byKey.set(key, { id, label, assessments: [] });
+      byKey.get(key).assessments.push(assessment);
+    }
+
+    const byScoreDesc = (a, b) => {
+      if (a.overallScore == null && b.overallScore == null) return 0;
+      if (a.overallScore == null) return 1;
+      if (b.overallScore == null) return -1;
+      return Number(b.overallScore) - Number(a.overallScore);
+    };
+
+    const groups = Array.from(byKey.values()).map((group) => {
+      const scored = group.assessments.filter((a) => a.overallScore != null);
+      const averageScore = scored.length
+        ? round2(
+            scored.reduce((sum, a) => sum + Number(a.overallScore), 0) / scored.length,
+          )
+        : null;
+      return {
+        id: group.id,
+        label: group.label,
+        count: group.assessments.length,
+        averageScore,
+        assessments: [...group.assessments].sort(byScoreDesc),
+      };
+    });
+
+    groups.sort((a, b) => {
+      if (a.averageScore == null && b.averageScore == null) return 0;
+      if (a.averageScore == null) return 1;
+      if (b.averageScore == null) return -1;
+      return b.averageScore - a.averageScore;
+    });
+
+    return { groupBy, groups, totalAssessments: assessments.length };
+  }
+
+  /**
+   * Same filters as listAssessments (brand/province/district/cycle/status/
+   * date range/search), no pagination — every matching row, for the Excel
+   * export. Capped so a filterless export can't pull the entire table.
+   */
+  async exportAssessments(filters = {}) {
+    const where = this.#buildAssessmentWhere(filters);
+    const EXPORT_ROW_CAP = 20000;
+
+    return prisma.depotAssessment.findMany({
+      where,
+      include: ASSESSMENT_INCLUDE,
+      orderBy: { assessmentDate: "desc" },
+      take: EXPORT_ROW_CAP,
+    });
   }
 
   async getAssessmentById(id) {
@@ -194,6 +356,25 @@ class AssessmentService {
     });
   }
 
+  /**
+   * `items: { create: [...] }` used to issue one INSERT per criterion
+   * instead of a single bulk statement, and the response used to run the
+   * heavy ASSESSMENT_INCLUDE read (depot/brand/district/province/cycle/
+   * evaluator/items+criteria) inside the same transaction. With 10 fixed
+   * criteria that was ~13 sequential round trips held under one pooled
+   * connection — fine for one request, but two concurrent creates could
+   * saturate a small pool and stall everyone else.
+   *
+   * Now: the active-criteria lookup is served from an in-process cache
+   * (see `#getActiveCriteriaIds`) after the first call, `createMany`
+   * batches the items into one INSERT, and the create response is a plain
+   * `select` (no joins) instead of a full re-read — the frontend's create
+   * flow only ever uses the returned `id` (to call updateItems/
+   * submitAssessment and navigate), so nothing needs the nested object at
+   * create time. Full detail is a `GET /assessments/:id` away. The
+   * transaction now holds the connection for exactly 3 statements: the
+   * assessment insert, the bulk item insert, and the audit insert.
+   */
   async createAssessment({
     depotId,
     cycleId,
@@ -201,13 +382,12 @@ class AssessmentService {
     evaluatorName,
     assessmentDate,
   }) {
-    await this.ensureCriteriaCatalog();
-    const criteria = await prisma.assessmentCriterion.findMany({
-      where: { isActive: true },
-    });
+    const overallStart = Date.now();
+    const criteria = await this.#getActiveCriteriaIds();
 
-    const assessment = await prisma.$transaction(async (tx) => {
-      const created = await tx.depotAssessment.create({
+    const txStart = Date.now();
+    const created = await prisma.$transaction(async (tx) => {
+      const assessment = await tx.depotAssessment.create({
         data: {
           depotId: Number(depotId),
           cycleId: Number(cycleId),
@@ -215,29 +395,41 @@ class AssessmentService {
           evaluatorName: evaluatorName?.trim() || null,
           assessmentDate: new Date(assessmentDate),
           status: "draft",
-          items: {
-            create: criteria.map((c) => ({
-              criterionId: c.id,
-              score: null,
-              result: "none",
-            })),
-          },
         },
-        include: ASSESSMENT_INCLUDE,
+        select: CREATE_ASSESSMENT_SELECT,
+      });
+
+      await tx.depotAssessmentItem.createMany({
+        data: criteria.map((c) => ({
+          assessmentId: assessment.id,
+          criterionId: c.id,
+          score: null,
+          result: "none",
+        })),
       });
 
       await tx.assessmentAuditEvent.create({
         data: {
-          assessmentId: created.id,
+          assessmentId: assessment.id,
           action: "created",
           actorId: Number(evaluatorId),
         },
       });
 
-      return created;
+      return assessment;
+    });
+    const txDurationMs = Date.now() - txStart;
+
+    logger.info("assessment.create", {
+      assessmentId: created.id,
+      depotId: created.depotId,
+      cycleId: created.cycleId,
+      criteriaCount: criteria.length,
+      txDurationMs,
+      totalDurationMs: Date.now() - overallStart,
     });
 
-    return assessment;
+    return created;
   }
 
   /**
@@ -478,13 +670,17 @@ class AssessmentService {
           version: assessment.version + 1,
           reopenedFromId: assessment.id,
           reopenReason,
+          // createMany (not create) — same reasoning as createAssessment:
+          // one bulk INSERT for the copied items instead of one per item.
           items: {
-            create: assessment.items.map((item) => ({
-              criterionId: item.criterionId,
-              score: item.score,
-              result: item.result,
-              remarks: item.remarks,
-            })),
+            createMany: {
+              data: assessment.items.map((item) => ({
+                criterionId: item.criterionId,
+                score: item.score,
+                result: item.result,
+                remarks: item.remarks,
+              })),
+            },
           },
         },
         include: ASSESSMENT_INCLUDE,
