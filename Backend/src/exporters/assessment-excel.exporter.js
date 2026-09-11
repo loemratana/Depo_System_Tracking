@@ -2,12 +2,6 @@ import ExcelJS from 'exceljs';
 import { BaseExporter } from './base.exporter.js';
 import reportConfig from '../config/report.config.js';
 
-const STATUS_LABEL = {
-    draft: 'Draft',
-    submitted: 'Submitted',
-    finalized: 'Finalized',
-};
-
 const QUALIFICATION_LABEL = {
     excellent: 'Excellent',
     good: 'Good',
@@ -22,9 +16,9 @@ export class AssessmentExcelExporter extends BaseExporter {
             properties: { tabColor: { argb: 'FF2C3E50' } },
         });
 
-        // ── Styled header ──
+        // ── Styled header ── (no ID or Status — internal/raw fields, not
+        // useful in an exported report)
         const headers = [
-            'ID',
             'Depot',
             'Brand',
             'Province',
@@ -35,7 +29,6 @@ export class AssessmentExcelExporter extends BaseExporter {
             'Our Wins',
             'Competitor Wins',
             'Score Rank',
-            'Status',
             'Evaluation Date',
         ];
         const headerRow = worksheet.addRow(headers);
@@ -44,10 +37,9 @@ export class AssessmentExcelExporter extends BaseExporter {
         headerRow.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF2C3E50' } };
         headerRow.alignment = { horizontal: 'center', vertical: 'middle' };
 
-        // ── Data rows ── (names only — never raw IDs, except the evaluation's own id)
+        // ── Data rows ── (names only — never raw IDs)
         this.data.assessments.forEach((a) => {
             const row = worksheet.addRow([
-                a.id,
                 a.depot?.name || '—',
                 a.depot?.brand?.name || '—',
                 a.depot?.district?.province?.name || '—',
@@ -58,12 +50,11 @@ export class AssessmentExcelExporter extends BaseExporter {
                 a.ourWinsCount,
                 a.competitorWinsCount,
                 a.qualificationStatus ? QUALIFICATION_LABEL[a.qualificationStatus] : '—',
-                STATUS_LABEL[a.status] || a.status,
                 a.assessmentDate,
             ]);
             row.height = reportConfig.excel.rowHeight;
             row.font = reportConfig.excel.font;
-            row.getCell(13).numFmt = reportConfig.excel.dateFormat;
+            row.getCell(11).numFmt = reportConfig.excel.dateFormat;
         });
 
         // ── Auto-width ──
@@ -82,7 +73,7 @@ export class AssessmentExcelExporter extends BaseExporter {
         // ── AutoFilter ──
         worksheet.autoFilter = {
             from: 'A1',
-            to: `M${worksheet.rowCount}`,
+            to: `K${worksheet.rowCount}`,
         };
 
         // ── Write buffer ──
