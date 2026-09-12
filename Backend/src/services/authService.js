@@ -47,6 +47,17 @@ function formatProfile(user) {
     };
 }
 
+// Login/register only need enough to identify the session and render the
+// signed-in user in the UI (name/avatar) — not account bookkeeping
+// (status/lastLogin/createdAt/employeeId), the raw nested employee record
+// (already flattened into fullName/avatar above), or profile-page-only
+// fields (phone/department/position/joinDate). Use GET /me for the full
+// profile.
+function formatAuthUser(user) {
+    const { id, username, role, fullName, email, avatar } = formatProfile(user);
+    return { id, username, role, fullName, email, avatar };
+}
+
 class AuthService {
     async register(userData) {
         try {
@@ -72,17 +83,19 @@ class AuthService {
                 include: PROFILE_INCLUDE,
             });
 
+            const profile = formatAuthUser(user);
+
             const userForToken = {
                 id: user.id,
                 email: user.username,
                 role: user.role,
-                name: formatProfile(user).fullName,
+                name: profile.fullName,
             };
 
             const tokens = await jwtConfig.generateTokenPair(userForToken);
 
             return {
-                user: formatProfile(user),
+                user: profile,
                 tokens,
             };
         } catch (error) {
@@ -119,7 +132,7 @@ class AuthService {
                 include: PROFILE_INCLUDE,
             });
 
-            const profile = formatProfile(updated);
+            const profile = formatAuthUser(updated);
             const userForToken = {
                 id: updated.id,
                 email: updated.username,
