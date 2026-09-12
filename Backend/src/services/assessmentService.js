@@ -1,3 +1,4 @@
+import { Prisma } from "@prisma/client";
 import { prisma } from "../config/db.js";
 import logger from "../config/logger.js";
 import { seedAssessmentCriteria } from "./assessmentCriteriaCatalog.js";
@@ -238,12 +239,8 @@ class AssessmentService {
     return where;
   }
 
-  async listAssessments({ page = 1, pageSize = 20, groupBy, ...filters } = {}) {
+  async listAssessments({ page = 1, pageSize = 20, ...filters } = {}) {
     const where = this.#buildAssessmentWhere(filters);
-
-    if (groupBy) {
-      return this.#listAssessmentsGrouped(where, groupBy);
-    }
 
     const pageNum = Math.max(1, Number(page) || 1);
     const pageSizeNum = Math.min(100, Math.max(1, Number(pageSize) || 20));
@@ -270,97 +267,13 @@ class AssessmentService {
     };
   }
 
-  /** Which group an assessment falls into for a given groupBy dimension. */
-  #groupKeyOf(assessment, groupBy) {
-    if (groupBy === "brand") {
-      const brand = assessment.depot?.brand;
-      return { id: brand?.id ?? null, label: brand?.name ?? "Unassigned" };
-    }
-    if (groupBy === "province") {
-      const province = assessment.depot?.district?.province;
-      return { id: province?.id ?? null, label: province?.name ?? "Unassigned" };
-    }
-    if (groupBy === "district") {
-      const district = assessment.depot?.district;
-      return { id: district?.id ?? null, label: district?.name ?? "Unassigned" };
-    }
-    return { id: null, label: "Unassigned" };
-  }
-
-  /**
-   * Same filters as the flat list, but every matching row (capped, like
-   * export) is bucketed by brand/province/district instead of paginated.
-   * Each group's rows are sorted highest score first, and the groups
-   * themselves are ranked by average score, highest first.
-   */
-  async #listAssessmentsGrouped(where, groupBy) {
-    const GROUP_ROW_CAP = 5000;
-
-    const assessments = await prisma.depotAssessment.findMany({
-      where,
-      select: ASSESSMENT_LIST_SELECT,
-      orderBy: { assessmentDate: "desc" },
-      take: GROUP_ROW_CAP,
-    });
-
-    const byKey = new Map();
-    for (const assessment of assessments) {
-      const { id, label } = this.#groupKeyOf(assessment, groupBy);
-      const key = id ?? "unassigned";
-      if (!byKey.has(key)) byKey.set(key, { id, label, assessments: [] });
-      byKey.get(key).assessments.push(assessment);
-    }
-
-    const byScoreDesc = (a, b) => {
-      if (a.overallScore == null && b.overallScore == null) return 0;
-      if (a.overallScore == null) return 1;
-      if (b.overallScore == null) return -1;
-      return Number(b.overallScore) - Number(a.overallScore);
-    };
-
-    const groups = Array.from(byKey.values()).map((group) => {
-      const scored = group.assessments.filter((a) => a.overallScore != null);
-      const averageScore = scored.length
-        ? round2(
-            scored.reduce((sum, a) => sum + Number(a.overallScore), 0) / scored.length,
-          )
-        : null;
-      return {
-        id: group.id,
-        label: group.label,
-        count: group.assessments.length,
-        averageScore,
-        assessments: [...group.assessments].sort(byScoreDesc),
-      };
-    });
-
-    groups.sort((a, b) => {
-      if (a.averageScore == null && b.averageScore == null) return 0;
-      if (a.averageScore == null) return 1;
-      if (b.averageScore == null) return -1;
-      return b.averageScore - a.averageScore;
-    });
-
-    return { groupBy, groups, totalAssessments: assessments.length };
-  }
-
   /**
    * Same filters as listAssessments (brand/province/district/cycle/status/
    * date range/search), no pagination — every matching row, for the Excel
    * export. Capped so a filterless export can't pull the entire table.
-   *
-   * When `groupBy` is set, the export mirrors the on-screen grouped view:
-   * bucketed by brand/province/district, each group's rows sorted highest
-   * score first, groups ranked by average score — instead of one flat
-   * sheet — via the same #listAssessmentsGrouped used by listAssessments.
    */
-  async exportAssessments({ groupBy, ...filters } = {}) {
+  async exportAssessments(filters = {}) {
     const where = this.#buildAssessmentWhere(filters);
-
-    if (groupBy) {
-      const { groups } = await this.#listAssessmentsGrouped(where, groupBy);
-      return { groupBy, groups };
-    }
 
     const EXPORT_ROW_CAP = 20000;
     const assessments = await prisma.depotAssessment.findMany({
@@ -369,7 +282,105 @@ class AssessmentService {
       orderBy: { assessmentDate: "desc" },
       take: EXPORT_ROW_CAP,
     });
-    return { groupBy: null, assessments };
+    return { assessments };
+  }
+
+  /**
+   * Filter conditions for getLocationReport, as raw-SQL fragments rather
+   * than a Prisma `where` object — #buildAssessmentWhere's object shape
+   * can't be reused directly inside $queryRaw. Table aliases match
+   * getLocationReport's FROM/JOIN clause: da=depot_assessments,
+   * dep=depots, d=districts, p=provinces.
+   */
+  #buildLocationReportConditions({
+    depotId,
+    cycleId,
+    status,
+    qualificationStatus,
+    evaluatorId,
+    brandId,
+    provinceId,
+    districtId,
+    includeSuperseded = false,
+    dateFrom,
+    dateTo,
+  } = {}) {
+    const conditions = [];
+    if (!includeSuperseded) conditions.push(Prisma.sql`da.is_superseded = false`);
+    if (depotId) conditions.push(Prisma.sql`da.depot_id = ${Number(depotId)}`);
+    if (cycleId) conditions.push(Prisma.sql`da.cycle_id = ${Number(cycleId)}`);
+    if (status) {
+      conditions.push(Prisma.sql`da.status = ${status}::"DepotAssessmentStatus"`);
+    }
+    if (qualificationStatus) {
+      conditions.push(
+        Prisma.sql`da.qualification_status = ${qualificationStatus}::"QualificationStatus"`,
+      );
+    }
+    if (evaluatorId) conditions.push(Prisma.sql`da.evaluator_id = ${Number(evaluatorId)}`);
+    if (brandId) conditions.push(Prisma.sql`dep.brand_id = ${Number(brandId)}`);
+    if (provinceId) conditions.push(Prisma.sql`p.id = ${Number(provinceId)}`);
+    if (districtId) conditions.push(Prisma.sql`d.id = ${Number(districtId)}`);
+    if (dateFrom) conditions.push(Prisma.sql`da.assessment_date >= ${new Date(dateFrom)}`);
+    if (dateTo) conditions.push(Prisma.sql`da.assessment_date <= ${new Date(dateTo)}`);
+    return conditions;
+  }
+
+  /**
+   * GET /assessments/report/by-location — one row per unique
+   * (brand, province, district) combination actually present in the
+   * filtered assessments, with COUNT/MAX computed by PostgreSQL, not
+   * Node. Replaces the old #listAssessmentsGrouped, which loaded every
+   * matching assessment (capped at 5000) into memory and grouped/averaged
+   * it with Map/reduce — real aggregation work the database should do.
+   *
+   * Brand is a LEFT JOIN (Depot.brandId is nullable — a depot can have no
+   * brand, grouped here as "Unassigned"); district and province are plain
+   * JOINs since Depot.districtId and District.provinceId are both
+   * required. Province is derived via district.provinceId, matching the
+   * existing #buildAssessmentWhere/list convention — not the separate,
+   * unused Depot.provinceId column.
+   *
+   * Only overallScore is read (as MAX) — no items or criteria are loaded,
+   * and no average/lowest/recomputed score is calculated anywhere here.
+   */
+  async getLocationReport(filters = {}) {
+    const conditions = this.#buildLocationReportConditions(filters);
+    const whereSql = conditions.length
+      ? Prisma.sql`WHERE ${Prisma.join(conditions, " AND ")}`
+      : Prisma.empty;
+
+    const rows = await prisma.$queryRaw`
+      SELECT
+        b.id                              AS "brandId",
+        COALESCE(b.name, 'Unassigned')    AS "brandName",
+        p.id                              AS "provinceId",
+        p.name                            AS "provinceName",
+        d.id                              AS "districtId",
+        d.name                            AS "districtName",
+        COUNT(da.id)::int                 AS "assessmentCount",
+        MAX(da.overall_score)             AS "highestOverallScore"
+      FROM depot_assessments da
+      JOIN depots dep ON dep.id = da.depot_id
+      LEFT JOIN brands b ON b.id = dep.brand_id
+      JOIN districts d ON d.id = dep.district_id
+      JOIN provinces p ON p.id = d.province_id
+      ${whereSql}
+      GROUP BY b.id, b.name, p.id, p.name, d.id, d.name
+      ORDER BY MAX(da.overall_score) DESC NULLS LAST
+    `;
+
+    return rows.map((row) => ({
+      brandId: row.brandId,
+      brandName: row.brandName,
+      provinceId: row.provinceId,
+      provinceName: row.provinceName,
+      districtId: row.districtId,
+      districtName: row.districtName,
+      assessmentCount: row.assessmentCount,
+      highestOverallScore:
+        row.highestOverallScore != null ? Number(row.highestOverallScore) : null,
+    }));
   }
 
   async getAssessmentById(id) {

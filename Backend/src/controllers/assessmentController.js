@@ -50,26 +50,29 @@ class AssessmentController {
 
   listAssessments = async (req, res, next) => {
     try {
-      const result = await assessmentService.listAssessments(req.query);
-      // ?groupBy=brand|province|district returns { groups, totalAssessments }
-      // instead of the flat { data, pagination } page.
-      if (result.groups) {
-        return res.json({
-          success: true,
-          groupBy: result.groupBy,
-          groups: result.groups,
-          totalAssessments: result.totalAssessments,
-        });
-      }
-      res.json({ success: true, data: result.data, pagination: result.pagination });
+      const { data, pagination } = await assessmentService.listAssessments(
+        req.query,
+      );
+      res.json({ success: true, data, pagination });
+    } catch (error) {
+      next(error);
+    }
+  };
+
+  // One row per (brand, province, district) actually present in the
+  // filtered assessments — assessmentCount + highestOverallScore computed
+  // by PostgreSQL (GROUP BY/COUNT/MAX), not recomputed in Node.
+  getLocationReport = async (req, res, next) => {
+    try {
+      const data = await assessmentService.getLocationReport(req.query);
+      res.json({ success: true, data });
     } catch (error) {
       next(error);
     }
   };
 
   // Same filters as listAssessments (brandId/provinceId/districtId
-  // included). With ?groupBy=brand|province|district the sheet mirrors
-  // the on-screen grouped view instead of one flat list.
+  // included), no pagination — every matching row goes into one sheet.
   exportAssessments = async (req, res, next) => {
     try {
       const result = await assessmentService.exportAssessments(req.query);

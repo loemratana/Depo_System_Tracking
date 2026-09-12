@@ -36,7 +36,6 @@ export const listAssessmentsValidator = [
   query("dateTo").optional().isISO8601().withMessage("dateTo must be a valid date"),
   query("page").optional().isInt({ min: 1 }).toInt(),
   query("pageSize").optional().isInt({ min: 1, max: 100 }).toInt(),
-  query("groupBy").optional().isIn(["brand", "province", "district"]),
   validate,
 ];
 

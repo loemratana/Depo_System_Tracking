@@ -32,6 +32,11 @@ router.get(
   listAssessmentsValidator,
   assessmentController.exportAssessments,
 );
+router.get(
+  "/report/by-location",
+  listAssessmentsValidator,
+  assessmentController.getLocationReport,
+);
 router.post("/", createAssessmentValidator, assessmentController.createAssessment);
 router.get("/:id", assessmentIdParamValidator, assessmentController.getAssessment);
 router.get(

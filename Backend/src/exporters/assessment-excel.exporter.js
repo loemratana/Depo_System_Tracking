@@ -9,12 +9,6 @@ const QUALIFICATION_LABEL = {
     weak: 'Weak (Need to Review)',
 };
 
-const GROUP_LABEL = {
-    brand: 'Brand',
-    province: 'Province',
-    district: 'District',
-};
-
 const HEADERS = [
     'Depot',
     'Brand',
@@ -47,11 +41,7 @@ export class AssessmentExcelExporter extends BaseExporter {
         headerRow.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF2C3E50' } };
         headerRow.alignment = { horizontal: 'center', vertical: 'middle' };
 
-        if (this.data.groupBy && this.data.groups) {
-            this.writeGrouped(worksheet, this.data.groupBy, this.data.groups);
-        } else {
-            this.data.assessments.forEach((a) => this.addAssessmentRow(worksheet, a));
-        }
+        this.data.assessments.forEach((a) => this.addAssessmentRow(worksheet, a));
 
         // ── Auto-width ──
         worksheet.columns.forEach((col) => {
@@ -74,24 +64,6 @@ export class AssessmentExcelExporter extends BaseExporter {
 
         // ── Write buffer ──
         return await workbook.xlsx.writeBuffer();
-    }
-
-    // One full-width row per group: label, evaluation count, average score —
-    // same summary the on-screen grouped view shows — followed by that
-    // group's evaluations (already sorted highest score first).
-    writeGrouped(worksheet, groupBy, groups) {
-        groups.forEach((group) => {
-            const rowNumber = worksheet.rowCount + 1;
-            const label = `${GROUP_LABEL[groupBy]}: ${group.label}  —  ${group.count} evaluation${group.count === 1 ? '' : 's'}  —  ${group.averageScore ?? '—'} avg /10`;
-            const groupRow = worksheet.addRow([label]);
-            worksheet.mergeCells(`A${rowNumber}:${LAST_COLUMN_LETTER}${rowNumber}`);
-            groupRow.height = reportConfig.excel.headerHeight;
-            groupRow.font = { ...reportConfig.excel.font, bold: true };
-            groupRow.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFE8ECEF' } };
-            groupRow.alignment = { vertical: 'middle' };
-
-            group.assessments.forEach((a) => this.addAssessmentRow(worksheet, a));
-        });
     }
 
     addAssessmentRow(worksheet, a) {
