@@ -470,6 +470,17 @@ model DepotAssessment {
   @@index([cycleId], map: "idx_depot_assessments_cycle_id")
   @@index([evaluatorId], map: "idx_depot_assessments_evaluator_id")
   @@index([status], map: "idx_depot_assessments_status")
+  // Two more indexes exist in the DB (migration 20260912020000_add_
+  // assessment_list_indexes) but aren't declared below: a partial index
+  // `idx_depot_assessments_active_date` on (assessment_date DESC) WHERE
+  // is_superseded = false — Prisma's DSL can't express the WHERE — serving
+  // the default list/export query (isSuperseded=false, ordered by date);
+  // and `idx_depot_assessments_cycle_status_date` on (cycleId, status,
+  // assessmentDate DESC), which *could* be declared here via
+  // `@@index([cycleId, status, assessmentDate(sort: Desc)])` but is kept
+  // in the same hand-written migration as its partial sibling for one
+  // source of truth. Verified via EXPLAIN at realistic scale (350 rows)
+  // that Postgres actually picks up both.
   @@map("depot_assessments")
 }
 
