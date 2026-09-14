@@ -1,4 +1,6 @@
 import client from 'prom-client';
+import environment from '../config/env.js';
+import logger from '../config/logger.js';
 
 const register = new client.Registry();
 
@@ -70,6 +72,23 @@ export function metricsMiddleware(req, res, next) {
   });
 
   next();
+}
+
+if (environment.isProduction && environment.metricsEnabled && !environment.metricsToken) {
+  logger.warn(
+    'METRICS_TOKEN is not set in production — GET /metrics is publicly readable. Set METRICS_TOKEN to require a bearer token.',
+  );
+}
+
+/** No-op (open) when METRICS_TOKEN is unset, so local/dev scraping needs no setup. */
+export function metricsAuthMiddleware(req, res, next) {
+  if (!environment.metricsToken) return next();
+
+  const header = req.get('authorization') || '';
+  const token = header.startsWith('Bearer ') ? header.slice(7) : null;
+  if (token === environment.metricsToken) return next();
+
+  res.status(401).json({ success: false, message: 'Unauthorized' });
 }
 
 export async function metricsHandler(_req, res) {

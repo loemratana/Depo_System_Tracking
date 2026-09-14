@@ -36,6 +36,10 @@ const env = {
   // HTTP requests slower than this are logged as a warning (see middleware/httpLogger.js)
   logSlowRequestMs: Number(process.env.LOG_SLOW_REQUEST_MS) || 1000,
   metricsEnabled: process.env.METRICS_ENABLED !== 'false',
+  // When set, GET /metrics requires `Authorization: Bearer <token>`.
+  // Unset by default so local/dev scraping keeps working without extra setup —
+  // see monitoring/README.md for why this must be set in production.
+  metricsToken: process.env.METRICS_TOKEN || null,
 };
 
 export default env;

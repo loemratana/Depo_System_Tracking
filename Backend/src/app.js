@@ -22,6 +22,7 @@ import managerRoutes from "./routes/managerRoutes.js";
 import permissionRoutes from "./routes/permissionRoutes.js";
 import assessmentRoutes from "./routes/assessmentRoutes.js";
 import {
+  metricsAuthMiddleware,
   metricsHandler,
   metricsMiddleware,
 } from './middleware/metrics.js';
@@ -91,7 +92,7 @@ app.use(compression());
 ======================== */
 if (environment.metricsEnabled) {
   app.use(metricsMiddleware);
-  app.get('/metrics', metricsHandler);
+  app.get('/metrics', metricsAuthMiddleware, metricsHandler);
 }
 
 /* ========================
