@@ -1,3 +1,4 @@
+import { Prisma } from "@prisma/client";
 import { prisma } from "../config/db.js";
 import { parseISO } from "date-fns";
 import { utcMonthStart, utcMonthEnd } from "../helpers/date.helper.js";
@@ -96,23 +97,44 @@ class KpiSystemService {
       defMap[CODE_DISPLAY]?.id,
     ].filter(Boolean);
 
-    const values = await prisma.kpiValue.findMany({
-      where: this.buildValueWhere({
-        fromDate,
-        toDate,
-        depotId,
-        brandId,
-        search,
-        definitionIds,
-      }),
-      include: {
-        employee: {
-          select: { id: true, khmerName: true, englishName: true, email: true },
-        },
-        depot: { select: { id: true, name: true } },
-        kpiDefinition: { select: { code: true } },
-      },
-    });
+    // Raw SQL with real JOINs instead of `include` — Prisma's relation
+    // loading for this generator/adapter combo issues one sequential
+    // round trip per included relation rather than a SQL join (measured:
+    // 4 round trips, ~100-900ms each here, for what should be one query).
+    // Aggregation logic below is unchanged from the include-based version,
+    // just fed from flat joined columns instead of nested relation objects.
+    const monthRange = parseMonthRange(fromDate, toDate);
+    const whereConditions = [
+      Prisma.sql`kv.period_month >= ${monthRange.gte}`,
+      Prisma.sql`kv.period_month <= ${monthRange.lte}`,
+      Prisma.sql`kv.kpi_definition_id IN (${Prisma.join(definitionIds)})`,
+    ];
+    if (depotId) whereConditions.push(Prisma.sql`kv.depot_id = ${Number(depotId)}`);
+    if (brandId) whereConditions.push(Prisma.sql`kv.brand_id = ${Number(brandId)}`);
+    if (search?.trim()) {
+      const term = `%${search.trim()}%`;
+      whereConditions.push(
+        Prisma.sql`(e.english_name ILIKE ${term} OR e.khmer_name ILIKE ${term} OR e.email ILIKE ${term} OR d.name ILIKE ${term})`,
+      );
+    }
+
+    const values = await prisma.$queryRaw`
+      SELECT
+        kv.employee_id AS "employeeId",
+        e.khmer_name AS "khmerName",
+        e.english_name AS "englishName",
+        e.email AS "email",
+        d.name AS "depotName",
+        kd.code AS "code",
+        kv.actual_value AS "actualValue",
+        kv.target_value AS "targetValue",
+        kv.score AS "score"
+      FROM kpi_values kv
+      JOIN kpi_definitions kd ON kd.id = kv.kpi_definition_id
+      JOIN employees e ON e.id = kv.employee_id
+      LEFT JOIN depots d ON d.id = kv.depot_id
+      WHERE ${Prisma.join(whereConditions, " AND ")}
+    `;
 
     // Fallback to legacy EmployeeKPI if no dynamic values yet
     if (values.length === 0) {
@@ -126,7 +148,11 @@ class KpiSystemService {
         byEmployee.set(key, {
           id: String(row.employeeId),
           employeeId: row.employeeId,
-          employeeName: employeeDisplayName(row.employee),
+          employeeName: employeeDisplayName({
+            khmerName: row.khmerName,
+            englishName: row.englishName,
+            email: row.email,
+          }),
           targetQty: 0,
           actualQty: 0,
           actualRevenue: 0,
@@ -138,25 +164,22 @@ class KpiSystemService {
         });
       }
       const agg = byEmployee.get(key);
-      if (row.kpiDefinition.code === CODE_PO_TARGET) {
+      if (row.code === CODE_PO_TARGET) {
         agg.targetQty += Number(row.actualValue || row.targetValue || 0);
       }
-      if (row.kpiDefinition.code === CODE_PO_COUNT) {
+      if (row.code === CODE_PO_COUNT) {
         agg.actualQty += Number(row.actualValue || 0);
         if (row.score != null) agg.actualRevenue += Number(row.score || 0);
       }
-      if (
-        row.kpiDefinition.code === CODE_AVAILABLE &&
-        row.actualValue != null
-      ) {
+      if (row.code === CODE_AVAILABLE && row.actualValue != null) {
         agg.availableSum += Number(row.actualValue);
         agg.availableCount += 1;
       }
-      if (row.kpiDefinition.code === CODE_DISPLAY && row.actualValue != null) {
+      if (row.code === CODE_DISPLAY && row.actualValue != null) {
         agg.displaySum += Number(row.actualValue);
         agg.displayCount += 1;
       }
-      if (row.depot?.name) agg.depots.add(row.depot.name);
+      if (row.depotName) agg.depots.add(row.depotName);
     }
 
     return Array.from(byEmployee.values())
@@ -257,8 +280,12 @@ class KpiSystemService {
       .map((row, index) => ({ ...row, rank: index + 1 }));
   }
 
-  async getSummary(params = {}) {
-    const rows = await this.getRankings(params);
+  /**
+   * Reduces already-per-employee rows (one row per employee, not per
+   * kpi_value) to the 5 dashboard summary numbers. `rows` must already be
+   * sorted by kpiPercent DESC (topPerformer is rows[0]).
+   */
+  #reduceToSummary(rows) {
     const assessed = rows.filter((r) => r.targetQty > 0);
     const avgKpi =
       assessed.length > 0
@@ -273,6 +300,70 @@ class KpiSystemService {
       aboveTarget: assessed.filter((r) => r.kpiPercent >= 100).length,
       belowThreshold: assessed.filter((r) => r.kpiPercent < 80).length,
     };
+  }
+
+  /**
+   * getSummary only needs 5 numbers (avg/top/count/aboveTarget/below), not
+   * the full per-employee row shape getRankings builds for display (which
+   * pulls every matching kpi_value row with employee/depot/kpiDefinition
+   * relations into Node and reduces in JS — expensive, and each `include`
+   * relation was measured firing as its own sequential round trip rather
+   * than a SQL join). This aggregates directly in Postgres instead: one
+   * query, GROUP BY employee, same 4-definition-code scope as getRankings
+   * (so employeesAssessed still counts anyone with ANY of the 4 KPI types
+   * that period, matching the original behavior exactly) with only
+   * PO_TARGET/PO_COUNT summed (the two kpiPercent is derived from).
+   */
+  async getSummary(params = {}) {
+    const { fromDate, toDate, depotId, brandId, search } = params;
+    const monthRange = parseMonthRange(fromDate, toDate);
+
+    const conditions = [
+      Prisma.sql`kv.period_month >= ${monthRange.gte}`,
+      Prisma.sql`kv.period_month <= ${monthRange.lte}`,
+      Prisma.sql`kd.code IN (${CODE_PO_TARGET}, ${CODE_PO_COUNT}, ${CODE_AVAILABLE}, ${CODE_DISPLAY})`,
+    ];
+    if (depotId) conditions.push(Prisma.sql`kv.depot_id = ${Number(depotId)}`);
+    if (brandId) conditions.push(Prisma.sql`kv.brand_id = ${Number(brandId)}`);
+    if (search?.trim()) {
+      const term = `%${search.trim()}%`;
+      conditions.push(
+        Prisma.sql`(e.english_name ILIKE ${term} OR e.khmer_name ILIKE ${term} OR e.email ILIKE ${term} OR d.name ILIKE ${term})`,
+      );
+    }
+
+    const rows = await prisma.$queryRaw`
+      SELECT
+        kv.employee_id AS "employeeId",
+        COALESCE(e.khmer_name, e.english_name, e.email, 'Unknown') AS "employeeName",
+        SUM(CASE WHEN kd.code = ${CODE_PO_TARGET} THEN COALESCE(kv.actual_value, kv.target_value, 0) ELSE 0 END)::float AS "targetQty",
+        SUM(CASE WHEN kd.code = ${CODE_PO_COUNT} THEN COALESCE(kv.actual_value, 0) ELSE 0 END)::float AS "actualQty"
+      FROM kpi_values kv
+      JOIN kpi_definitions kd ON kd.id = kv.kpi_definition_id
+      JOIN employees e ON e.id = kv.employee_id
+      LEFT JOIN depots d ON d.id = kv.depot_id
+      WHERE ${Prisma.join(conditions, " AND ")}
+      GROUP BY kv.employee_id, e.khmer_name, e.english_name, e.email
+    `;
+
+    // Same fallback getRankings() already has: no dynamic kpi_values rows
+    // for this period/filter means the legacy EmployeeKPI table is the
+    // only data source.
+    if (rows.length === 0) {
+      const legacyRows = await this.getRankingsFromLegacy(params);
+      return this.#reduceToSummary(legacyRows);
+    }
+
+    const withPercent = rows
+      .map((r) => ({
+        employeeName: r.employeeName,
+        targetQty: r.targetQty,
+        actualQty: r.actualQty,
+        kpiPercent: calcKpiPercent(r.targetQty, r.actualQty),
+      }))
+      .sort((a, b) => b.kpiPercent - a.kpiPercent || b.actualQty - a.actualQty);
+
+    return this.#reduceToSummary(withPercent);
   }
 
   async getMatrix() {

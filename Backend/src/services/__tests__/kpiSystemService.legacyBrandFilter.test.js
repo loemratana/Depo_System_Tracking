@@ -1,7 +1,8 @@
 import { jest } from '@jest/globals';
 
 const mockEmployeeKPIFindMany = jest.fn().mockResolvedValue([]);
-const mockKpiValueFindMany = jest.fn().mockResolvedValue([]); // forces the legacy fallback path
+const mockKpiValueFindMany = jest.fn().mockResolvedValue([]);
+const mockQueryRaw = jest.fn().mockResolvedValue([]); // forces the legacy fallback path — getRankings fetches via $queryRaw now
 const mockKpiDefinitionFindMany = jest.fn().mockResolvedValue([
   { id: 1, code: 'PO_COUNT' },
   { id: 2, code: 'PO_TARGET' },
@@ -12,6 +13,7 @@ const mockPrisma = {
   employeeKPI: { findMany: mockEmployeeKPIFindMany },
   kpiValue: { findMany: mockKpiValueFindMany },
   kpiDefinition: { findMany: mockKpiDefinitionFindMany, count: mockKpiDefinitionCount },
+  $queryRaw: mockQueryRaw,
 };
 
 jest.unstable_mockModule('../../config/db.js', () => ({ prisma: mockPrisma }));
@@ -21,6 +23,7 @@ const { kpiSystemService } = await import('../kpiSystemService.js');
 beforeEach(() => {
   jest.clearAllMocks();
   mockKpiValueFindMany.mockResolvedValue([]);
+  mockQueryRaw.mockResolvedValue([]);
   mockKpiDefinitionCount.mockResolvedValue(2);
   mockKpiDefinitionFindMany.mockResolvedValue([
     { id: 1, code: 'PO_COUNT' },

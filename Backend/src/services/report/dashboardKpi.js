@@ -59,33 +59,35 @@ class DashboardKpi {
     const { fromDate, toDate } = monthDateBounds(today);
 
     const [
-      totalDepots,
-      activeEmployees,
-      totalEmployees,
-      totalDepotsWithExpiry,
-      totalBrands,
-      vacancy,
+      [
+        totalDepots,
+        activeEmployees,
+        totalEmployees,
+        totalDepotsWithExpiry,
+        totalBrands,
+        vacancy,
+      ],
+      kpiSummary,
     ] = await Promise.all([
-      prisma.depot.count(),
-      prisma.employee.count({ where: { status: "active" } }),
-      prisma.employee.count(),
-      prisma.depot.count({
-        where: {
-          expiryDate: { lt: today },
-        },
+      Promise.all([
+        prisma.depot.count(),
+        prisma.employee.count({ where: { status: "active" } }),
+        prisma.employee.count(),
+        prisma.depot.count({
+          where: {
+            expiryDate: { lt: today },
+          },
+        }),
+        prisma.brand.count(),
+        prisma.depot.count({ where: { status: "vacancy" } }),
+      ]),
+      kpiSystemService.getSummary({ fromDate, toDate }).catch((error) => {
+        logger.warn(
+          `Dashboard KPI summary unavailable, using zeros: ${error.message}`,
+        );
+        return { averageKpi: 0, employeesAssessed: 0 };
       }),
-      prisma.brand.count(),
-      prisma.depot.count({ where: { status: "vacancy" } }),
     ]);
-
-    let kpiSummary = { averageKpi: 0, employeesAssessed: 0 };
-    try {
-      kpiSummary = await kpiSystemService.getSummary({ fromDate, toDate });
-    } catch (error) {
-      logger.warn(
-        `Dashboard KPI summary unavailable, using zeros: ${error.message}`,
-      );
-    }
 
     logger.info(
       `Dashboard KPIs: depots=${totalDepots}, activeEmployees=${activeEmployees}, vacancy=${vacancy}, avgKpi=${kpiSummary.averageKpi}`,
