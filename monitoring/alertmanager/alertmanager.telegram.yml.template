@@ -1,0 +1,24 @@
+# Rendered into /tmp/alertmanager.yml by entrypoint.sh once both
+# TELEGRAM_BOT_TOKEN and TELEGRAM_CHAT_ID are set in monitoring/.env.
+# Nothing in this file is a real secret — the placeholders are substituted
+# with sed at container start.
+global:
+  resolve_timeout: 5m
+
+route:
+  receiver: telegram
+  group_by: ['alertname']
+  group_wait: 30s
+  group_interval: 5m
+  repeat_interval: 4h
+
+receivers:
+  - name: telegram
+    telegram_configs:
+      - bot_token: __TELEGRAM_BOT_TOKEN__
+        chat_id: __TELEGRAM_CHAT_ID__
+        parse_mode: HTML
+        message: |
+          <b>{{ .CommonLabels.alertname }}</b> [{{ .Status | toUpper }}]
+          {{ range .Alerts }}{{ .Annotations.description }}
+          {{ end }}

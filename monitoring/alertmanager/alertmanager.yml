@@ -1,0 +1,17 @@
+# Default config — used as-is when TELEGRAM_BOT_TOKEN/TELEGRAM_CHAT_ID are
+# not set in monitoring/.env. Alerts still fire and show up in Prometheus /
+# Grafana, they just aren't delivered anywhere until Telegram is configured
+# (see entrypoint.sh, which switches to alertmanager.telegram.yml.template
+# once both env vars are present).
+global:
+  resolve_timeout: 5m
+
+route:
+  receiver: 'null'
+  group_by: ['alertname']
+  group_wait: 30s
+  group_interval: 5m
+  repeat_interval: 4h
+
+receivers:
+  - name: 'null'

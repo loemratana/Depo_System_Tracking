@@ -50,3 +50,7 @@ coverage/
 # Misc
 *.local
 .dev.vars
+
+# Monitoring secrets — never commit the real token
+monitoring/prometheus/secrets/metrics_token
+!monitoring/prometheus/secrets/metrics_token.example

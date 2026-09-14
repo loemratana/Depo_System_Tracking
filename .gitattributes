@@ -1,0 +1,5 @@
+* text=auto
+
+# Shell scripts run inside Linux containers — never let Windows checkouts
+# convert them to CRLF, which breaks the shebang/interpreter.
+*.sh text eol=lf

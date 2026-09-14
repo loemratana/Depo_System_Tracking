@@ -19,11 +19,32 @@ services:
     volumes:
       - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
       - ./prometheus/alerts.yml:/etc/prometheus/alerts.yml:ro
+      # File holding the raw METRICS_TOKEN value, read by the depot-api-render
+      # scrape job below. Not committed — see prometheus/secrets/README.md.
+      - ./prometheus/secrets/metrics_token:/etc/prometheus/secrets/metrics_token:ro
       - prometheus_data:/prometheus
     ports:
       - "9090:9090"
     extra_hosts:
       - "host.docker.internal:host-gateway"
+    depends_on:
+      - alertmanager
+
+  alertmanager:
+    image: prom/alertmanager:v0.28.1
+    container_name: depot-alertmanager
+    restart: unless-stopped
+    entrypoint: ["/bin/sh", "/etc/alertmanager/entrypoint.sh"]
+    environment:
+      TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN:-}
+      TELEGRAM_CHAT_ID: ${TELEGRAM_CHAT_ID:-}
+    volumes:
+      - ./alertmanager/alertmanager.yml:/etc/alertmanager/alertmanager.yml:ro
+      - ./alertmanager/alertmanager.telegram.yml.template:/etc/alertmanager/alertmanager.telegram.yml.template:ro
+      - ./alertmanager/entrypoint.sh:/etc/alertmanager/entrypoint.sh:ro
+      - alertmanager_data:/alertmanager
+    ports:
+      - "9093:9093"
 
   loki:
     image: grafana/loki:3.3.2
@@ -46,6 +67,8 @@ services:
       - ./promtail/promtail-config.yml:/etc/promtail/promtail-config.yml:ro
       - ../Backend/logs:/var/log/depot:ro
       - /var/run/docker.sock:/var/run/docker.sock:ro
+    ports:
+      - "9080:9080"
     depends_on:
       - loki
 
@@ -85,3 +108,4 @@ volumes:
   prometheus_data:
   loki_data:
   grafana_data:
+  alertmanager_data:
