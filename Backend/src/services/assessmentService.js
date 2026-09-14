@@ -85,6 +85,19 @@ const ASSESSMENT_LIST_SELECT = {
   evaluator: { select: { id: true, username: true } },
 };
 
+// Export needs each item's score (keyed by criterion code) to fill the
+// per-criterion columns — the list view has no use for this, so it stays
+// off ASSESSMENT_LIST_SELECT.
+const ASSESSMENT_EXPORT_SELECT = {
+  ...ASSESSMENT_LIST_SELECT,
+  items: {
+    select: {
+      score: true,
+      criterion: { select: { code: true } },
+    },
+  },
+};
+
 // createAssessment only needs to hand the caller an id to navigate/act on
 // (the frontend's create flow immediately follows up with updateItems and,
 // on submit, submitAssessment — never reads depot/cycle/evaluator/items off
@@ -194,6 +207,7 @@ class AssessmentService {
   /** Shared filter-to-`where` mapping for listAssessments and exportAssessments. */
   #buildAssessmentWhere({
     depotId,
+    depotCode,
     cycleId,
     status,
     qualificationStatus,
@@ -208,6 +222,7 @@ class AssessmentService {
   } = {}) {
     const where = {};
     if (depotId) where.depotId = Number(depotId);
+    if (depotCode) where.depot = { code: depotCode };
     if (cycleId) where.cycleId = Number(cycleId);
     if (status) where.status = status;
     if (qualificationStatus) where.qualificationStatus = qualificationStatus;
@@ -278,7 +293,7 @@ class AssessmentService {
     const EXPORT_ROW_CAP = 20000;
     const assessments = await prisma.depotAssessment.findMany({
       where,
-      select: ASSESSMENT_LIST_SELECT,
+      select: ASSESSMENT_EXPORT_SELECT,
       orderBy: { assessmentDate: "desc" },
       take: EXPORT_ROW_CAP,
     });

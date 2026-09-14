@@ -1,6 +1,7 @@
 import ExcelJS from 'exceljs';
 import { BaseExporter } from './base.exporter.js';
 import reportConfig from '../config/report.config.js';
+import { DEFAULT_ASSESSMENT_CRITERIA } from '../services/assessmentCriteriaCatalog.js';
 
 const QUALIFICATION_LABEL = {
     excellent: 'Excellent',
@@ -9,13 +10,20 @@ const QUALIFICATION_LABEL = {
     weak: 'Weak (Need to Review)',
 };
 
+// One column per criterion (Khmer label), in catalog sortOrder — inserted
+// between Evaluator and Overall Score.
+const CRITERIA = [...DEFAULT_ASSESSMENT_CRITERIA].sort((a, b) => a.sortOrder - b.sortOrder);
+const CRITERION_HEADERS = CRITERIA.map((c) => c.labelKm);
+
 const HEADERS = [
+    'Depot Code',
     'Depot',
     'Brand',
     'Province',
     'District',
     'Cycle',
     'Evaluator',
+    ...CRITERION_HEADERS,
     'Overall Score',
     'Our Wins',
     'Competitor Wins',
@@ -67,13 +75,20 @@ export class AssessmentExcelExporter extends BaseExporter {
     }
 
     addAssessmentRow(worksheet, a) {
+        const scoreByCode = new Map(
+            (a.items || []).map((item) => [item.criterion.code, item.score]),
+        );
+        const criterionScores = CRITERIA.map((c) => scoreByCode.get(c.code) ?? '—');
+
         const row = worksheet.addRow([
+            a.depot?.code || '—',
             a.depot?.name || '—',
             a.depot?.brand?.name || '—',
             a.depot?.district?.province?.name || '—',
             a.depot?.district?.name || '—',
             a.cycle?.label || '—',
             a.evaluatorName || a.evaluator?.username || '—',
+            ...criterionScores,
             a.overallScore != null ? Number(a.overallScore) : null,
             a.ourWinsCount,
             a.competitorWinsCount,
