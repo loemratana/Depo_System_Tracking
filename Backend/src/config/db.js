@@ -18,12 +18,15 @@ class Database {
             );
         }
 
-        // Create a pg Pool with SSL configuration to fix the "self-signed certificate" error
+        // Create a pg Pool with SSL configuration to fix the "self-signed certificate" error.
+        // Detected from the connection string itself (hosted providers), not NODE_ENV —
+        // a self-hosted Postgres (e.g. the docker-compose stack) has no SSL listener even
+        // when the app runs with NODE_ENV=production.
         const isRemoteDb =
-            env.isProduction ||
             env.databaseUrl.includes('supabase') ||
             env.databaseUrl.includes('render') ||
-            env.databaseUrl.includes('pooler');
+            env.databaseUrl.includes('pooler') ||
+            env.databaseUrl.includes('sslmode=require');
 
         const pool = new Pool({
             connectionString: env.databaseUrl,
