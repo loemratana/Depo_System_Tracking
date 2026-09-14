@@ -1,7 +1,7 @@
 /**
- * Seed the 10 fixed Depot Assessment criteria — taken verbatim (Khmer +
- * English + category + structural flag) from the approved design prototype
- * (Depot Assessment Design canvas, NewAssessment/AssessmentDetail artboards).
+ * Seed the 10 fixed Depot Assessment criteria — Khmer label, category, and
+ * structural flag — from the approved design prototype (Depot Assessment
+ * Design canvas, NewAssessment/AssessmentDetail artboards).
  * Safe to call multiple times (upsert by code).
  *
  * Criteria 9 & 10 (Depot Optimism / Above-Depot Optimism) are flagged
@@ -12,7 +12,6 @@ export const DEFAULT_ASSESSMENT_CRITERIA = [
   {
     code: "CAPITAL",
     labelKm: "ចំនួនដើមទុន",
-    labelEn: "Capital",
     category: "objective",
     isStructural: true,
     isComparable: true,
@@ -21,7 +20,6 @@ export const DEFAULT_ASSESSMENT_CRITERIA = [
   {
     code: "VISIT",
     labelKm: "ពេលវេលាចុះមើលកូនចៅឬអត់",
-    labelEn: "Time Visiting / Overseeing Staff",
     category: "behavioral",
     isStructural: false,
     isComparable: true,
@@ -30,7 +28,6 @@ export const DEFAULT_ASSESSMENT_CRITERIA = [
   {
     code: "VEHICLES",
     labelKm: "ចំនួនឡាន",
-    labelEn: "Vehicles",
     category: "objective",
     isStructural: true,
     isComparable: true,
@@ -39,7 +36,6 @@ export const DEFAULT_ASSESSMENT_CRITERIA = [
   {
     code: "WAREHOUSE",
     labelKm: "មានឃ្លាំងគ្រប់គ្រាន់ឬអត់?",
-    labelEn: "Warehouse Sufficiency",
     category: "objective",
     isStructural: true,
     isComparable: true,
@@ -48,7 +44,6 @@ export const DEFAULT_ASSESSMENT_CRITERIA = [
   {
     code: "EMPLOYEES",
     labelKm: "ចំនួនបុគ្គលិក",
-    labelEn: "Employee Count",
     category: "objective",
     isStructural: false,
     isComparable: true,
@@ -57,7 +52,6 @@ export const DEFAULT_ASSESSMENT_CRITERIA = [
   {
     code: "ADMIN",
     labelKm: "មាន Admin​​​ ឬអត់?",
-    labelEn: "Has Admin Staff",
     category: "objective",
     isStructural: false,
     isComparable: true,
@@ -66,7 +60,6 @@ export const DEFAULT_ASSESSMENT_CRITERIA = [
   {
     code: "SKILL",
     labelKm: "ជំនាញពូកែរបស់បុគ្គលិក",
-    labelEn: "Staff Processing Skill",
     category: "subjective",
     isStructural: false,
     isComparable: true,
@@ -75,7 +68,6 @@ export const DEFAULT_ASSESSMENT_CRITERIA = [
   {
     code: "LEADERSHIP",
     labelKm: "មេពូកែឬអត់​ មានភាពជាអ្នកឈ្នះឬអត់?",
-    labelEn: "Warehouse Head Leadership",
     category: "subjective",
     isStructural: false,
     isComparable: true,
@@ -84,7 +76,6 @@ export const DEFAULT_ASSESSMENT_CRITERIA = [
   {
     code: "OPTIMISM",
     labelKm: "សុច្ចរិតភាពដេប៉ូ",
-    labelEn: "Depot Optimism",
     category: "subjective",
     isStructural: false,
     isComparable: true,
@@ -94,7 +85,6 @@ export const DEFAULT_ASSESSMENT_CRITERIA = [
   {
     code: "ABOVE_OPTIMISM",
     labelKm: "សុច្ចរិតភាពស៊ែលដេប៉ូ",
-    labelEn: "Above-Depot Optimism",
     category: "subjective",
     isStructural: false,
     isComparable: true,
@@ -110,7 +100,6 @@ export async function seedAssessmentCriteria(prisma) {
       where: { code: def.code },
       update: {
         labelKm: def.labelKm,
-        labelEn: def.labelEn,
         category: def.category,
         isStructural: def.isStructural,
         isComparable: def.isComparable,

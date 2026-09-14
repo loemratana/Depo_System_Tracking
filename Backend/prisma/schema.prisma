@@ -413,7 +413,6 @@ model AssessmentCriterion {
   id                 Int                          @id @default(autoincrement())
   code               String                       @unique @db.VarChar(50)
   labelKm            String                       @map("label_km")
-  labelEn            String                       @map("label_en")
   category           AssessmentCriterionCategory
   isStructural       Boolean                      @default(false) @map("is_structural")
   isComparable       Boolean                      @default(true) @map("is_comparable")
