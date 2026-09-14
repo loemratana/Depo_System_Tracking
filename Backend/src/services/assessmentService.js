@@ -417,14 +417,33 @@ class AssessmentService {
     return assessment;
   }
 
-  /** Latest non-superseded assessment for the same depot, dated before this one. */
-  async getPreviousAssessment(assessment) {
+  /**
+   * Latest non-superseded assessment for the same depot, dated before the
+   * given one. Takes just the id and does its own lean lookup (depotId +
+   * assessmentDate only) rather than requiring the caller to have already
+   * fetched the full assessment — GET /assessments/:id/previous used to
+   * call getAssessmentById(id) first just to read these 3 scalar fields,
+   * pulling the full depot/cycle/evaluator/items/auditEvents include for
+   * no reason (and duplicating GET /assessments/:id's own fetch, since the
+   * frontend detail page fires both requests together).
+   */
+  async getPreviousAssessment(id) {
+    const anchor = await prisma.depotAssessment.findUnique({
+      where: { id: Number(id) },
+      select: { depotId: true, assessmentDate: true },
+    });
+    if (!anchor) {
+      const error = new Error("Assessment not found");
+      error.statusCode = 404;
+      throw error;
+    }
+
     return prisma.depotAssessment.findFirst({
       where: {
-        depotId: assessment.depotId,
+        depotId: anchor.depotId,
         isSuperseded: false,
-        id: { not: assessment.id },
-        assessmentDate: { lt: assessment.assessmentDate },
+        id: { not: Number(id) },
+        assessmentDate: { lt: anchor.assessmentDate },
       },
       include: ASSESSMENT_INCLUDE,
       orderBy: { assessmentDate: "desc" },

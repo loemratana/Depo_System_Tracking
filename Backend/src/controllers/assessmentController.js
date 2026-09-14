@@ -100,10 +100,9 @@ class AssessmentController {
 
   getPreviousAssessment = async (req, res, next) => {
     try {
-      const assessment = await assessmentService.getAssessmentById(
+      const data = await assessmentService.getPreviousAssessment(
         req.params.id,
       );
-      const data = await assessmentService.getPreviousAssessment(assessment);
       res.json({ success: true, data });
     } catch (error) {
       next(error);
