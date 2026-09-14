@@ -26,6 +26,8 @@ export const listAssessmentsValidator = [
   query("brandId").optional().isInt({ min: 1 }).toInt(),
   query("provinceId").optional().isInt({ min: 1 }).toInt(),
   query("districtId").optional().isInt({ min: 1 }).toInt(),
+  query("criterionId").optional().isInt({ min: 1 }).toInt(),
+  query("winSide").optional().isIn(["our", "competitor", "tie"]),
   query("status").optional().isIn(["draft", "submitted", "finalized"]),
   query("qualificationStatus")
     .optional()

@@ -1145,6 +1145,7 @@ class DepotService {
       select: {
         id: true,
         name: true,
+        khmerName: true,
         brandId: true,
         district: {
           select: {
@@ -1159,6 +1160,7 @@ class DepotService {
     return depots.map((depot) => ({
       id: depot.id,
       name: depot.name,
+      khmerName: depot.khmerName,
       brandId: depot.brandId,
       districtId: depot.district?.id ?? null,
       districtName: depot.district?.name ?? null,

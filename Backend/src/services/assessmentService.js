@@ -70,6 +70,7 @@ const ASSESSMENT_LIST_SELECT = {
     select: {
       id: true,
       name: true,
+      khmerName: true,
       code: true,
       brand: { select: { id: true, name: true } },
       district: {
@@ -215,6 +216,8 @@ class AssessmentService {
     brandId,
     provinceId,
     districtId,
+    criterionId,
+    winSide,
     includeSuperseded = false,
     search,
     dateFrom,
@@ -227,6 +230,38 @@ class AssessmentService {
     if (status) where.status = status;
     if (qualificationStatus) where.qualificationStatus = qualificationStatus;
     if (evaluatorId) where.evaluatorId = Number(evaluatorId);
+    if (criterionId) {
+      // The comparison is always scoped to THIS criterion's own result —
+      // not the assessment-wide counts below — so "criterion X + Our Wins"
+      // only matches rows where criterion X specifically was won by our
+      // side, not rows that merely won overall. Selecting a criterion with
+      // no explicit winSide defaults to "our_side": the criteria filter is
+      // for finding depots we won on that criterion, so a depot the
+      // competitor won on it should not appear just because it was scored.
+      const itemFilter = { criterionId: Number(criterionId) };
+      if (winSide === "competitor") itemFilter.result = "competitor";
+      else if (winSide === "tie") itemFilter.result = "none";
+      else itemFilter.result = "our_side";
+      where.items = { some: itemFilter };
+    } else if (winSide === "our") {
+      // True row comparison between the two cached count columns — not a
+      // display/highlight choice. Prisma's field-reference filter
+      // (`prisma.<model>.fields.<field>`) compiles this straight to
+      // `WHERE our_wins_count > competitor_wins_count` in SQL, so
+      // pagination and count() both see the filtered set correctly, same
+      // as any other where clause.
+      where.ourWinsCount = {
+        gt: prisma.depotAssessment.fields.competitorWinsCount,
+      };
+    } else if (winSide === "competitor") {
+      where.competitorWinsCount = {
+        gt: prisma.depotAssessment.fields.ourWinsCount,
+      };
+    } else if (winSide === "tie") {
+      where.ourWinsCount = {
+        equals: prisma.depotAssessment.fields.competitorWinsCount,
+      };
+    }
     if (!includeSuperseded) where.isSuperseded = false;
     if (brandId || provinceId || districtId) {
       where.depot = {
