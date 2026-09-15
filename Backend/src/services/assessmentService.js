@@ -289,11 +289,78 @@ class AssessmentService {
     return where;
   }
 
-  async listAssessments({ page = 1, pageSize = 20, ...filters } = {}) {
+  /**
+   * Rank isn't a stored column — it's each row's 1-based position within
+   * its brand group by Overall score (descending, nulls last), the same
+   * thing the frontend's groupSortRows() computes for display. That can't
+   * be expressed as a row-level WHERE predicate: which rank a row holds
+   * depends on every other row in the same brand group that matches the
+   * other active filters, not just the rows on one page. So filtering by
+   * rank pulls the full filtered set (capped, same cap exportAssessments
+   * already used for a filterless export) and ranks it in JS instead of
+   * the database, keeping only the rows at the requested rank.
+   *
+   * Ties (equal Overall score) keep the order rows arrived in — Array.sort
+   * is stable, and rows arrive pre-sorted `assessmentDate desc, id desc` —
+   * so the tie-break matches the unranked list's own ordering.
+   */
+  async #rankFilteredRows(where, rank, { select = ASSESSMENT_LIST_SELECT, cap = 20000 } = {}) {
+    const rows = await prisma.depotAssessment.findMany({
+      where,
+      select,
+      orderBy: [{ assessmentDate: "desc" }, { id: "desc" }],
+      take: cap,
+    });
+
+    const groups = new Map();
+    for (const row of rows) {
+      const key = row.depot.brand?.id ?? "none";
+      const group = groups.get(key);
+      if (group) group.push(row);
+      else groups.set(key, [row]);
+    }
+
+    const matching = [];
+    for (const group of groups.values()) {
+      const sorted = [...group].sort((a, b) => {
+        if (a.overallScore == null && b.overallScore == null) return 0;
+        if (a.overallScore == null) return 1;
+        if (b.overallScore == null) return -1;
+        return b.overallScore - a.overallScore;
+      });
+      const atRank = sorted[rank - 1];
+      if (atRank) matching.push(atRank);
+    }
+
+    matching.sort((a, b) => {
+      const dateDiff = new Date(b.assessmentDate) - new Date(a.assessmentDate);
+      return dateDiff !== 0 ? dateDiff : b.id - a.id;
+    });
+
+    return matching;
+  }
+
+  async listAssessments({ page = 1, pageSize = 20, rank, ...filters } = {}) {
     const where = this.#buildAssessmentWhere(filters);
 
     const pageNum = Math.max(1, Number(page) || 1);
     const pageSizeNum = Math.min(100, Math.max(1, Number(pageSize) || 20));
+
+    if (rank) {
+      const matching = await this.#rankFilteredRows(where, Number(rank));
+      const total = matching.length;
+      const start = (pageNum - 1) * pageSizeNum;
+
+      return {
+        data: matching.slice(start, start + pageSizeNum),
+        pagination: {
+          page: pageNum,
+          pageSize: pageSizeNum,
+          total,
+          totalPages: Math.max(1, Math.ceil(total / pageSizeNum)),
+        },
+      };
+    }
 
     const [data, total] = await prisma.$transaction([
       prisma.depotAssessment.findMany({
@@ -319,13 +386,22 @@ class AssessmentService {
 
   /**
    * Same filters as listAssessments (brand/province/district/cycle/status/
-   * date range/search), no pagination — every matching row, for the Excel
-   * export. Capped so a filterless export can't pull the entire table.
+   * date range/search/rank), no pagination — every matching row, for the
+   * Excel export. Capped so a filterless export can't pull the entire
+   * table.
    */
-  async exportAssessments(filters = {}) {
+  async exportAssessments({ rank, ...filters } = {}) {
     const where = this.#buildAssessmentWhere(filters);
-
     const EXPORT_ROW_CAP = 20000;
+
+    if (rank) {
+      const assessments = await this.#rankFilteredRows(where, Number(rank), {
+        select: ASSESSMENT_EXPORT_SELECT,
+        cap: EXPORT_ROW_CAP,
+      });
+      return { assessments };
+    }
+
     const assessments = await prisma.depotAssessment.findMany({
       where,
       select: ASSESSMENT_EXPORT_SELECT,
