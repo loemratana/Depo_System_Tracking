@@ -8,6 +8,18 @@ import { prisma } from "../config/db.js";
 import logger from "../config/logger.js";
 import { getClientIp } from "../utils/clientIp.js";
 
+// Prisma's Json fields only accept plain JSON-serializable values — a raw
+// Date (e.g. a User row's createdAt/lastLogin, passed straight through as
+// oldData/newData by a caller) fails Prisma's input validation. Round-
+// tripping through JSON.stringify/parse converts Dates to ISO strings (and
+// drops undefined/functions/etc.) the same way the DB column would store
+// them anyway, so every caller is protected without having to remember to
+// sanitize its own payload.
+function toJsonSafe(value) {
+  if (value == null) return undefined;
+  return JSON.parse(JSON.stringify(value));
+}
+
 class AuditLogService {
   /**
    * Writes one audit_logs row. Never throws — a failure to record an audit
@@ -39,9 +51,9 @@ class AuditLogService {
           requestId,
           ipAddress,
           userAgent,
-          oldData: oldData ?? undefined,
-          newData: newData ?? undefined,
-          metadata: metadata ?? undefined,
+          oldData: toJsonSafe(oldData),
+          newData: toJsonSafe(newData),
+          metadata: toJsonSafe(metadata),
         },
       });
     } catch (err) {

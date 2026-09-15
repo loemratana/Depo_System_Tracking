@@ -1,5 +1,6 @@
 import userService from '../services/userService.js';
 import logger from '../config/logger.js';
+import auditLogService from '../services/auditLogService.js';
 
 const CLIENT_ERRORS = [
   'User not found',
@@ -52,6 +53,16 @@ class UserController {
   create = async (req, res) => {
     try {
       const user = await userService.createUser(req.body);
+      // userId/username default to req.user (the acting admin — these
+      // routes are authenticate + authorize('admin') only, see
+      // routes/userRoutes.js) — not the user being created, which is
+      // entityId/newData below.
+      auditLogService.logFromRequest(req, {
+        action: 'user.create',
+        entityType: 'user',
+        entityId: user.id,
+        newData: user,
+      });
       return res.status(201).json({
         success: true,
         message: 'User created successfully',
@@ -64,7 +75,15 @@ class UserController {
 
   update = async (req, res) => {
     try {
+      const before = await userService.getById(req.params.id);
       const user = await userService.updateUser(req.params.id, req.body);
+      auditLogService.logFromRequest(req, {
+        action: 'user.update',
+        entityType: 'user',
+        entityId: user.id,
+        oldData: before,
+        newData: user,
+      });
       return res.json({
         success: true,
         message: 'User updated successfully',
@@ -77,7 +96,14 @@ class UserController {
 
   remove = async (req, res) => {
     try {
+      const before = await userService.getById(req.params.id);
       const result = await userService.deleteUser(req.params.id, req.user.id);
+      auditLogService.logFromRequest(req, {
+        action: 'user.delete',
+        entityType: 'user',
+        entityId: req.params.id,
+        oldData: before,
+      });
       return res.json({
         success: true,
         message: 'User deleted successfully',
