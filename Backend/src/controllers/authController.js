@@ -1,5 +1,6 @@
 import authService from '../services/authService.js';
 import logger from '../config/logger.js';
+import auditLogService from '../services/auditLogService.js';
 
 class AuthController {
     handleError = (res, error, message = 'An error occurred', statusCode = 500) => {
@@ -37,7 +38,14 @@ class AuthController {
             const result = await authService.login(req.body);
             logger.info('User logged in', {
                 action: 'auth.login.success',
+                user_id: result.user.id,
+            });
+            auditLogService.logFromRequest(req, {
+                action: 'auth.login.success',
+                entityType: 'user',
+                entityId: result.user.id,
                 userId: result.user.id,
+                username: result.user.username,
             });
             res.json({
                 success: true,
@@ -48,6 +56,11 @@ class AuthController {
             logger.warn('Login failed', {
                 action: 'auth.login.failed',
                 reason: error.message,
+            });
+            auditLogService.logFromRequest(req, {
+                action: 'auth.login.failed',
+                entityType: 'user',
+                metadata: { email: req.body?.email, reason: error.message },
             });
             this.handleError(res, error, 'Failed to login');
         }

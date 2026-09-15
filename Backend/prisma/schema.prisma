@@ -173,6 +173,7 @@ model User {
   employee     Employee?      @relation(fields: [employeeId], references: [id])
   assessmentsEvaluated DepotAssessment[]      @relation("AssessmentEvaluator")
   assessmentAuditEvents AssessmentAuditEvent[] @relation("AssessmentAuditActor")
+  auditLogs             AuditLog[]             @relation("AuditLogActor")
 
   @@map("users")
 }
@@ -512,6 +513,35 @@ model AssessmentAuditEvent {
 
   @@index([assessmentId], map: "idx_assessment_audit_events_assessment_id")
   @@map("assessment_audit_events")
+}
+
+// General-purpose, system-wide audit trail — distinct from
+// AssessmentAuditEvent above, which only covers the assessment lifecycle.
+// Table already exists in the dev DB (created directly via SQL, not a
+// Prisma migration) — see prisma/migrations/20260915000000_add_audit_logs,
+// whose CREATE TABLE/INDEX statements are written IF NOT EXISTS so applying
+// it against a DB that already has this table is a safe no-op.
+model AuditLog {
+  id         BigInt   @id @default(autoincrement())
+  userId     Int?     @map("user_id")
+  username   String?  @db.VarChar(100)
+  action     String   @db.VarChar(50)
+  entityType String?  @map("entity_type") @db.VarChar(100)
+  entityId   String?  @map("entity_id") @db.VarChar(100)
+  requestId  String?  @map("request_id") @db.VarChar(100)
+  ipAddress  String?  @map("ip_address") @db.Inet
+  userAgent  String?  @map("user_agent")
+  oldData    Json?    @map("old_data")
+  newData    Json?    @map("new_data")
+  metadata   Json?
+  createdAt  DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  user User? @relation("AuditLogActor", fields: [userId], references: [id], onDelete: SetNull, onUpdate: Cascade)
+
+  @@index([userId], map: "idx_audit_logs_user_id")
+  @@index([entityType, entityId], map: "idx_audit_logs_entity")
+  @@index([createdAt], map: "idx_audit_logs_created_at")
+  @@map("audit_logs")
 }
 
 enum AssessmentCycleType {
