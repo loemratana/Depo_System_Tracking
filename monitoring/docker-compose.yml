@@ -1,9 +1,14 @@
-# Grafana + Prometheus + Loki monitoring stack
+# Grafana + Prometheus + Loki + Alloy monitoring stack
 # Usage: from repo root
 #   docker compose -f monitoring/docker-compose.yml up -d
 #
 # Expects Backend API on the host at :5000 (host.docker.internal)
 # and optional local Postgres at host:5433 (see Backend/.env).
+#
+# Only Grafana is meant to be reached by a person, so it's the only service
+# bound to all interfaces; everything else is bound to 127.0.0.1 (reachable
+# from this host / an SSH tunnel, not the public internet) — see
+# monitoring/README.md's "Security" section.
 
 name: depot-monitoring
 
@@ -24,7 +29,7 @@ services:
       - ./prometheus/secrets/metrics_token:/etc/prometheus/secrets/metrics_token:ro
       - prometheus_data:/prometheus
     ports:
-      - "9090:9090"
+      - "127.0.0.1:9090:9090"
     extra_hosts:
       - "host.docker.internal:host-gateway"
     depends_on:
@@ -44,7 +49,7 @@ services:
       - ./alertmanager/entrypoint.sh:/etc/alertmanager/entrypoint.sh:ro
       - alertmanager_data:/alertmanager
     ports:
-      - "9093:9093"
+      - "127.0.0.1:9093:9093"
 
   loki:
     image: grafana/loki:3.3.2
@@ -56,19 +61,32 @@ services:
       - ./loki/loki-config.yml:/etc/loki/loki-config.yml:ro
       - loki_data:/loki
     ports:
-      - "3100:3100"
+      - "127.0.0.1:3100:3100"
 
-  promtail:
-    image: grafana/promtail:3.3.2
-    container_name: depot-promtail
+  # Log collector: discovers every Docker container on the host via the
+  # Docker socket and streams its stdout/stderr straight to Loki — no file
+  # mounts, no application-side Loki client. See alloy/config.alloy for the
+  # full pipeline and monitoring/README.md for the architecture.
+  alloy:
+    image: grafana/alloy:v1.19.2
+    container_name: depot-alloy
     restart: unless-stopped
-    command: -config.file=/etc/promtail/promtail-config.yml
+    command:
+      - run
+      - /etc/alloy/config.alloy
+      - --server.http.listen-addr=0.0.0.0:12345
+      - --storage.path=/var/lib/alloy/data
+    environment:
+      ALLOY_ENVIRONMENT: ${ALLOY_ENVIRONMENT:-production}
+      ALLOY_HOST: ${ALLOY_HOST:-depot-vps}
     volumes:
-      - ./promtail/promtail-config.yml:/etc/promtail/promtail-config.yml:ro
-      - ../Backend/logs:/var/log/depot:ro
+      - ./alloy/config.alloy:/etc/alloy/config.alloy:ro
       - /var/run/docker.sock:/var/run/docker.sock:ro
+      - alloy_data:/var/lib/alloy/data
     ports:
-      - "9080:9080"
+      # Alloy's own UI/metrics endpoint (component graph, discovered
+      # targets) — handy for troubleshooting, not meant to be public.
+      - "127.0.0.1:12345:12345"
     depends_on:
       - loki
 
@@ -87,6 +105,8 @@ services:
       - ./grafana/dashboards:/var/lib/grafana/dashboards:ro
       - grafana_data:/var/lib/grafana
     ports:
+      # The one service actually meant to be reached by a person — still
+      # behind its own admin auth (GF_AUTH_ANONYMOUS_ENABLED=false above).
       - "3001:3000"
     depends_on:
       - prometheus
@@ -100,12 +120,29 @@ services:
       # Override in monitoring/.env for your local/prod DB
       DATA_SOURCE_NAME: ${POSTGRES_EXPORTER_DSN:-postgresql://postgres:password@host.docker.internal:5433/depot?sslmode=disable}
     ports:
-      - "9187:9187"
+      - "127.0.0.1:9187:9187"
     extra_hosts:
       - "host.docker.internal:host-gateway"
+
+  # VPS disk/CPU/memory metrics — powers the DiskUsageHigh alert in
+  # prometheus/alerts.yml (Loki storage is the main thing that can fill a
+  # single-VPS disk over time; see loki/loki-config.yml's retention_period).
+  node-exporter:
+    image: prom/node-exporter:v1.9.1
+    container_name: depot-node-exporter
+    restart: unless-stopped
+    command:
+      - --path.rootfs=/host
+      - --collector.filesystem.mount-points-exclude=^/(sys|proc|dev|host|etc)($$|/)
+    volumes:
+      - /:/host:ro,rslave
+    ports:
+      - "127.0.0.1:9100:9100"
+    pid: host
 
 volumes:
   prometheus_data:
   loki_data:
   grafana_data:
   alertmanager_data:
+  alloy_data:

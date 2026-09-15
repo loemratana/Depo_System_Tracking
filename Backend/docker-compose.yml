@@ -5,6 +5,20 @@ services:
       target: production
     ports:
       - '5000:5000'
+    # Docker's own json-file driver is the log source of truth (the app only
+    # writes to stdout/stderr — see src/config/logger.js) — capped so
+    # container logs can't fill the disk. `logging.service` is read by
+    # Grafana Alloy (monitoring/alloy/config.alloy) to label this
+    # container's logs `service="depot-api"`, matching what Winston already
+    # writes in every log line's `service` field, even though the compose
+    # service key below is `app`.
+    logging:
+      driver: json-file
+      options:
+        max-size: '10m'
+        max-file: '5'
+    labels:
+      logging.service: depot-api
     environment:
       NODE_ENV: production
       PORT: 5000

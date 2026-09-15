@@ -45,20 +45,23 @@ const errorMetaFormat = winston.format((info) => {
 })();
 
 /* ------------------------------------------------------------------ */
-/* Request context injection (requestId / userId)                      */
+/* Request context injection (request_id / user_id)                    */
 /* ------------------------------------------------------------------ */
 // Populated by middleware/requestId.js via AsyncLocalStorage — this makes
-// the same requestId/userId show up on every log line produced anywhere
+// the same request_id/user_id show up on every log line produced anywhere
 // during a request (controller, service, db layer) with no need to pass
-// it through every function call.
+// it through every function call. Output keys are snake_case to match the
+// centralized-logging schema (see monitoring/README.md); the
+// AsyncLocalStorage store itself stays camelCase (requestId/userId) — an
+// internal implementation detail used by requestContext.js's own API.
 const contextFormat = winston.format((info) => {
   const store = requestContext.getStore();
   if (!store) return info;
-  if (store.requestId && info.requestId === undefined) {
-    info.requestId = store.requestId;
+  if (store.requestId && info.request_id === undefined) {
+    info.request_id = store.requestId;
   }
-  if (store.userId != null && info.userId === undefined) {
-    info.userId = store.userId;
+  if (store.userId != null && info.user_id === undefined) {
+    info.user_id = store.userId;
   }
   return info;
 })();

@@ -49,13 +49,31 @@ scrape_configs:
           service: postgres
           env: local
 
-  # Promtail's own health/ingestion metrics — catches the log-shipping
-  # pipeline itself going quiet, not just the API.
-  - job_name: promtail
+  # Alloy's own health/ingestion metrics — catches the log-shipping
+  # pipeline itself going quiet, not just the API (see AlloyDown in
+  # alerts.yml).
+  - job_name: alloy
     static_configs:
-      - targets: ["promtail:9080"]
+      - targets: ["alloy:12345"]
         labels:
-          service: promtail
+          service: alloy
+          env: local
+
+  # Loki's own metrics — used by LokiDown in alerts.yml. Without this,
+  # "logs stopped arriving" and "Loki itself is down" are indistinguishable.
+  - job_name: loki
+    static_configs:
+      - targets: ["loki:3100"]
+        labels:
+          service: loki
+          env: local
+
+  # VPS-level disk/CPU/memory — see DiskUsageHigh in alerts.yml.
+  - job_name: node-exporter
+    static_configs:
+      - targets: ["node-exporter:9100"]
+        labels:
+          service: node-exporter
           env: local
 
   - job_name: alertmanager

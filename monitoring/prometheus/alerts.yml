@@ -10,6 +10,19 @@ groups:
           summary: "Depot API is down"
           description: "Prometheus cannot scrape depot-api (job=depot-api) for more than 2 minutes."
 
+      # Raw-count threshold — fires even when 5xx is a small fraction of
+      # overall traffic (e.g. a low-traffic period), which the percentage-
+      # based DepotApiHighErrorRate below would miss.
+      - alert: DepotApiTooMany500s
+        expr: |
+          sum(rate(http_requests_total{status_code=~"5.."}[5m])) * 300 > 10
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Depot API is returning many HTTP 500s"
+          description: "More than 10 5xx responses in the last 5 minutes."
+
       - alert: DepotApiHighErrorRate
         expr: |
           (
@@ -36,3 +49,68 @@ groups:
         annotations:
           summary: "High p95 latency on Depot API"
           description: "p95 request latency is above 2s for 10 minutes."
+
+  - name: logging-pipeline
+    rules:
+      - alert: LokiDown
+        expr: up{job="loki"} == 0
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Loki is down"
+          description: "Prometheus cannot scrape Loki for more than 2 minutes — logs are not being stored, and Grafana's Loki datasource will fail."
+
+      - alert: AlloyDown
+        expr: up{job="alloy"} == 0
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Grafana Alloy is down"
+          description: "Prometheus cannot scrape Alloy for more than 2 minutes — container logs are not being collected or forwarded to Loki."
+
+      # Alloy exposes its own log-delivery counters; a stall here (Alloy up
+      # but not actually shipping) is the failure LokiDown/AlloyDown alone
+      # wouldn't catch.
+      - alert: LogIngestionStalled
+        expr: |
+          sum(rate(loki_write_sent_entries_total{job="alloy"}[10m])) == 0
+        for: 15m
+        labels:
+          severity: warning
+        annotations:
+          summary: "No logs have been sent to Loki in 15 minutes"
+          description: "Alloy is up but loki_write_sent_entries_total hasn't increased — check `docker logs depot-alloy` and that containers are still producing output."
+
+  - name: infrastructure
+    rules:
+      # Fires for any container whose own compose-managed exporter/scrape
+      # target Prometheus already tracks (depot-api, loki, alloy,
+      # alertmanager, postgres, node-exporter) — DepotApiDown/LokiDown/
+      # AlloyDown above are the same pattern spelled out per-service with
+      # service-specific wording; this is the generic net for the rest.
+      - alert: ContainerExporterDown
+        expr: up{job=~"postgres|node-exporter"} == 0
+        for: 2m
+        labels:
+          severity: warning
+        annotations:
+          summary: "{{ $labels.job }} exporter is unreachable"
+          description: "Prometheus cannot scrape job={{ $labels.job }} for more than 2 minutes."
+
+      - alert: DiskUsageHigh
+        expr: |
+          (
+            1 - (
+              node_filesystem_avail_bytes{mountpoint="/", fstype!="rootfs"}
+              /
+              node_filesystem_size_bytes{mountpoint="/", fstype!="rootfs"}
+            )
+          ) * 100 > 80
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "VPS disk usage above 80%"
+          description: "Root filesystem is {{ $value | printf \"%.1f\" }}% full. Loki storage (loki_data volume) is the most likely growth source — consider lowering retention_period in monitoring/loki/loki-config.yml."

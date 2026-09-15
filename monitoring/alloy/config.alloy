@@ -1,0 +1,140 @@
+// Grafana Alloy — Docker container log collector for the Depot System
+// Tracking stack. Replaces Promtail.
+//
+// Pipeline:
+//   Docker containers (stdout/stderr only — no file mounts)
+//     -> discovery.docker      (find every container via the Docker socket)
+//     -> discovery.relabel     (compute Loki labels from Docker/Compose
+//                                metadata — see the "useful labels" list
+//                                below)
+//     -> loki.source.docker    (stream logs via the Docker Engine API,
+//                                the same mechanism `docker logs -f` uses;
+//                                no filesystem access to json-log files
+//                                needed beyond the socket itself)
+//     -> loki.process          (best-effort parse of the JSON line the
+//                                app's Winston logger writes; promote a
+//                                handful of common fields to Loki
+//                                *structured metadata* — indexed, but NOT
+//                                labels, so a busy API can't fragment the
+//                                stream set)
+//     -> loki.write            (push to Loki)
+//
+// Labels applied: service, container, environment, host, compose_project,
+// compose_service. Deliberately NOT labels: request_id, user_id, ip,
+// method, path/url, status — those stay in the JSON log body (queryable
+// with `| json` in LogQL) or as structured metadata below.
+
+discovery.docker "containers" {
+  host             = "unix:///var/run/docker.sock"
+  refresh_interval = "5s"
+}
+
+// Only ever used for its `.rules` export below — the empty `targets` here
+// is intentional. The real target list comes from discovery.docker and is
+// passed straight to loki.source.docker's own `targets` argument; this
+// component exists purely to compute the relabeling rules applied to that
+// list.
+discovery.relabel "containers" {
+  targets = []
+
+  rule {
+    source_labels = ["__meta_docker_container_name"]
+    regex         = "/(.*)"
+    target_label  = "container"
+  }
+
+  rule {
+    source_labels = ["__meta_docker_container_label_com_docker_compose_project"]
+    target_label  = "compose_project"
+  }
+
+  rule {
+    source_labels = ["__meta_docker_container_label_com_docker_compose_service"]
+    target_label  = "compose_service"
+  }
+
+  // Default: the Loki `service` label mirrors the Docker Compose service
+  // name.
+  rule {
+    source_labels = ["__meta_docker_container_label_com_docker_compose_service"]
+    target_label  = "service"
+  }
+
+  // Override: a container can set an explicit `logging.service` Docker
+  // label when its compose service key doesn't match what it actually logs
+  // as — e.g. Backend/docker-compose.yml's compose service is named `app`,
+  // but Winston writes `"service":"depot-api"` in every JSON log line (see
+  // src/config/logger.js's defaultMeta). That label makes the two agree.
+  // A regex requiring at least one character means containers without the
+  // label leave the `service` value set by the rule above untouched.
+  rule {
+    source_labels = ["__meta_docker_container_label_logging_service"]
+    regex         = "(.+)"
+    target_label  = "service"
+  }
+
+  rule {
+    target_label = "environment"
+    replacement  = sys.env("ALLOY_ENVIRONMENT")
+  }
+
+  rule {
+    target_label = "host"
+    replacement  = sys.env("ALLOY_HOST")
+  }
+}
+
+loki.source.docker "containers" {
+  host          = "unix:///var/run/docker.sock"
+  targets       = discovery.docker.containers.targets
+  labels        = {}
+  relabel_rules = discovery.relabel.containers.rules
+  forward_to    = [loki.process.app_logs.receiver]
+}
+
+loki.process "app_logs" {
+  forward_to = [loki.write.default.receiver]
+
+  // Best-effort JSON parse. Non-JSON lines (Postgres, Grafana, Loki's own
+  // logs, Alloy itself, etc.) simply produce no matches here — the raw line
+  // still reaches Loki unchanged, just without the structured metadata
+  // below. Field names match Backend/src/middleware/httpLogger.js and
+  // config/logger.js's contextFormat.
+  stage.json {
+    expressions = {
+      level       = "level",
+      timestamp   = "timestamp",
+      request_id  = "request_id",
+      user_id     = "user_id",
+      status      = "status",
+      duration_ms = "duration_ms",
+    }
+  }
+
+  stage.timestamp {
+    source = "timestamp"
+    format = "RFC3339Nano"
+    fallback_formats = ["RFC3339"]
+  }
+
+  // Loki 3.x structured metadata (enabled via allow_structured_metadata in
+  // loki-config.yml): indexed and filterable per log line, but NOT part of
+  // the stream-selector label set — this is exactly what keeps a
+  // high-cardinality field like request_id or user_id from multiplying the
+  // number of Loki streams the way a label would.
+  stage.structured_metadata {
+    values = {
+      level       = "",
+      request_id  = "",
+      user_id     = "",
+      status      = "",
+      duration_ms = "",
+    }
+  }
+}
+
+loki.write "default" {
+  endpoint {
+    url = "http://loki:3100/loki/api/v1/push"
+  }
+}
