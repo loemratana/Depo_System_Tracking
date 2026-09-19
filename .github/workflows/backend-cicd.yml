@@ -5,6 +5,8 @@
 # - "Run workflow" (workflow_dispatch) on main does the full pipeline too.
 #
 # Required repo secrets: VPS_HOST, VPS_USER, VPS_SSH_KEY, VPS_HOST_KEY
+#   VPS_HOST_KEY must come from the SSH port in use: ssh-keyscan -p 2244 -t ed25519 <host>
+# Optional repo secret: VPS_PORT (SSH port, defaults to 2244)
 # Optional repo variable: API_HEALTH_URL (e.g. https://depoapi.example.com/health/live)
 #   — if set, the pipeline curls it after deploying.
 #
@@ -151,11 +153,13 @@ jobs:
       - name: Deploy
         env:
           TARGET: ${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }}
+          # The VPS's sshd listens on 2244, not 22. Set a VPS_PORT secret to override.
+          SSH_PORT: ${{ secrets.VPS_PORT || '2244' }}
           IMAGE_REF: ${{ needs.build.outputs.image }}
           GHCR_USER: ${{ github.actor }}
           GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          SSH="ssh -o BatchMode=yes -o ConnectTimeout=15 -o ServerAliveInterval=30"
+          SSH="ssh -p $SSH_PORT -o BatchMode=yes -o ConnectTimeout=15 -o ServerAliveInterval=30"
 
           # Short-lived token (expires when this job ends) so the VPS can pull
           # the private image without a personal access token stored anywhere.
