@@ -32,6 +32,9 @@ import { errorHandler } from './middleware/errorHandler.js';
 
 const app = express();
 
+// Trivial Express fingerprinting — helmet doesn't remove this header itself.
+app.disable('x-powered-by');
+
 /* ========================
    REQUEST ID / HTTP LOGGING
 ======================== */
@@ -44,13 +47,11 @@ app.use(httpLogger);
 /* ========================
    CORS CONFIG
 ======================== */
+// Origins come from CORS_ORIGIN (comma-separated) — see config/env.js for
+// the default fallback and the production warning when it's unset. Never
+// commit a real origin list (or a personal tunnel URL) here again.
 const corsOptions = {
-  origin: [
-    "http://localhost:3000",
-    "http://localhost:8080",
-    "http://localhost:5173",
-    "https://earline-unreceivable-juliane.ngrok-free.dev"
-  ],
+  origin: environment.cors.origins,
   credentials: true,
 };
 
@@ -129,13 +130,25 @@ app.use('/api/v1/assessments', assessmentRoutes);
 
 
 /* ========================
-   HEALTH CHECK
+   HEALTH CHECKS
 ======================== */
-app.get('/health', async (req, res) => {
+// Liveness: is the Node process itself running? Must NOT depend on
+// Postgres (or anything else) — this is what the Dockerfile's HEALTHCHECK
+// polls, and a container getting marked unhealthy over a transient DB blip
+// (rather than the process actually being stuck) risks unnecessary restarts.
+app.get('/health/live', (req, res) => {
+  res.status(200).json({ status: 'UP' });
+});
+
+// Readiness: can the app actually serve traffic right now? Checks required
+// dependencies (Postgres). /health is kept as an alias for backward
+// compatibility — it used to be the only health endpoint and conflated
+// both checks.
+async function readinessHandler(req, res) {
   const dbHealth = await db.healthCheck?.() || { status: 'unknown' };
 
   const health = {
-    status: 'ok',
+    status: dbHealth.status === 'healthy' ? 'ok' : 'unavailable',
     timestamp: new Date().toISOString(),
     uptime: process.uptime(),
     environment: environment.nodeEnv,
@@ -144,10 +157,11 @@ app.get('/health', async (req, res) => {
     version: process.version,
   };
 
-  const isHealthy = dbHealth.status === 'healthy';
+  res.status(dbHealth.status === 'healthy' ? 200 : 503).json(health);
+}
 
-  res.status(isHealthy ? 200 : 503).json(health);
-});
+app.get('/health/ready', readinessHandler);
+app.get('/health', readinessHandler);
 
 /* ========================
    ROOT ROUTE
@@ -160,7 +174,8 @@ app.get('/', (req, res) => {
     environment: environment.nodeEnv,
     timestamp: new Date().toISOString(),
     endpoints: {
-      health: '/health',
+      health: '/health/ready',
+      live: '/health/live',
       metrics: '/metrics',
       api: '/api',
     },

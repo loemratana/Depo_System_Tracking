@@ -6,21 +6,25 @@ import logger from './logger.js';
 
 class JWTConfig {
     constructor() {
-        this.secret = process.env.JWT_SECRET || crypto.randomBytes(64).toString('hex');
-        this.refreshSecret = process.env.JWT_REFRESH_SECRET || crypto.randomBytes(64).toString('hex');
+        // environment.js already fails fast in production if either secret
+        // is missing (and provides a clearly-marked, fixed dev-only default
+        // otherwise) — no more crypto.randomBytes() fallback here, which
+        // used to mint a brand-new random secret on every process start.
+        this.secret = environment.jwt.secret;
+        this.refreshSecret = environment.jwt.refreshSecret;
 
         // Token expiration times
-        this.accessTokenExpiry = process.env.JWT_ACCESS_EXPIRY || '7d';
-        this.refreshTokenExpiry = process.env.JWT_REFRESH_EXPIRY || '7d';
-        this.resetTokenExpiry = process.env.JWT_RESET_EXPIRY || '1h';
-        this.verifyTokenExpiry = process.env.JWT_VERIFY_EXPIRY || '24h';
+        this.accessTokenExpiry = environment.jwt.accessExpiry;
+        this.refreshTokenExpiry = environment.jwt.refreshExpiry;
+        this.verifyTokenExpiry = environment.jwt.verifyExpiry;
+        this.twoFactorSetupTokenExpiry = environment.jwt.twoFactorSetupExpiry;
 
         // Algorithm
         this.algorithm = 'HS256';
 
         // Issuer and audience
-        this.issuer = process.env.JWT_ISSUER || 'depot-management-api';
-        this.audience = process.env.JWT_AUDIENCE || 'depot-management-client';
+        this.issuer = environment.jwt.issuer;
+        this.audience = environment.jwt.audience;
     }
 
     // Generate Access Token
@@ -69,31 +73,6 @@ class JWTConfig {
         } catch (error) {
             logger.error('Refresh token generation failed:', error);
             throw new Error('Failed to generate refresh token');
-        }
-    }
-
-    // Generate Password Reset Token
-    generateResetToken(payload) {
-        try {
-            const token = jwt.sign(
-                {
-                    ...payload,
-                    type: 'reset',
-                    purpose: 'password_reset'
-                },
-                this.secret,
-                {
-                    expiresIn: this.resetTokenExpiry,
-                    issuer: this.issuer,
-                    audience: this.audience,
-                    algorithm: this.algorithm
-                }
-            );
-
-            return token;
-        } catch (error) {
-            logger.error('Reset token generation failed:', error);
-            throw new Error('Failed to generate reset token');
         }
     }
 
@@ -147,6 +126,91 @@ class JWTConfig {
         }
     }
 
+    // Generate a mandatory-2FA-enrollment token: issued by login() instead
+    // of a real access token when the account has no TOTP enrolled yet
+    // (see docs/2fa-architecture.md — 2FA is mandatory for every account,
+    // not opt-in). It authenticates the holder ONLY for the TOTP setup
+    // endpoints (middleware/auth.js's authenticateForTwoFactorSetup) — every
+    // other protected route still requires a real 'access' token, so this
+    // can't be used to bypass enrollment and reach the rest of the API.
+    generateTwoFactorSetupToken(payload) {
+        try {
+            const token = jwt.sign(
+                {
+                    ...payload,
+                    type: '2fa_setup'
+                },
+                this.secret,
+                {
+                    expiresIn: this.twoFactorSetupTokenExpiry,
+                    issuer: this.issuer,
+                    audience: this.audience,
+                    algorithm: this.algorithm
+                }
+            );
+
+            return token;
+        } catch (error) {
+            logger.error('2FA setup token generation failed:', error);
+            throw new Error('Failed to generate 2FA setup token');
+        }
+    }
+
+    // Verify a mandatory-2FA-enrollment token (see generateTwoFactorSetupToken).
+    verifyTwoFactorSetupToken(token) {
+        try {
+            const decoded = jwt.verify(token, this.secret, {
+                issuer: this.issuer,
+                audience: this.audience,
+                algorithms: [this.algorithm]
+            });
+
+            if (decoded.type !== '2fa_setup') {
+                throw new Error('Invalid token type');
+            }
+
+            return decoded;
+        } catch (error) {
+            if (error.name === 'TokenExpiredError') {
+                throw new Error('2FA setup token expired');
+            }
+            if (error.name === 'JsonWebTokenError') {
+                throw new Error('Invalid 2FA setup token');
+            }
+            throw error;
+        }
+    }
+
+    // Accepts EITHER a real access token OR a 2FA-setup token — used only by
+    // the TOTP setup endpoints, which must work for both an already-logged-in
+    // user turning 2FA on voluntarily (real access token) and a user forced
+    // through mandatory enrollment right after password login (setup token).
+    // Every other protected route keeps using verifyAccessToken directly, so
+    // a setup token can't reach anything beyond these two endpoints.
+    verifyAccessOrTwoFactorSetupToken(token) {
+        try {
+            const decoded = jwt.verify(token, this.secret, {
+                issuer: this.issuer,
+                audience: this.audience,
+                algorithms: [this.algorithm]
+            });
+
+            if (decoded.type !== 'access' && decoded.type !== '2fa_setup') {
+                throw new Error('Invalid token type');
+            }
+
+            return decoded;
+        } catch (error) {
+            if (error.name === 'TokenExpiredError') {
+                throw new Error('Token expired');
+            }
+            if (error.name === 'JsonWebTokenError') {
+                throw new Error('Invalid token');
+            }
+            throw error;
+        }
+    }
+
     // Verify Refresh Token
     verifyRefreshToken(token) {
         try {
@@ -169,28 +233,6 @@ class JWTConfig {
                 throw new Error('Invalid refresh token');
             }
             throw error;
-        }
-    }
-
-    // Verify Reset Token
-    verifyResetToken(token) {
-        try {
-            const decoded = jwt.verify(token, this.secret, {
-                issuer: this.issuer,
-                audience: this.audience,
-                algorithms: [this.algorithm]
-            });
-
-            if (decoded.type !== 'reset' || decoded.purpose !== 'password_reset') {
-                throw new Error('Invalid token type or purpose');
-            }
-
-            return decoded;
-        } catch (error) {
-            if (error.name === 'TokenExpiredError') {
-                throw new Error('Reset token expired');
-            }
-            throw new Error('Invalid reset token');
         }
     }
 

@@ -11,32 +11,10 @@ import {
 
 const { authenticate } = authMiddleware;
 
-import { uploadImageMemory } from "../config/multer.js";
-
-const upload = multer({
-  storage: multer.memoryStorage(),
-  limits: { fileSize: 10 * 1024 * 1024 }, // 10 MB
-  fileFilter: (_req, file, cb) => {
-    const name = (file.originalname || "").toLowerCase();
-    const type = (file.mimetype || "").toLowerCase();
-    const ok =
-      name.endsWith(".csv") ||
-      name.endsWith(".xlsx") ||
-      name.endsWith(".xls") ||
-      type.includes("csv") ||
-      type.includes("spreadsheet") ||
-      type.includes("excel");
-    if (ok) cb(null, true);
-    else
-      cb(
-        new Error("Only Excel (.xlsx, .xls) or CSV files are allowed"),
-        false,
-      );
-  },
-});
+import { uploadImageMemory, uploadImport } from "../config/multer.js";
 
 const handleUpload = (req, res, next) => {
-  upload.single("file")(req, res, (err) => {
+  uploadImport.single("file")(req, res, (err) => {
     if (err instanceof multer.MulterError) {
       return res.status(400).json({
         success: false,

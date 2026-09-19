@@ -46,8 +46,10 @@ function normalizeRoute(req) {
     .replace(/\/\d+/g, '/:id');
 }
 
+const QUIET_PATHS = new Set(['/metrics', '/health', '/health/live', '/health/ready']);
+
 export function metricsMiddleware(req, res, next) {
-  if (req.path === '/metrics' || req.path === '/health') {
+  if (QUIET_PATHS.has(req.path)) {
     return next();
   }
 

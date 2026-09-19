@@ -12,7 +12,7 @@ const SLOW_REQUEST_MS = environment.logSlowRequestMs;
 
 // Frequently polled by uptime checks / Prometheus — only log these if they
 // fail, not on every successful poll.
-const QUIET_PATHS = new Set(["/health", "/metrics"]);
+const QUIET_PATHS = new Set(["/health", "/health/live", "/health/ready", "/metrics"]);
 
 function levelForStatus(statusCode) {
   if (statusCode >= 500) return "error";

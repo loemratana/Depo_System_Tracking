@@ -739,13 +739,108 @@ class BrandMonthlyKpiService {
     return this.mapMonthlyRow(row);
   }
 
+  /**
+   * Rows from the template carry depot_code + brand name instead of ids.
+   * Looks those up in two batched queries up front (not one per row) and
+   * returns a function that fills in depotId/brandId for a row, or throws a
+   * row-level error if it can't be matched unambiguously. Rows that already
+   * have ids (JSON imports, older templates) pass through untouched.
+   */
+  async buildImportResolver(rows) {
+    const codes = new Set();
+    const brandNames = new Set();
+    for (const raw of rows) {
+      if (!raw.depotId && raw.depotCode) codes.add(String(raw.depotCode));
+      if (!raw.brandId && raw.brandName) brandNames.add(String(raw.brandName));
+    }
+
+    const depots = codes.size
+      ? await prisma.depot.findMany({
+          where: {
+            OR: [...codes].map((code) => ({
+              code: { equals: code, mode: "insensitive" },
+            })),
+          },
+          select: { id: true, code: true, brandId: true },
+        })
+      : [];
+    const depotByCode = new Map(depots.map((d) => [d.code.toLowerCase(), d]));
+
+    const brands = brandNames.size
+      ? await prisma.brand.findMany({
+          where: {
+            OR: [...brandNames].map((name) => ({
+              name: { equals: name, mode: "insensitive" },
+            })),
+          },
+          select: { id: true, name: true },
+        })
+      : [];
+    const brandsByName = new Map();
+    for (const b of brands) {
+      const key = b.name.toLowerCase();
+      brandsByName.set(key, [...(brandsByName.get(key) ?? []), b]);
+    }
+
+    return async (raw) => {
+      const resolved = { ...raw };
+      if (!resolved.brandId && resolved.brandName) {
+        const matches = brandsByName.get(
+          String(resolved.brandName).toLowerCase(),
+        );
+        if (!matches?.length) {
+          throw new Error(`Brand "${resolved.brandName}" not found`);
+        }
+        if (matches.length > 1) {
+          throw new Error(`Brand name "${resolved.brandName}" is ambiguous`);
+        }
+        resolved.brandId = matches[0].id;
+      }
+      if (!resolved.depotId) {
+        if (resolved.depotCode) {
+          const depot = depotByCode.get(
+            String(resolved.depotCode).toLowerCase(),
+          );
+          if (!depot) {
+            throw new Error(`Depot code "${resolved.depotCode}" not found`);
+          }
+          resolved.depotId = depot.id;
+        } else if (resolved.depotName && resolved.brandId) {
+          // Depots with no code can't be matched by code - fall back to the
+          // name within this brand, but only if it's unique.
+          const matches = await prisma.depot.findMany({
+            where: {
+              brandId: Number(resolved.brandId),
+              name: { equals: String(resolved.depotName), mode: "insensitive" },
+            },
+            select: { id: true },
+            take: 2,
+          });
+          if (matches.length !== 1) {
+            throw new Error(
+              matches.length
+                ? `Depot name "${resolved.depotName}" is ambiguous - add its depot_code`
+                : `Depot "${resolved.depotName}" not found`,
+            );
+          }
+          resolved.depotId = matches[0].id;
+        } else {
+          throw new Error("depot_code is required");
+        }
+      }
+      if (!resolved.brandId) throw new Error("brand is required");
+      return resolved;
+    };
+  }
+
   async importMonthlyRows({ rows = [] }) {
     const imported = [];
     const errors = [];
+    const resolveRow = await this.buildImportResolver(rows);
     for (let index = 0; index < rows.length; index += 1) {
       const raw = rows[index];
       try {
-        const row = await this.upsertMonthlyKpi(raw);
+        const row = await this.upsertMonthlyKpi(await resolveRow(raw));
         imported.push(row);
       } catch (error) {
         errors.push({
@@ -859,6 +954,9 @@ class BrandMonthlyKpiService {
     const depots = await prisma.depot.findMany({
       where: { brandId: brand.id },
       include: {
+        district: {
+          select: { name: true, province: { select: { name: true } } },
+        },
         brandMonthKpis: {
           where: { brandId: brand.id, periodMonth },
           select: {
@@ -873,14 +971,21 @@ class BrandMonthlyKpiService {
       orderBy: { name: "asc" },
     });
 
+    // Identification columns are names/codes, never raw DB ids — the import
+    // (parseMonthlyWorkbook + buildImportResolver) looks the depot up by
+    // depot_code and the brand by name. The four KPI columns after them are
+    // the values the user fills in. '@' keeps Excel from turning a code like
+    // "007" into 7 or "2026-09" into a date.
+    const text = { numFmt: "@" };
     const workbook = new ExcelJS.Workbook();
     const sheet = workbook.addWorksheet("Depot Monthly KPI");
     sheet.columns = [
-      { header: "depot_id", key: "depot_id", width: 12 },
+      { header: "brand", key: "brand", width: 22, style: text },
+      { header: "month", key: "month", width: 12, style: text },
+      { header: "depot_code", key: "depot_code", width: 16, style: text },
+      { header: "province", key: "province", width: 20 },
+      { header: "district", key: "district", width: 20 },
       { header: "depot_name", key: "depot_name", width: 28 },
-      { header: "brand_id", key: "brand_id", width: 12 },
-      { header: "brand", key: "brand", width: 22 },
-      { header: "month", key: "month", width: 12 },
       { header: "target_po", key: "target_po", width: 12 },
       { header: "po_actual", key: "po_actual", width: 12 },
       {
@@ -894,11 +999,12 @@ class BrandMonthlyKpiService {
     depots.forEach((depot) => {
       const kpi = depot.brandMonthKpis[0];
       sheet.addRow({
-        depot_id: depot.id,
-        depot_name: depot.name,
-        brand_id: brand.id,
         brand: brand.name,
         month: monthLabel(periodMonth),
+        depot_code: depot.code ?? "",
+        province: depot.district?.province?.name ?? "",
+        district: depot.district?.name ?? "",
+        depot_name: depot.name,
         target_po: kpi?.poTarget ?? "",
         po_actual: kpi?.poActual ?? "",
         product_available_pct: kpi?.productAvailablePct ?? "",
@@ -968,25 +1074,48 @@ class BrandMonthlyKpiService {
     await workbook.xlsx.load(fileBuffer);
     const sheet = workbook.getWorksheet(1);
     if (!sheet) return [];
+
+    // Columns are located by header name, not position, so the current
+    // template (brand, month, depot_code, ...) and the older id-based one
+    // (depot_id, ..., brand_id, ...) both import.
+    const columnByHeader = new Map();
+    sheet.getRow(1).eachCell((cell, colNumber) => {
+      const header = String(cellRaw(cell.value) ?? "")
+        .trim()
+        .toLowerCase()
+        .replace(/\s+/g, "_");
+      if (header) columnByHeader.set(header, colNumber);
+    });
+    const read = (row, header) => {
+      const col = columnByHeader.get(header);
+      return col ? cellRaw(row.getCell(col).value) : undefined;
+    };
+    const asText = (value) =>
+      value == null || value === "" ? undefined : String(value).trim();
+
     const rows = [];
     sheet.eachRow((row, index) => {
       if (index === 1) return;
-      const depotId = cellRaw(row.getCell(1).value);
-      const brandId = cellRaw(row.getCell(3).value);
-      const month = cellRaw(row.getCell(5).value);
-      const targetPo = cellRaw(row.getCell(6).value);
-      const poActual = cellRaw(row.getCell(7).value);
-      const productAvailablePct = cellRaw(row.getCell(8).value);
-      const volumeDisplayPct = cellRaw(row.getCell(9).value);
-      if (!depotId && !brandId && !month) return;
+      const depotId = read(row, "depot_id");
+      const depotCode = asText(read(row, "depot_code"));
+      const depotName = asText(read(row, "depot_name"));
+      const brandId = read(row, "brand_id");
+      const brandName = asText(read(row, "brand"));
+      const month = read(row, "month");
+      if (!depotId && !depotCode && !depotName && !brandId && !month) return;
       rows.push({
-        depotId: Number(depotId),
-        brandId: Number(brandId),
+        depotId: depotId ? Number(depotId) : undefined,
+        depotCode,
+        depotName,
+        brandId: brandId ? Number(brandId) : undefined,
+        brandName,
         month: String(month),
-        poTarget: asNullableNumber(targetPo),
-        poActual: Number(poActual ?? 0),
-        productAvailablePct: asNullableNumber(productAvailablePct),
-        volumeDisplayPct: asNullableNumber(volumeDisplayPct),
+        poTarget: asNullableNumber(read(row, "target_po")),
+        poActual: Number(read(row, "po_actual") ?? 0),
+        productAvailablePct: asNullableNumber(
+          read(row, "product_available_pct"),
+        ),
+        volumeDisplayPct: asNullableNumber(read(row, "volume_display_pct")),
       });
     });
     return rows;

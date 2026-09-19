@@ -1,11 +1,9 @@
 import depotService from '../services/depotService.js';
 import { normalizeImportRow, tryParseImportDate, normalizeSex, isEmptyOptional } from "../utils/importUtils.js";
 import logger from '../config/logger.js';
-import multer from "multer";
 import { ReportService } from "../services/report/report.service.js";
 import { parse } from "csv-parse";
 import { prisma } from '../config/db.js';
-const upload = multer({ dest: "uploads/" });
 import ExcelJS from "exceljs";
 function parseCSV(buffer) {
   return new Promise((resolve, reject) => {

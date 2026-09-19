@@ -16,30 +16,6 @@ export const validate = (req, res, next) => {
     next();
 };
 
-// Register validator
-export const registerValidator = [
-    body('email')
-        .isEmail()
-        .withMessage('Valid email is required')
-        .normalizeEmail(),
-    body('password')
-        .isLength({ min: 6 })
-        .withMessage('Password must be at least 6 characters')
-        .matches(/^(?=.*[A-Za-z])(?=.*\d)/)
-        .withMessage('Password must contain at least one letter and one number'),
-    body('name')
-        .optional()
-        .isString()
-        .trim()
-        .isLength({ min: 2, max: 100 })
-        .withMessage('Name must be between 2 and 100 characters'),
-    body('role')
-        .optional()
-        .isIn(['USER', 'ADMIN', 'MODERATOR'])
-        .withMessage('Invalid role'),
-    validate
-];
-
 // Login validator
 export const loginValidator = [
     body('email')
@@ -86,14 +62,45 @@ export const forgotPasswordValidator = [
 
 // Reset password validator
 export const resetPasswordValidator = [
-    body('token')
-        .notEmpty()
-        .withMessage('Token is required'),
+    body('email')
+        .isEmail()
+        .withMessage('Valid email is required')
+        .normalizeEmail(),
+    body('otp')
+        .isLength({ min: 6, max: 6 })
+        .withMessage('Verification code must be 6 digits')
+        .isNumeric({ no_symbols: true })
+        .withMessage('Verification code must be numeric'),
     body('newPassword')
         .isLength({ min: 6 })
         .withMessage('Password must be at least 6 characters')
         .matches(/^(?=.*[A-Za-z])(?=.*\d)/)
         .withMessage('Password must contain at least one letter and one number'),
+    validate
+];
+
+// 2FA TOTP setup-verify validator
+export const totpSetupVerifyValidator = [
+    body('code')
+        .isLength({ min: 6, max: 6 })
+        .withMessage('Code must be 6 digits')
+        .isNumeric()
+        .withMessage('Code must be numeric'),
+    validate
+];
+
+// 2FA login-challenge verify validator
+export const twoFactorChallengeVerifyValidator = [
+    body('challengeId')
+        .notEmpty()
+        .withMessage('challengeId is required')
+        .isString()
+        .withMessage('challengeId must be a string'),
+    body('code')
+        .isLength({ min: 6, max: 6 })
+        .withMessage('Code must be 6 digits')
+        .isNumeric()
+        .withMessage('Code must be numeric'),
     validate
 ];
 

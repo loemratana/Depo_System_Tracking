@@ -174,6 +174,9 @@ model User {
   assessmentsEvaluated DepotAssessment[]      @relation("AssessmentEvaluator")
   assessmentAuditEvents AssessmentAuditEvent[] @relation("AssessmentAuditActor")
   auditLogs             AuditLog[]             @relation("AuditLogActor")
+  twoFactor             UserTwoFactor?
+  webauthnCredentials   WebAuthnCredential[]
+  recoveryCodes         RecoveryCode[]
 
   @@map("users")
 }
@@ -213,9 +216,19 @@ model Report {
   @@map("reports")
 }
 
+// Persists issued refresh tokens for revocation/rotation (see
+// authService.js). The underlying columns are literally named
+// "refresh_tokens_pkey"/"refresh_tokens_token_key" — an old migration
+// (prisma/migrations/20260529071700) accidentally used Postgres's default
+// constraint-naming convention as the actual column names. Left alone here
+// deliberately (renaming physical columns is a real migration with real
+// risk for zero functional benefit — @map already fully hides the ugliness
+// from every consumer of this model); `token` -> `tokenHash` below is a
+// Prisma-side field rename only (same @map, same column) since this field
+// now stores a SHA-256 hash of the refresh token, never the raw value.
 model RefreshToken {
   id        String   @id @map("refresh_tokens_pkey")
-  token     String   @unique @map("refresh_tokens_token_key")
+  tokenHash String   @unique @map("refresh_tokens_token_key")
   userId    Int      @map("user_id")
   isRevoked Boolean  @default(false)
   expiresAt DateTime @map("expires_at")
@@ -514,6 +527,64 @@ model AssessmentAuditEvent {
   @@index([assessmentId], map: "idx_assessment_audit_events_assessment_id")
   @@map("assessment_audit_events")
 }
+
+model UserTwoFactor {
+  id               Int             @id @default(autoincrement())
+  userId           Int             @unique @map("user_id")
+  method           TwoFactorMethod @default(totp)
+  secretCiphertext Bytes           @map("secret_ciphertext")
+  secretIv         Bytes           @map("secret_iv")
+  secretAuthTag    Bytes           @map("secret_auth_tag")
+  keyVersion       Int             @default(1) @map("key_version")
+  isVerified       Boolean         @default(false) @map("is_verified")
+  createdAt        DateTime        @default(now()) @map("created_at")
+  verifiedAt       DateTime?       @map("verified_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  @@map("user_two_factor")
+}
+// One row per user's TOTP enrollment (@unique userId). isVerified gates whether
+// login actually enforces it — a half-completed setup must not lock anyone out
+// or silently half-enable 2FA. Secret is never stored plaintext.
+
+model WebAuthnCredential {
+  id           Int      @id @default(autoincrement())
+  userId       Int      @map("user_id")
+  credentialId String   @unique @map("credential_id")
+  publicKey    Bytes    @map("public_key")
+  counter      BigInt   @default(0)
+  deviceName   String?  @map("device_name")
+  transports   String[] @map("transports")
+  createdAt    DateTime @default(now()) @map("created_at")
+  lastUsedAt   DateTime? @map("last_used_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  @@index([userId], map: "idx_webauthn_credentials_user_id")
+  @@map("webauthn_credentials")
+}
+// Multiple rows per user (one per passkey/security key), unlike UserTwoFactor's
+// one-per-user TOTP secret. counter must be checked non-decreasing on every
+// auth — standard WebAuthn cloned-authenticator detection.
+
+model RecoveryCode {
+  id        Int       @id @default(autoincrement())
+  userId    Int       @map("user_id")
+  codeHash  String    @unique @map("code_hash")
+  usedAt    DateTime? @map("used_at")
+  createdAt DateTime  @default(now()) @map("created_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  @@index([userId], map: "idx_recovery_codes_user_id")
+  @@map("recovery_codes")
+}
+// One row per generated code (typically 10/batch). Regeneration deletes all
+// prior rows in the SAME transaction that inserts the new batch — mirrors
+// authService.resetPassword's existing $transaction pattern.
+
+enum TwoFactorMethod {
+  totp
+}
+
 
 // General-purpose, system-wide audit trail — distinct from
 // AssessmentAuditEvent above, which only covers the assessment lifecycle.

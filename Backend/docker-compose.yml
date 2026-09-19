@@ -5,13 +5,7 @@ services:
       target: production
     ports:
       - '5000:5000'
-    # Docker's own json-file driver is the log source of truth (the app only
-    # writes to stdout/stderr — see src/config/logger.js) — capped so
-    # container logs can't fill the disk. `logging.service` is read by
-    # Grafana Alloy (monitoring/alloy/config.alloy) to label this
-    # container's logs `service="depot-api"`, matching what Winston already
-    # writes in every log line's `service` field, even though the compose
-    # service key below is `app`.
+
     logging:
       driver: json-file
       options:
@@ -23,8 +17,7 @@ services:
       NODE_ENV: production
       PORT: 5000
       HOST: 0.0.0.0
-      # The app only reads DATABASE_URL (see src/config/env.js) — DB_HOST /
-      # DB_NAME / etc. are not read anywhere and were silently ignored.
+
       DATABASE_URL: postgresql://postgres:postgres@postgres:5432/depot
       DIRECT_URL: postgresql://postgres:postgres@postgres:5432/depot
       JWT_SECRET: change-me-to-a-long-random-string
@@ -33,8 +26,12 @@ services:
       JWT_REFRESH_EXPIRY: 30d
       JWT_ISSUER: depot-management-api
       JWT_AUDIENCE: depot-management-client
+
+      REDIS_URL: redis://redis:6379
     depends_on:
       postgres:
+        condition: service_healthy
+      redis:
         condition: service_healthy
     restart: unless-stopped
 
@@ -53,6 +50,17 @@ services:
       interval: 5s
       timeout: 5s
       retries: 5
+
+  redis:
+    image: redis:7.4-alpine
+    ports:
+      - '127.0.0.1:6379:6379'
+    healthcheck:
+      test: ['CMD', 'redis-cli', 'ping']
+      interval: 5s
+      timeout: 3s
+      retries: 5
+    restart: unless-stopped
 
 volumes:
   postgres_data:

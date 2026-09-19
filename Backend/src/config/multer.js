@@ -54,5 +54,35 @@ export const uploadImageMemory = multer({
   fileFilter,
 });
 
+const importFileFilter = (_req, file, cb) => {
+  const name = (file.originalname || '').toLowerCase();
+  const type = (file.mimetype || '').toLowerCase();
+  const ok =
+    name.endsWith('.csv') ||
+    name.endsWith('.xlsx') ||
+    name.endsWith('.xls') ||
+    type.includes('csv') ||
+    type.includes('spreadsheet') ||
+    type.includes('excel');
+  if (ok) cb(null, true);
+  else cb(new Error('Only Excel (.xlsx, .xls) or CSV files are allowed'), false);
+};
+
+/**
+ * Depot bulk-import (routes/depotRoutes.js) — Excel/CSV only, memory storage
+ * (parsed in-process via exceljs/csv-parse, never written to disk).
+ * Previously duplicated ad-hoc as an unfiltered, size-unlimited
+ * `multer({ dest: "uploads/" })` directly inside depotController.js, which
+ * was never actually wired to any route (routes/depotRoutes.js already
+ * defined and used this exact filtered/capped config locally) — moved here
+ * to match the other centralized configs above, and the dead duplicate
+ * removed from the controller.
+ */
+export const uploadImport = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 10 * 1024 * 1024 },
+  fileFilter: importFileFilter,
+});
+
 // Default export kept for existing profile upload imports
 export default uploadProfile;

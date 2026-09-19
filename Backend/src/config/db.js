@@ -6,6 +6,16 @@ import env from './env.js';
 
 const { Pool } = pg;
 
+// Ownership: this Database class creates the pg.Pool and hands it to
+// PrismaPg by reference — PrismaPg does NOT take ownership of it. Verified
+// directly against @prisma/adapter-pg's source (PrismaPgAdapterFactory's
+// dispose logic): it only calls `pool.end()` on an externally-supplied pool
+// when constructed with `{ disposeExternalPool: true }`, which this file
+// does not pass. So `prisma.$disconnect()` alone leaves the pool's
+// connections open — this class must close it explicitly (see disconnect()
+// below), exactly once (pg's Pool throws "Called end on pool more than
+// once" on a second .end() call).
+
 class Database {
     constructor() {
         if (Database.instance) {
@@ -28,7 +38,17 @@ class Database {
             env.databaseUrl.includes('pooler') ||
             env.databaseUrl.includes('sslmode=require');
 
-        const pool = new Pool({
+        // ssl.rejectUnauthorized: false is scoped to just this Postgres
+        // connection — it does NOT disable TLS verification process-wide.
+        // (A previous version of this file also set
+        // `process.env.NODE_TLS_REJECT_UNAUTHORIZED = '0'` globally, which
+        // disabled certificate verification for every outgoing HTTPS
+        // request the whole process makes — Cloudinary, Telegram, anything
+        // — not just this one. Removed; nothing else in the app needs it.)
+        // TODO: if the provider (Supabase) publishes a CA certificate,
+        // switch to `ssl: { ca: <cert>, rejectUnauthorized: true }` for real
+        // verification instead of skipping it.
+        this.pool = new Pool({
             connectionString: env.databaseUrl,
             ssl: isRemoteDb ? { rejectUnauthorized: false } : false,
             // Keep pool small on hosted Postgres (Supabase pooler limits)
@@ -40,13 +60,11 @@ class Database {
             allowExitOnIdle: true,
         });
 
-        // Set this as a fallback for internal Node.js TLS checks if needed
-        if (isRemoteDb) {
-            process.env.NODE_TLS_REJECT_UNAUTHORIZED = '0';
-        }
-
         // Prisma v7 requires a database adapter for the new "client" engine.
-        const adapter = new PrismaPg(pool);
+        // PrismaPg does not take ownership of `this.pool` (see the comment
+        // above the class) — this.pool.end() in disconnect() below is what
+        // actually closes it.
+        const adapter = new PrismaPg(this.pool);
 
         this.prisma = new PrismaClient({
             adapter,
@@ -73,13 +91,28 @@ class Database {
         }
     }
 
+    // Idempotent: pg's Pool throws "Called end on pool more than once" on a
+    // second .end() call, and graceful shutdown (server.js) may attempt to
+    // disconnect from more than one code path (a signal handler racing a
+    // fatal-error handler, for instance) — this flag guarantees the actual
+    // close only ever runs once regardless of how many callers ask for it.
+    #disconnected = false;
+
     async disconnect() {
+        if (this.#disconnected) return;
+        this.#disconnected = true;
+
         try {
             await this.prisma.$disconnect();
-            logger.info('Database disconnected successfully');
         } catch (error) {
-            logger.error('Error disconnecting database:', error);
-            throw error;
+            logger.error('Error disconnecting Prisma client:', error);
+        }
+
+        try {
+            await this.pool.end();
+            logger.info('Database pool closed successfully');
+        } catch (error) {
+            logger.error('Error closing database pool:', error);
         }
     }
 

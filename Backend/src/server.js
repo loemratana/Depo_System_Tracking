@@ -1,7 +1,7 @@
 import http from 'http';
 
 import app from './app.js';
-import { connectDB } from './config/db.js';
+import db, { connectDB } from './config/db.js';
 import logger from './config/logger.js';
 import environment from './config/env.js';
 import { startTelegramBot } from './services/telegram/index.js';
@@ -59,7 +59,9 @@ class Server {
             process.exit(1);
         }
     }
-    // Graceful shutdown
+    // Graceful shutdown: stop accepting new requests, let in-flight ones
+    // finish, THEN close the DB pool — closing it first would break
+    // whatever's still mid-request.
     async stop() {
         logger.info('Shutting down server...');
 
@@ -71,15 +73,19 @@ class Server {
         }, 5000);
         forceExit.unref();
 
+        const finish = async () => {
+            await db.disconnect();
+            clearTimeout(forceExit);
+            process.exit(0);
+        };
+
         if (this.server) {
             this.server.close(() => {
                 logger.info('HTTP server closed');
-                clearTimeout(forceExit);
-                process.exit(0);
+                finish();
             });
         } else {
-            clearTimeout(forceExit);
-            process.exit(0);
+            await finish();
         }
     }
 
@@ -96,14 +102,16 @@ class Server {
         const forceExit = setTimeout(() => process.exit(exitCode), 5000);
         forceExit.unref();
 
-        if (this.server) {
-            this.server.close(() => {
-                clearTimeout(forceExit);
-                process.exit(exitCode);
-            });
-        } else {
+        const finish = async () => {
+            await db.disconnect();
             clearTimeout(forceExit);
             process.exit(exitCode);
+        };
+
+        if (this.server) {
+            this.server.close(() => finish());
+        } else {
+            finish();
         }
     }
 
