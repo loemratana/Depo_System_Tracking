@@ -3,6 +3,7 @@ import { PrismaPg } from '@prisma/adapter-pg';
 import pg from 'pg';
 import logger from './logger.js';
 import env from './env.js';
+import { withoutSslMode } from './dbUrl.js';
 
 const { Pool } = pg;
 
@@ -48,8 +49,15 @@ class Database {
         // TODO: if the provider (Supabase) publishes a CA certificate,
         // switch to `ssl: { ca: <cert>, rejectUnauthorized: true }` for real
         // verification instead of skipping it.
+        //
+        // `sslmode=` is stripped from the URL for remote databases: pg would
+        // otherwise parse `sslmode=require` as "verify the certificate" and
+        // override the explicit `ssl` option below, so Supabase's certificate
+        // chain would be rejected ("self-signed certificate in certificate
+        // chain") — see config/dbUrl.js. (That failure was previously hidden
+        // by the process-wide NODE_TLS_REJECT_UNAUTHORIZED=0 removed above.)
         this.pool = new Pool({
-            connectionString: env.databaseUrl,
+            connectionString: isRemoteDb ? withoutSslMode(env.databaseUrl) : env.databaseUrl,
             ssl: isRemoteDb ? { rejectUnauthorized: false } : false,
             // Keep pool small on hosted Postgres (Supabase pooler limits)
             max: Number(process.env.DB_POOL_MAX || (env.isProduction ? 8 : 10)),
