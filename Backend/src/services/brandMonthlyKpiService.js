@@ -72,6 +72,12 @@ function cellRaw(value) {
 
 class BrandMonthlyKpiService {
   #catalogReady = false;
+  // Definitions are an admin-managed catalog (4 fixed rows, changed via
+  // the seed/admin UI, not per-request) — re-querying them on every single
+  // monthly-KPI save was one of several sequential round trips that made a
+  // single-row save feel slow. Cached for this process's lifetime, same
+  // rationale/lifetime as #catalogReady above.
+  #definitionMapCache = null;
 
   async ensureCatalog() {
     if (this.#catalogReady) return;
@@ -89,6 +95,7 @@ class BrandMonthlyKpiService {
   }
 
   async getDefinitionMap() {
+    if (this.#definitionMapCache) return this.#definitionMapCache;
     await this.ensureCatalog();
     const defs = await prisma.kpiDefinition.findMany({
       where: {
@@ -97,7 +104,10 @@ class BrandMonthlyKpiService {
         },
       },
     });
-    return Object.fromEntries(defs.map((item) => [item.code, item]));
+    this.#definitionMapCache = Object.fromEntries(
+      defs.map((item) => [item.code, item]),
+    );
+    return this.#definitionMapCache;
   }
 
   async resolveDepotBrand({ depotId, brandId }) {
@@ -168,78 +178,97 @@ class BrandMonthlyKpiService {
       },
     ];
 
+    // Each metric writes a DIFFERENT kpiDefinitionId (so a different unique
+    // row), and the employeeKPI upsert below targets a different table with
+    // its own unique key — none of these writes touch the same row, so
+    // there's nothing to serialize them for. Running them one-at-a-time
+    // (the original `for...await` here) turned one save into 4-5 sequential
+    // network round trips to the database, which is what made a single-row
+    // save feel slow (confirmed: ~9 sequential round trips total across
+    // upsertMonthlyKpi before this change, each paying full connection
+    // latency to the remote DB). This was never wrapped in a transaction —
+    // a failure partway through already could've left a partial write
+    // either way — so firing them concurrently changes nothing about
+    // correctness, only about how long they wait on each other.
+    const writes = [];
     for (const metric of metrics) {
       const def = defMap[metric.code];
       if (!def) continue;
       if (metric.actualValue == null) {
-        await prisma.kpiValue.deleteMany({
-          where: {
-            employeeId,
-            depotId: depot.id,
-            kpiDefinitionId: def.id,
-            periodMonth,
-          },
-        });
+        writes.push(
+          prisma.kpiValue.deleteMany({
+            where: {
+              employeeId,
+              depotId: depot.id,
+              kpiDefinitionId: def.id,
+              periodMonth,
+            },
+          }),
+        );
         continue;
       }
-      await prisma.kpiValue.upsert({
-        where: {
-          employeeId_depotId_kpiDefinitionId_periodMonth: {
+      writes.push(
+        prisma.kpiValue.upsert({
+          where: {
+            employeeId_depotId_kpiDefinitionId_periodMonth: {
+              employeeId,
+              depotId: depot.id,
+              kpiDefinitionId: def.id,
+              periodMonth,
+            },
+          },
+          update: {
+            brandId,
+            actualValue: Number(metric.actualValue),
+            targetValue: metric.targetValue,
+            score: null,
+          },
+          create: {
             employeeId,
             depotId: depot.id,
+            brandId,
             kpiDefinitionId: def.id,
             periodMonth,
+            actualValue: Number(metric.actualValue),
+            targetValue: metric.targetValue,
+            score: null,
           },
-        },
-        update: {
-          brandId,
-          actualValue: Number(metric.actualValue),
-          targetValue: metric.targetValue,
-          score: null,
-        },
-        create: {
-          employeeId,
-          depotId: depot.id,
-          brandId,
-          kpiDefinitionId: def.id,
-          periodMonth,
-          actualValue: Number(metric.actualValue),
-          targetValue: metric.targetValue,
-          score: null,
-        },
-      });
+        }),
+      );
     }
 
     if (poTarget != null || poActual != null) {
-      await prisma.employeeKPI.upsert({
-        where: {
-          employeeId_depotId_month: {
+      const performance =
+        poTarget > 0
+          ? Number((((poActual ?? 0) / poTarget) * 100).toFixed(1))
+          : 0;
+      writes.push(
+        prisma.employeeKPI.upsert({
+          where: {
+            employeeId_depotId_month: {
+              employeeId,
+              depotId: depot.id,
+              month: periodMonth,
+            },
+          },
+          update: {
+            targetValue: Number(poTarget ?? 0),
+            actualValue: Number(poActual ?? 0),
+            performance,
+          },
+          create: {
             employeeId,
             depotId: depot.id,
             month: periodMonth,
+            targetValue: Number(poTarget ?? 0),
+            actualValue: Number(poActual ?? 0),
+            performance,
           },
-        },
-        update: {
-          targetValue: Number(poTarget ?? 0),
-          actualValue: Number(poActual ?? 0),
-          performance:
-            poTarget > 0
-              ? Number((((poActual ?? 0) / poTarget) * 100).toFixed(1))
-              : 0,
-        },
-        create: {
-          employeeId,
-          depotId: depot.id,
-          month: periodMonth,
-          targetValue: Number(poTarget ?? 0),
-          actualValue: Number(poActual ?? 0),
-          performance:
-            poTarget > 0
-              ? Number((((poActual ?? 0) / poTarget) * 100).toFixed(1))
-              : 0,
-        },
-      });
+        }),
+      );
     }
+
+    await Promise.all(writes);
   }
 
   mapMonthlyRow(row) {
@@ -253,6 +282,7 @@ class BrandMonthlyKpiService {
     return {
       id: row.id,
       depotId: row.depotId,
+      depotCode: row.depot?.code ?? null,
       depotName: row.depot?.name ?? "",
       districtId: row.depot?.district?.id ?? null,
       districtName: row.depot?.district?.name ?? null,
@@ -283,6 +313,7 @@ class BrandMonthlyKpiService {
     return {
       id: null,
       depotId: depot.id,
+      depotCode: depot.code ?? null,
       depotName: depot.name,
       districtId: depot.district?.id ?? null,
       districtName: depot.district?.name ?? null,
@@ -407,6 +438,7 @@ class BrandMonthlyKpiService {
         select: {
           id: true,
           name: true,
+          code: true,
           brandId: true,
           brand: { select: { id: true, name: true } },
           district: { select: { id: true, name: true } },
@@ -447,6 +479,7 @@ class BrandMonthlyKpiService {
               depot: {
                 id: depot.id,
                 name: depot.name,
+                code: depot.code,
                 district: depot.district,
                 province: depot.province,
                 employee: depot.employee,
@@ -456,6 +489,7 @@ class BrandMonthlyKpiService {
           return {
             id: null,
             depotId: depot.id,
+            depotCode: depot.code ?? null,
             depotName: depot.name,
             districtId: depot.district?.id ?? null,
             districtName: depot.district?.name ?? null,
@@ -522,6 +556,7 @@ class BrandMonthlyKpiService {
           select: {
             id: true,
             name: true,
+            code: true,
             district: { select: { id: true, name: true } },
             province: { select: { id: true, name: true } },
             employee: { select: { id: true, englishName: true, khmerName: true } },
@@ -862,6 +897,151 @@ class BrandMonthlyKpiService {
     };
   }
 
+  /**
+   * Read-only dry run of importMonthlyRows: resolves every row exactly the
+   * same way (same depot_code/brand-name lookups, same row-level error
+   * messages) but never writes anything — lets the frontend show a
+   * preview + confirmation before committing an Excel import. For each
+   * resolvable row, also reports the CURRENT value already in the database
+   * next to what importing would set it to, so e.g. a blank cell that
+   * would clear an existing value is visible before it happens (importing
+   * from Excel treats a present-but-blank cell as "set to empty", not
+   * "leave unchanged" — see parseMonthlyWorkbook/upsertMonthlyKpi).
+   */
+  async previewMonthlyImport({ rows = [] }) {
+    // Phase 1: resolve every row (same depot_code/brand-name lookups,
+    // batched, as importMonthlyRows) without touching anything else yet.
+    const resolveRow = await this.buildImportResolver(rows);
+    const resolved = [];
+    const errors = [];
+    for (let index = 0; index < rows.length; index += 1) {
+      try {
+        resolved.push({ rowNumber: index + 2, data: await resolveRow(rows[index]) });
+      } catch (error) {
+        errors.push({ rowNumber: index + 2, message: error.message, data: rows[index] });
+      }
+    }
+
+    // Phase 2: one batched fetch each for depots, brands, and existing KPI
+    // rows — not one query per row. A large import (hundreds of rows) would
+    // otherwise serialize hundreds of sequential round trips, the exact
+    // slowness already fixed once for the per-row save path.
+    const depotIds = [...new Set(resolved.map((r) => Number(r.data.depotId)))];
+    const brandIds = [...new Set(resolved.map((r) => Number(r.data.brandId)))];
+    const periodMonths = new Map(
+      resolved.map((r) => [r.data.month, parseMonthInput(r.data.month)]),
+    );
+
+    const [depots, brands, existingRows] = await Promise.all([
+      depotIds.length
+        ? prisma.depot.findMany({
+            where: { id: { in: depotIds } },
+            select: { id: true, code: true, name: true },
+          })
+        : [],
+      brandIds.length
+        ? prisma.brand.findMany({
+            where: { id: { in: brandIds } },
+            select: { id: true, name: true },
+          })
+        : [],
+      resolved.length
+        ? prisma.brandDepotMonthKpi.findMany({
+            where: {
+              OR: resolved.map((r) => ({
+                depotId: Number(r.data.depotId),
+                brandId: Number(r.data.brandId),
+                periodMonth: periodMonths.get(r.data.month),
+              })),
+            },
+          })
+        : [],
+    ]);
+    const depotById = new Map(depots.map((d) => [d.id, d]));
+    const brandById = new Map(brands.map((b) => [b.id, b]));
+    const existingByKey = new Map(
+      existingRows.map((row) => [
+        `${row.depotId}:${row.brandId}:${row.periodMonth.toISOString()}`,
+        row,
+      ]),
+    );
+
+    // Phase 3: assemble each preview row from the batched lookups above.
+    const preview = resolved.map(({ rowNumber, data }) => {
+      const depotId = Number(data.depotId);
+      const brandId = Number(data.brandId);
+      const periodMonth = periodMonths.get(data.month);
+      const depot = depotById.get(depotId);
+      const brand = brandById.get(brandId);
+      const existing = existingByKey.get(
+        `${depotId}:${brandId}:${periodMonth.toISOString()}`,
+      );
+
+      const hasPoActual = Object.prototype.hasOwnProperty.call(data, "poActual");
+      const hasPoTarget = Object.prototype.hasOwnProperty.call(data, "poTarget");
+      const hasAvailable = Object.prototype.hasOwnProperty.call(
+        data,
+        "productAvailablePct",
+      );
+      const hasDisplay = Object.prototype.hasOwnProperty.call(
+        data,
+        "volumeDisplayPct",
+      );
+
+      // Mirrors upsertMonthlyKpi's own "only fields present in the row
+      // change, everything else keeps its current value" rule, so the
+      // preview shows exactly what a real import would do.
+      const next = {
+        poActual: hasPoActual
+          ? Number(data.poActual ?? 0)
+          : (existing?.poActual ?? 0),
+        poTarget: hasPoTarget
+          ? asNullableNumber(data.poTarget)
+          : (existing?.poTarget ?? null),
+        productAvailablePct: hasAvailable
+          ? asNullableNumber(data.productAvailablePct)
+          : (existing?.productAvailablePct ?? null),
+        volumeDisplayPct: hasDisplay
+          ? asNullableNumber(data.volumeDisplayPct)
+          : (existing?.volumeDisplayPct ?? null),
+      };
+      const current = existing
+        ? {
+            poActual: existing.poActual,
+            poTarget: existing.poTarget,
+            productAvailablePct: existing.productAvailablePct,
+            volumeDisplayPct: existing.volumeDisplayPct,
+          }
+        : null;
+
+      return {
+        rowNumber,
+        depotCode: depot?.code ?? null,
+        depotName: depot?.name ?? "",
+        brandName: brand?.name ?? "",
+        month: monthLabel(periodMonth),
+        isNew: !existing,
+        changed:
+          !existing ||
+          current.poActual !== next.poActual ||
+          current.poTarget !== next.poTarget ||
+          current.productAvailablePct !== next.productAvailablePct ||
+          current.volumeDisplayPct !== next.volumeDisplayPct,
+        current,
+        next,
+      };
+    });
+
+    return {
+      totalRows: rows.length,
+      validRows: preview.length,
+      failedRows: errors.length,
+      changedRows: preview.filter((r) => r.changed).length,
+      rows: preview,
+      errors,
+    };
+  }
+
   async importTargetRows({ rows = [] }) {
     const imported = [];
     const errors = [];
@@ -1026,13 +1206,25 @@ class BrandMonthlyKpiService {
     const rows = result.data ?? [];
     const workbook = new ExcelJS.Workbook();
     const sheet = workbook.addWorksheet("Depot Monthly KPI");
+    // This file is also meant to work as a ready-made import — re-upload it
+    // via /kpis/brand-monthly/import after editing Target PO / PO Actual /
+    // Product Available % / Volume Display %, no separate template needed.
+    // That means "Depot Code" and "Month" need the same two things the
+    // template already has: text formatting ('@', so Excel doesn't turn a
+    // code like "007" into 7 or "2026-10" into a date), and column keys
+    // that parseMonthlyWorkbook's header-normalization actually recognizes
+    // (depot_code, depot_name, brand, month, target_po, po_actual,
+    // product_available_pct, volume_display_pct — see that method's own
+    // comment for exactly how a header text turns into one of these keys).
+    const text = { numFmt: "@" };
     sheet.columns = [
-      { header: "Depot", key: "depot_name", width: 28 },
+      { header: "Depot Code", key: "depot_code", width: 16, style: text },
+      { header: "Depot Name", key: "depot_name", width: 28 },
       { header: "Brand", key: "brand", width: 22 },
       { header: "District", key: "district", width: 20 },
       { header: "Province", key: "province", width: 20 },
       { header: "Sale Supervisor", key: "sale_supervisor", width: 24 },
-      { header: "Month", key: "month", width: 12 },
+      { header: "Month", key: "month", width: 12, style: text },
       { header: "Target PO", key: "target_po", width: 12 },
       { header: "PO Actual", key: "po_actual", width: 12 },
       { header: "PO %", key: "po_percent", width: 12 },
@@ -1050,9 +1242,13 @@ class BrandMonthlyKpiService {
       pattern: "solid",
       fgColor: { argb: "FF2C3E50" },
     };
-    // names only — never raw depot/brand IDs
+    // Names (and now depot_code) only — never raw depot/brand ids. Unlike
+    // the other text columns, depot_code must stay "" (not "—") when a
+    // depot has none — re-importing a literal "—" as a code would fail to
+    // match any real depot instead of falling back to matching by name.
     rows.forEach((row) => {
       sheet.addRow({
+        depot_code: row.depotCode ?? "",
         depot_name: row.depotName || "—",
         brand: row.brandName || "—",
         district: row.districtName || "—",
@@ -1076,14 +1272,19 @@ class BrandMonthlyKpiService {
     if (!sheet) return [];
 
     // Columns are located by header name, not position, so the current
-    // template (brand, month, depot_code, ...) and the older id-based one
-    // (depot_id, ..., brand_id, ...) both import.
+    // template (brand, month, depot_code, ...), the older id-based one
+    // (depot_id, ..., brand_id, ...), AND the human-readable export
+    // (exportMonthlyWorkbook — "Depot Code", "Product Available %", ...)
+    // all import. "%" -> "pct" so e.g. "Product Available %" normalizes to
+    // the same key ("product_available_pct") the template already uses
+    // literally — the export's own wording never needs to change for this.
     const columnByHeader = new Map();
     sheet.getRow(1).eachCell((cell, colNumber) => {
       const header = String(cellRaw(cell.value) ?? "")
         .trim()
         .toLowerCase()
-        .replace(/\s+/g, "_");
+        .replace(/\s+/g, "_")
+        .replace(/%/g, "pct");
       if (header) columnByHeader.set(header, colNumber);
     });
     const read = (row, header) => {

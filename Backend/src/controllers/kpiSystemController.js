@@ -179,6 +179,32 @@ class KpiSystemController {
     }
   };
 
+  // Read-only: resolves and reports what importBrandMonthly WOULD do,
+  // without writing anything — the frontend shows this as a preview the
+  // user must confirm before the real import (above) runs.
+  previewBrandMonthly = async (req, res, next) => {
+    try {
+      let rows = req.body?.rows;
+      if (req.file?.buffer) {
+        rows = await brandMonthlyKpiService.parseMonthlyWorkbook(
+          req.file.buffer,
+        );
+      }
+      if (!Array.isArray(rows) || rows.length === 0) {
+        return res.status(400).json({
+          success: false,
+          message: "Provide an Excel file or body.rows",
+        });
+      }
+      const result = await brandMonthlyKpiService.previewMonthlyImport({
+        rows,
+      });
+      res.json({ success: true, ...result });
+    } catch (error) {
+      next(error);
+    }
+  };
+
   downloadBrandMonthlyTemplate = async (req, res, next) => {
     try {
       if (!req.query.brandId) {
